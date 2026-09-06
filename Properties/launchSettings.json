@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "AxTools (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "AxTools (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

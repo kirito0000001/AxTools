@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="AxTools.Views.CrossingVoidPackagePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <Grid RowSpacing="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Spacing="4" Margin="0,0,0,2">
+                <TextBlock Text="零境交错" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="游戏分片包" Style="{StaticResource SubtleTextStyle}" />
+            </StackPanel>
+
+            <Border Grid.Row="1" Style="{StaticResource PanelBorderStyle}" Padding="18">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="生成 Git 分片包" Style="{StaticResource SectionTitleStyle}" />
+
+                    <Grid ColumnSpacing="10" RowSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="40" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock VerticalAlignment="Center" Text="游戏包目录" />
+                        <TextBox
+                            x:Name="GameDirectoryTextBox"
+                            Grid.Column="1"
+                            Text="{Binding GameDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            TextWrapping="NoWrap" />
+                        <Button
+                            Grid.Column="2"
+                            Tag="GameDirectory"
+                            Click="BrowsePath_Click"
+                            Style="{StaticResource IconToolButtonStyle}"
+                            ToolTipService.ToolTip="选择游戏包目录">
+                            <SymbolIcon Symbol="OpenFile" />
+                        </Button>
+
+                        <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="输出目录" />
+                        <TextBox
+                            x:Name="OutputDirectoryTextBox"
+                            Grid.Row="1"
+                            Grid.Column="1"
+                            Text="{Binding OutputDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            TextWrapping="NoWrap" />
+                        <Button
+                            Grid.Row="1"
+                            Grid.Column="2"
+                            Tag="OutputDirectory"
+                            Click="BrowsePath_Click"
+                            Style="{StaticResource IconToolButtonStyle}"
+                            ToolTipService.ToolTip="选择输出目录">
+                            <SymbolIcon Symbol="OpenFile" />
+                        </Button>
+
+                        <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="Bandizip" />
+                        <TextBox
+                            x:Name="BandizipTextBox"
+                            Grid.Row="2"
+                            Grid.Column="1"
+                            Text="{Binding BandizipExecutable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            TextWrapping="NoWrap" />
+                        <Button
+                            Grid.Row="2"
+                            Grid.Column="2"
+                            Tag="BandizipExecutable"
+                            Click="BrowsePath_Click"
+                            Style="{StaticResource IconToolButtonStyle}"
+                            ToolTipService.ToolTip="选择 Bandizip 控制台程序">
+                            <SymbolIcon Symbol="OpenFile" />
+                        </Button>
+
+                        <TextBlock Grid.Row="3" VerticalAlignment="Center" Text="游戏版本" />
+                        <TextBox
+                            x:Name="GameVersionTextBox"
+                            Grid.Row="3"
+                            Grid.Column="1"
+                            PlaceholderText="V0.5.14"
+                            Text="{Binding GameVersion, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Click="InspectButton_Click" Style="{StaticResource PrimaryToolButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <SymbolIcon Symbol="View" />
+                                <TextBlock Text="重新预检" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Name="GeneratePackageButton"
+                            Click="GenerateButton_Click"
+                            IsEnabled="{Binding CanGenerate}"
+                            Style="{StaticResource AccentButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <SymbolIcon Symbol="Save" />
+                                <TextBlock Text="生成分片包" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Grid Grid.Row="2" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <InfoBar
+                    x:Name="InspectionInfoBar"
+                    IsClosable="False"
+                    IsOpen="True"
+                    Severity="Informational"
+                    Title="预检状态"
+                    Message="{Binding InspectionStatus}" />
+                <Border Grid.Column="1" Style="{StaticResource PanelBorderStyle}" Padding="16">
+                    <StackPanel Spacing="7">
+                        <TextBlock Text="本次内容" Style="{StaticResource SectionTitleStyle}" />
+                        <TextBlock x:Name="IncludedSummaryText" Text="{Binding IncludedSummary}" TextWrapping="Wrap" />
+                        <TextBlock x:Name="ExcludedSummaryText" Text="{Binding ExcludedSummary}" TextWrapping="Wrap" />
+                        <TextBlock x:Name="EstimatedChunksText" Text="{Binding EstimatedChunkSummary}" TextWrapping="Wrap" />
+                        <TextBlock Text="排除：.pdb、Saved/Logs、Saved/Crashes、_download、.git" Style="{StaticResource SubtleTextStyle}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding LastResultText}" Style="{StaticResource SubtleTextStyle}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

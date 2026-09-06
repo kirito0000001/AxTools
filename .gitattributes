@@ -1,0 +1,12 @@
+* text=auto
+
+# Keep binary assets out of text normalization.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.gif binary
+*.bmp binary
+*.zip binary
+*.nupkg binary
+*.pdb binary

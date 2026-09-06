@@ -1,0 +1,51 @@
+namespace AxTools.Core.Models;
+
+public static class ManagedToolActionDescriptionCatalog
+{
+    public static string GetDescription(ManagedToolAction action) => action switch
+    {
+        ManagedToolAction.CheckEnvironment => "检查当前动作需要的工具链、路径和依赖，不构建也不启动程序。",
+        ManagedToolAction.DownloadSource => "选择目录后，从当前工具固定的 GitHub 仓库下载完整源码。",
+        ManagedToolAction.RunDevelopment => "增量编译当前源码并启动 Debug 开发版；没有相关改动时会复用构建缓存。",
+        ManagedToolAction.RunExistingDevelopment => "启动现有 Debug 产物，不重新编译；仅用于明确需要复用已有产物的工具。",
+        ManagedToolAction.Build => "编译当前源码并生成开发产物，不启动程序。",
+        ManagedToolAction.BuildAndRun => "增量编译当前源码，成功后启动 Debug 开发版。",
+        ManagedToolAction.ForceBuildAndRun => "忽略现有构建状态，重新编译全部相关源码后启动 Debug 开发版。",
+        ManagedToolAction.Test => "运行项目配置的自动化测试，不启动正式版。",
+        ManagedToolAction.SourceHealthCheck => "检查源码结构、依赖和已知风险，不修改项目文件。",
+        ManagedToolAction.RunRelease => "启动已配置的正式版程序，不编译也不覆盖正式版。",
+        ManagedToolAction.DownloadRelease => "选择目录后，下载 GitHub 最新稳定 Release 的全部附件，不安装也不覆盖现有正式版。",
+        ManagedToolAction.GetDownloadLink => "复制当前工具的 Gitee Releases 页面链接，方便分享给其他人。",
+        ManagedToolAction.BuildFrontend => "只构建启动器前端，用于检查页面编译结果，不生成完整安装包。",
+        ManagedToolAction.TestFrontend => "运行启动器前端自动化测试。",
+        ManagedToolAction.TestRust => "运行 Tauri/Rust 后端自动化测试。",
+        ManagedToolAction.BuildAndroidDebug => "构建 Android Debug 安装包，不自动安装到设备。",
+        ManagedToolAction.BuildAndroidAndInstall => "构建 Android Debug 安装包并安装到当前连接设备。",
+        ManagedToolAction.BuildAndroidRelease => "构建 Android Release 产物，不上传发布平台。",
+        ManagedToolAction.ListAndroidDevices => "读取当前 ADB 设备列表，不修改设备内容。",
+        ManagedToolAction.StopAndroidApp => "停止连接设备上正在运行的目标 Android 应用。",
+        ManagedToolAction.PackageStable => "生成正式通道分发包，只写入 AxTools 工作区。",
+        ManagedToolAction.PackageBeta => "生成测试通道分发包，只写入 AxTools 工作区。",
+        ManagedToolAction.BuildLauncherPackage => "构建启动器安装包、签名和发布清单，但不上传。",
+        ManagedToolAction.SetVersion => "把输入版本写入该工具约定的版本配置，立即用于后续构建。",
+        ManagedToolAction.ValidatePackage => "核对现有发布包的文件、版本、大小、哈希和签名，不上传。",
+        ManagedToolAction.PackageX64 => "生成 Windows x64 分发目录，只写入 AxTools 工作区。",
+        ManagedToolAction.CheckUnrealSyncEnvironment => "检查与 Unreal 同步所需的路径和环境，不修改 Unreal 项目。",
+        ManagedToolAction.InspectArtifacts => "读取现有构建或发布产物并报告完整性，不重新构建。",
+        ManagedToolAction.OpenDevelopmentOutput => "打开当前工具的 Debug 开发产物目录。",
+        ManagedToolAction.OpenReleaseDirectory => "打开当前工具的正式版或发布产物目录。",
+        ManagedToolAction.OpenWorkspace => "打开 AxTools 为当前工具管理的统一工作区。",
+        ManagedToolAction.ValidateAndStagePackage => "校验发布产物并整理到待发布目录，不覆盖正在运行的正式版。",
+        ManagedToolAction.ReplaceRelease => "用已校验产物替换正式版；执行前会检查并提示正在运行的程序。",
+        ManagedToolAction.UploadDryRun => "检查现有发布包并模拟上传流程；不上传任何文件，不修改远端版本、Release 或清单。",
+        ManagedToolAction.Upload => "上传已经构建并校验的现有发布包，不重新构建源码。",
+        ManagedToolAction.PublishDryRun => "执行完整发布所需的本地构建、打包和检查；不上传任何文件，不修改远端版本、Release 或清单。",
+        ManagedToolAction.Publish => "构建、校验并真实发布新版本，会写入配置的远端发布目标。",
+        ManagedToolAction.BuildGameChunks => "从选定游戏包制作分片和校验清单，只写入 AxTools 工作区。",
+        ManagedToolAction.UploadGameChunks => "续传并核对已有游戏分片，服务器清单和最新版指针只在全部验证通过后更新。",
+        ManagedToolAction.PublishGamePackage => "重新制作游戏分片后执行完整上传、服务器白名单和最终清单发布。",
+        ManagedToolAction.EditLauncherReleaseNotes => "打开启动器 Release 介绍编辑窗口，保存后立即写入 AX 设置。",
+        ManagedToolAction.EditGameReleaseNotes => "打开游戏 Release 介绍编辑窗口，保存后立即写入 AX 设置。",
+        _ => throw new ArgumentOutOfRangeException(nameof(action), action, "未知工具动作。")
+    };
+}

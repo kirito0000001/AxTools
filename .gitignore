@@ -1,0 +1,45 @@
+# Build output and generated artifacts
+bin/
+obj/
+Artifacts/
+AppPackages/
+TestResults/
+publish/
+*.pdb
+*.deps.json
+*.runtimeconfig.json
+
+# IDE and local tooling state
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vscode/
+
+# AxTools local workspace and runtime data
+AxTools.settings.json
+AxTools.settings.*.json
+Saved/
+Logs/
+TaskHistory/
+.axtools-*/
+
+# Local secrets and environment files
+.env
+.env.*
+*.secret.json
+
+# Temporary files and package leftovers
+*.log
+*.tmp
+*.bak
+*.download
+*.part
+*.nupkg
+*.snupkg
+*.zip
+*.sig
+Thumbs.db
+.DS_Store
