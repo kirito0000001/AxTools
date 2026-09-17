@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
         FantasyGamePage.DataContext = viewModel.Tools[7];
         FantasyAndroidPage.DataContext = viewModel.Tools[8];
         CrossingVoidGamePage.DataContext = viewModel.Tools[9];
+        ServerAliyunPage.DataContext = viewModel.Server;
         GlobalSettingsPage.DataContext = viewModel.Settings;
         GlobalSettingsPage.PathSelectionRequested += GlobalSettingsPage_PathSelectionRequested;
         GlobalSettingsPage.ProjectRootSelectionRequested +=

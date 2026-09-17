@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="AxTools.Views.ServerPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer
+        HorizontalScrollBarVisibility="Disabled"
+        Padding="0,0,20,0"
+        VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="16">
+            <StackPanel Spacing="4" Margin="0,0,0,2">
+                <TextBlock Text="服务器" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="实时查看游戏服务端与看门狗状态。" Style="{StaticResource SubtleTextStyle}" />
+            </StackPanel>
+
+            <Border Style="{StaticResource PanelBorderStyle}">
+                <StackPanel Spacing="12">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                x:Name="HeadlineText"
+                                Style="{StaticResource SectionTitleStyle}"
+                                Text="正在连接服务器..." />
+                            <TextBlock
+                                x:Name="DetailText"
+                                Style="{StaticResource SubtleTextStyle}"
+                                Text="" />
+                        </StackPanel>
+                        <Button
+                            x:Name="RefreshButton"
+                            Grid.Column="1"
+                            VerticalAlignment="Top"
+                            Click="RefreshButton_Click"
+                            Content="立即刷新"
+                            Style="{StaticResource PrimaryToolButtonStyle}" />
+                    </Grid>
+
+                    <StackPanel x:Name="InstancePanel" Spacing="8" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

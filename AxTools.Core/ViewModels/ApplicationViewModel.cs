@@ -9,6 +9,8 @@ namespace AxTools.Core.ViewModels;
 
 public sealed class ApplicationViewModel : ObservableObject
 {
+    private const string DefaultServerSshTarget = "crossing-server";
+
     private readonly AppSettings _settings;
     private string _currentPageTag;
 
@@ -23,10 +25,14 @@ public sealed class ApplicationViewModel : ObservableObject
         IReadOnlyDictionary<ManagedToolKey, string>? pathDetectionStatuses = null,
         IReadOnlyList<ToolchainStatusItem>? toolchainStatuses = null,
         string? environmentChangeSummary = null,
-        string? scriptsRoot = null)
+        string? scriptsRoot = null,
+        ServerStatusService? serverStatusService = null)
     {
         _settings = settings;
         TaskRunner = taskRunner;
+        Server = serverStatusService is null
+            ? null
+            : new ServerPageViewModel(serverStatusService, DefaultServerSshTarget);
         RunnerDiagnostics = runnerDiagnostics ?? new RunnerDiagnosticsViewModel(
             null,
             "任务运行器尚未初始化。");
@@ -90,6 +96,8 @@ public sealed class ApplicationViewModel : ObservableObject
 
     public CrossingVoidPackageViewModel CrossingVoidPackage { get; }
 
+    public ServerPageViewModel? Server { get; }
+
     public SettingsViewModel Settings { get; }
 
     public GlobalProgressViewModel GlobalProgress { get; }
@@ -120,6 +128,7 @@ public sealed class ApplicationViewModel : ObservableObject
     private static string NormalizePageTag(string? pageTag)
     {
         if (string.Equals(pageTag, "Settings", StringComparison.Ordinal) ||
+            string.Equals(pageTag, "ServerAliyun", StringComparison.Ordinal) ||
             ManagedToolCatalog.All.Any(tool => string.Equals(
                 tool.NavigationTag,
                 pageTag,

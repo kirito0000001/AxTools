@@ -88,6 +88,9 @@
                 <NavigationViewItem x:Name="CrossingVoidGameNavItem" Content="零境交错：空界幻境" Tag="CrossingVoidGame">
                     <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidPc.png" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem x:Name="ServerAliyunNavItem" Content="服务器" Tag="ServerAliyun">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="World" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
                 <NavigationViewItem x:Name="SettingsNavItem" Content="整体设置" Tag="Settings">
@@ -111,6 +114,7 @@
                     <views:ToolPage x:Name="FantasyGamePage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="FantasyAndroidPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="CrossingVoidGamePage" Visibility="Collapsed" />
+                    <views:ServerPage x:Name="ServerAliyunPage" Visibility="Collapsed" />
                     <views:SettingsPage x:Name="GlobalSettingsPage" Visibility="Collapsed" />
                 </Grid>
                 <StackPanel Grid.Row="1" Spacing="8">

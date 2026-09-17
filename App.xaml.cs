@@ -99,13 +99,19 @@ public partial class App : Application
         var diagnostics = new RunnerDiagnosticsViewModel(
             powerShellPath,
             runnerEnvironmentError);
-        var taskRunner = powerShellPath is null
+        var processHost = powerShellPath is null
             ? null
-            : new AxTaskRunner(
-                new PowerShellProcessHost(
-                    powerShellPath,
-                    toolchains: settings.Toolchains),
-                new AxTaskEventParser());
+            : new PowerShellProcessHost(
+                powerShellPath,
+                toolchains: settings.Toolchains);
+        var taskRunner = processHost is null
+            ? null
+            : new AxTaskRunner(processHost, new AxTaskEventParser());
+        var serverStatusService = processHost is null
+            ? null
+            : new ServerStatusService(
+                processHost,
+                Path.Combine(AppContext.BaseDirectory, "Scripts"));
         var historyService = new TaskHistoryService(
             settings.ProjectRootPath,
             new AtomicJsonFileService());
@@ -117,7 +123,8 @@ public partial class App : Application
             runnerDiagnostics: diagnostics,
             pathDetectionStatuses: pathDetectionStatuses,
             toolchainStatuses: toolchainStatuses,
-            environmentChangeSummary: environmentChangeSummary);
+            environmentChangeSummary: environmentChangeSummary,
+            serverStatusService: serverStatusService);
 
         var selfRebuildResult = SelfRebuildResultService.Take(
             SelfRebuildResultService.GetDefaultResultPath());

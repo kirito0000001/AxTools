@@ -22,7 +22,7 @@ public sealed partial class MainWindow
 
     private void ShowPageByTag(string tag, bool playAnimation)
     {
-        var normalizedTag = tag is "FantasyTools" or "GalExcleTools" or "CrossingVoidZDTool" or "FantasyProjectPc" or "CrossingVoidPc" or "CrossingVoidAndroid" or "FantasyGame" or "FantasyAndroid" or "CrossingVoidGame" or "Settings"
+        var normalizedTag = tag is "FantasyTools" or "GalExcleTools" or "CrossingVoidZDTool" or "FantasyProjectPc" or "CrossingVoidPc" or "CrossingVoidAndroid" or "FantasyGame" or "FantasyAndroid" or "CrossingVoidGame" or "ServerAliyun" or "Settings"
                 ? tag
                 : "AxTools";
         FrameworkElement visiblePage = normalizedTag switch
@@ -36,6 +36,7 @@ public sealed partial class MainWindow
             "FantasyGame" => FantasyGamePage,
             "FantasyAndroid" => FantasyAndroidPage,
             "CrossingVoidGame" => CrossingVoidGamePage,
+            "ServerAliyun" => ServerAliyunPage,
             "Settings" => GlobalSettingsPage,
             _ => AxToolsPage
         };
@@ -50,7 +51,17 @@ public sealed partial class MainWindow
         FantasyGamePage.Visibility = visiblePage == FantasyGamePage ? Visibility.Visible : Visibility.Collapsed;
         FantasyAndroidPage.Visibility = visiblePage == FantasyAndroidPage ? Visibility.Visible : Visibility.Collapsed;
         CrossingVoidGamePage.Visibility = visiblePage == CrossingVoidGamePage ? Visibility.Visible : Visibility.Collapsed;
+        ServerAliyunPage.Visibility = visiblePage == ServerAliyunPage ? Visibility.Visible : Visibility.Collapsed;
         GlobalSettingsPage.Visibility = visiblePage == GlobalSettingsPage ? Visibility.Visible : Visibility.Collapsed;
+
+        if (visiblePage == ServerAliyunPage)
+        {
+            ServerAliyunPage.OnNavigatedTo();
+        }
+        else
+        {
+            ServerAliyunPage.OnNavigatedFrom();
+        }
 
         _viewModel.CurrentPageTag = normalizedTag;
         ShellNavigation.SelectedItem = normalizedTag switch
@@ -64,6 +75,7 @@ public sealed partial class MainWindow
             "FantasyGame" => FantasyGameNavItem,
             "FantasyAndroid" => FantasyAndroidNavItem,
             "CrossingVoidGame" => CrossingVoidGameNavItem,
+            "ServerAliyun" => ServerAliyunNavItem,
             "Settings" => SettingsNavItem,
             _ => AxToolsNavItem
         };

@@ -1,45 +1,27 @@
 # AxTools 服务器分区设计
 
-目标：在 AxTools 左侧导航新增独立的「服务器」分区，集中管理现有两台服务器上的运维与发布事务。
+目标：在 AxTools 左侧导航新增独立的「服务器」分区，管理服务器侧运维事务。
 
-范围：阿里云控制面（UE 看门狗 + 游戏服务端）、野草云数据面（客户端资源分发）。
+范围：**看门狗控制**与**游戏服务端更新**两项。
 
-架构：新增「服务器档案（ServerProfile）+ 服务器适配器（IServerAdapter）」两条并列于现有工具适配器的概念，复用现有任务执行器、`::axtools` 结构化事件协议、日志与任务历史。服务器动作落在 `Scripts/Servers/<Server>/`，不改动现有 `Scripts/Adapters/<Tool>/`。
+不包含：客户端游戏资源上传。该能力仍归各游戏自己的工具（如 `CrossingVoidGame` 适配器），服务器分区不重复实现。
+
+架构：新增并列于工具适配器的「服务器档案（ServerProfile）+ 服务器适配器（IServerAdapter）」，复用现有任务执行器、`::axtools` 结构化事件协议、日志与任务历史。服务器动作落在 `Scripts/Servers/`，不改动现有 `Scripts/Adapters/<Tool>/`。
 
 ## 一、现状（2026-09-17 实测）
 
-### 1. 阿里云 · crossing-server（控制面）
+### 1. 主机
 
 | 项目 | 实测值 |
 | --- | --- |
 | 地址 / 账号 | `47.109.153.36`，`Administrator`，SSH 别名 `crossing-server` |
 | 主机名 | `iZjg5pd9l69hpuZ` |
+| 系统 | Windows Server |
 | IIS | Default Web Site → `C:\inetpub\wwwroot`，绑定 `www.crossingvoid.top`（80/443） |
 | 关键端口 | 22 SSH、80/443 IIS、3306 MySQL、3389 RDP、8888 面板、51987 ToolboxUpdateServer、51988/51989 回环中继、60888 |
 | 桌面目录 | `BP_Server`、`OSSAPI`、`QQ-Codex`、`SaveGames备份`、`UEWatchdog`、`WindowsServer`、`和谐家园`、`幻杀_Server` |
 
-ToolboxUpdateServer 是 .NET 8 自包含 ASP.NET Core 应用，位于 `Desktop\OSSAPI\ToolboxUpdateServer\app`，AccessKey 只存在系统环境变量。`appsettings.json` 关键配置：
-
-```
-Oss.Bucket            = download-server-xj
-Oss.Region            = cn-chengdu
-Oss.SignExpireSeconds = 600
-TrafficQuota          = ossbag / 下行流量 / 低阈值 3GB
-```
-
-已注册的更新产品：`crossingvoid-game`、`crossingvoid-android-game`、`crossingvoid-launcher`、`crossingvoid-launcher-pc`、`fantasy-tools`。
-
-UE 看门狗位于 `C:\UEWatchdog`，脚本在 `Desktop\UEWatchdog`。`watchdog.config.psd1` 实测：
-
-```
-CheckIntervalSeconds = 30      RestartCooldownSeconds = 60
-StartGraceSeconds    = 180     CrashLookbackMinutes   = 30
-LogDirectory         = C:\UEWatchdog\logs
-MaintenanceFile      = C:\UEWatchdog\maintenance.txt
-Mail                 = smtp.qq.com:587，已启用
-```
-
-被监控的四个游戏服务端：
+### 2. 被监控的四个服务端实例
 
 | 名称 | 显示名 | 端口 | 可执行文件 |
 | --- | --- | --- | --- |
@@ -48,188 +30,208 @@ Mail                 = smtp.qq.com:587，已启用
 | NarutoBP | 火影 | UDP 1234 | `Desktop\BP_Server\WindowsServer\NarutoBPServer.exe` |
 | FantasyProject | 幻杀 | UDP 1235 | `Desktop\幻杀_Server\WindowsServer\FantasyProjectServer.exe` |
 
-QQ-Codex 守护在配置中默认关闭。
+四个实例对应**三个可执行程序**：零境的两个实例共用同一个 `CrossingVoidServer.exe`，只是地图与端口参数不同。因此「服务端更新」的更新单位是**程序**，不是实例。
 
-### 2. 野草云 · yecaoyun-hk（数据面）
+### 3. 看门狗
 
-| 项目 | 实测值 |
+配置 `C:\UEWatchdog\` 下的 `watchdog.config.psd1`：
+
+```
+CheckIntervalSeconds = 30      RestartCooldownSeconds = 60
+StartGraceSeconds    = 180     CrashLookbackMinutes   = 30
+LogTailLines         = 80
+LogDirectory         = C:\UEWatchdog\logs
+MaintenanceFile      = C:\UEWatchdog\maintenance.txt
+Mail                 = smtp.qq.com:587，已启用，收件 1376609162@qq.com
+```
+
+计划任务实测存在且为 Ready：
+
+| 任务 | 用途 |
 | --- | --- |
-| 地址 / 账号 | `207.57.125.218`，`root`，SSH 别名 `yecaoyun-hk` |
-| 系统 | Debian 12 (bookworm)，主机名 `yc-138-Crossingvoid` |
-| 磁盘 | 30G，已用 1.7G |
-| nginx | 1.22.1，`sites-enabled/dl` → `sites-available/dl` |
-| 站点根 | `/srv/downloads`，`autoindex on`，`charset utf-8` |
-| 限速 | `limit_rate_after 64m`、`limit_rate 8m`、`limit_conn perip 6`（`limit_conn_zone` 10m） |
-| 证书 | Let's Encrypt `dl.crossingvoid.top`，2026-12-16 到期，自动续期 |
-| 运行服务 | 仅 nginx 与 sshd（外加系统默认单元） |
-| 目录内容 | 仅 `speedtest.bin`（200MB）、`test-50m.bin`（50MB）两个测速文件 |
+| `UEWatchdog` | 服务监控与自动拉起 |
+| `UEWatchdog-DailyReboot` | 每日 04:00 重启 |
 
-目前只有 `root` 可写，尚无受限上传账号。
+### 4. 服务器上已有的管理入口
 
-### 3. 客户端当前如何判断版本
+`Desktop\UEWatchdog\Manage-UEWatchdog.ps1` 提供非交互参数：
 
-启动器不写死版本号，全部读服务端 JSON：
-
-| 用途 | 地址 | 缓存头 |
-| --- | --- | --- |
-| 启动器自身更新 | `https://www.crossingvoid.top/api/toolbox-updates/<framework>/<product>/<os>/<arch>/<current>` | 由 ToolboxUpdateServer 控制 |
-| 游戏资源清单 | `https://www.crossingvoid.top/manifests/game/windows-latest.json`（另有 `android-latest.json`） | `no-store, must-revalidate, no-cache` |
-
-客户端还会在清单 URL 后追加 `?t=<时间戳>`，因此清单层不存在缓存滞留风险。
-
-清单结构（schemaVersion = 2）实测：
-
-| 平台 | 版本 | 归档 | 大小 | 分片 |
-| --- | --- | --- | --- | --- |
-| Windows | V0.5.12 | `CrossingVoid.zip` | 2,368,418,317 B | 5 |
-| Android | V0.5.12 | `CrossingVoid-Android-Package.zip` | 1,970,478,795 B | 4 |
-
-每个分片带 `index`、`count`、`fileName`、`githubFileName`、`objectKey`、`sha256`、`sizeBytes`。
-
-下载链路：
-
-```
-官方源：POST /api/toolbox-updates/sign-download {productKey, version, runtime, objectKey, launcherVersion}
-        → 返回签名 URL → 从 OSS 下载
-GitHub：直接按 downloadReleaseTag + githubFileName 拼接 Release 资源地址
+```powershell
+-Action <Menu|Status|Start|Stop|Restart|Logs>
+-ServerName <实例名>
+-ConfigPath <默认 watchdog.config.psd1>
+-MaintenancePath <默认 maintenance.txt>
+-PassThru
 ```
 
-结论：换下载源只需改服务端 `sign-download` 返回的 URL，客户端零改动、零重新发版。
+内部可用函数：`Get-ManagedServerStatus`、`Start-ManagedServer`、`Stop-ManagedServer`、`Restart-ManagedServer`、`Get-LatestServerLog`、`Send-TestMail`、`Switch-WatchdogTask`、`Switch-DailyRebootTask`、`Set-ServerMaintenance`、`Test-ServerMaintenance`。
 
-## 二、职责划分：控制面 / 数据面
+**维护模式是按实例记录的**，写入 `maintenance.txt`，由 `Set-ServerMaintenance -Name <实例> -Enabled $true/$false` 控制。目前维护模式与任务开关只挂在交互式菜单上，需要为 AxTools 补非交互入口。
 
-保持下列边界，可以让任意一侧单独更换而不影响客户端：
+`Watchdog.ps1` 在启动实例前会检查维护状态，处于维护模式的实例不会被自动拉起。
 
-| 层 | 归属 | 内容 |
-| --- | --- | --- |
-| 控制面 | 阿里云 | 版本清单、`sign-download` 签名、白名单、看门狗、游戏服务端 |
-| 数据面 | 野草云 | 大文件字节流，按版本目录存放 |
+## 二、分区结构
 
-游戏包迁移到野草云时，推荐让 `sign-download` 直接返回 `https://dl.crossingvoid.top/<version>/<file>`，OSS 保留为回退源。这样清单与签名仍在阿里云，玩家端无需更新启动器。
-
-## 三、导航与页面结构
-
-左侧导航新增一个可展开的「服务器」分组，下挂两个页面。分组按机器划分而非按事项划分，因为看门狗与被监控的游戏服务端在同一台机器上，拆成两个入口会割裂状态与控制。
+左侧导航新增「服务器」分组，下设一个页面；页面内按页签分区，沿用现有 `ToolPage` 的页签样式。
 
 ```
 服务器
-├── 阿里云 · 零境服务器      crossing-server
-└── 野草云 · 资源分发        yecaoyun-hk
+└── 阿里云 · 零境服务器
+    ├── 概览
+    ├── 看门狗
+    └── 服务端更新
 ```
 
-实现上使用带子项的 `NavigationViewItem`（子项 `Tag` 为 `ServerAliyun` / `ServerYecaoyun`），沿用现有 `ShowPageByTag` 的显隐切换方式。
+野草云目前不进入本分区：它的能力是客户端资源分发，而资源上传已归属各游戏工具。若后续仍希望集中查看它的磁盘与证书状态，可另加一个只读页，不影响本设计。
 
-### 阿里云页
+## 三、概览页
 
-| 分区卡 | 内容 |
+只读，用于进入其他页签前的判断依据。
+
+| 内容 | 说明 |
 | --- | --- |
-| 概览 | 主机名、系统版本、磁盘、内存、开机时长、SSH 连通性、关键端口监听 |
-| 游戏服务端 | 四行服务表：名称、协议端口、进程状态、PID、启动时间、最近日志时间；行内启动/停止/重启/查看日志 |
-| 看门狗 | 看门狗状态、检查间隔、最近检查结果、维护模式开关、邮件告警状态、发送测试邮件、最近告警摘要 |
-| 服务端更新 | 选择服务端构建 → 上传到临时目录 → 校验 → 停服 → 备份 → 替换 → 启动 → 健康检查，失败自动回滚 |
+| 主机信息 | 主机名、系统版本、开机时长、SSH 连通性 |
+| 资源占用 | 系统盘与数据盘容量、可用空间 |
+| 端口监听 | 11451、11452、1234、1235 的监听状态 |
+| 实例摘要 | 四个实例的运行/停止、PID、维护模式标记 |
+| 计划任务 | `UEWatchdog` 与 `UEWatchdog-DailyReboot` 的当前状态 |
 
-### 野草云页
+## 四、看门狗页
 
-| 分区卡 | 内容 |
+### 状态区
+
+读取 `Manage-UEWatchdog.ps1 -Action Status -PassThru`，按实例展示：运行状态、PID、监听端口、进程启动时间、是否处于维护模式、最近日志文件与最后写入时间。
+
+### 实例操作
+
+每个实例一行，提供启动、停止、重启、查看日志、维护模式开关。前三项直接映射 `-Action Start|Stop|Restart -ServerName <实例>`；日志映射 `-Action Logs`。
+
+维护模式开关需要新增非交互脚本，内部调用 `Set-ServerMaintenance`，并要求填写失效时间，避免遗忘后长期失去监控。
+
+### 监控开关
+
+| 操作 | 实现 |
 | --- | --- |
-| 概览 | 系统、磁盘与可用空间、nginx 状态、证书到期日、限速参数 |
-| 资源分发 | `/srv/downloads` 目录树：版本目录、文件、大小、修改时间、总占用 |
-| 上传 | 选择本地包 → 上传到 `/srv/downloads/<version>/<file>` → 校验 SHA-256 与大小 → 输出下载 URL |
-| 清单 | 生成/更新 `latest.json`，校验 URL 实际可达且响应头正确 |
-| 清理 | 删除指定旧版本目录，需二次确认并显示占用 |
+| 暂停监控 | `Stop-ScheduledTask -TaskName UEWatchdog` |
+| 恢复监控 | `Start-ScheduledTask -TaskName UEWatchdog` |
+| 启用/停用每日重启 | `Enable/Disable-ScheduledTask -TaskName UEWatchdog-DailyReboot` |
+| 发送测试邮件 | `Send-TestMail` |
+| 查看最近告警 | 读取 `watchdog.messages.txt` 与 `C:\UEWatchdog\logs` |
+| 修复看门狗 | 调用服务器上的 `Repair-WatchdogServer.ps1` |
 
-## 四、动作清单
+暂停监控与停用每日重启属于降低可用性的操作，必须二次确认，并在界面上常驻显示当前状态。
 
-新增 `ServerAction` 枚举：
+## 五、服务端更新页
+
+### 更新单位
+
+| 程序 | 影响实例 | 目标目录 |
+| --- | --- | --- |
+| 零境交错服务端 | 登录大厅 + 主界面大厅 | `Desktop\WindowsServer\CrossingVoid\` |
+| 火影服务端 | 火影 | `Desktop\BP_Server\WindowsServer\` |
+| 幻杀服务端 | 幻杀 | `Desktop\幻杀_Server\WindowsServer\` |
+
+更新零境服务端时两个实例会同时受影响，必须在同一个维护窗口内完成。
+
+### 选择来源
+
+上传入口是一个**文件夹选择器**，沿用项目已有的 `FolderPicker` + `PickSingleFolderAsync` 写法，选中 UE 打包输出的服务端目录后，AxTools 扫描其中的可执行文件与资源，确认与目标程序匹配才继续。
+
+| 方式 | 流程 | 何时有用 |
+| --- | --- | --- |
+| 本机文件夹 | 选择本地目录 → 上传到服务器暂存目录 | 默认方式 |
+| 从 URL 拉取 | 填一个已存在的下载地址，由服务器自己下载 | 构建产物已经在网上，例如合作方发了链接 |
+
+关于「从 URL 拉取」：它**不能绕开家宽上行**。构建产物还在本机时，无论哪种方式都要先经本机上传（约 1.85 MB/s）；只有当产物本来就在互联网上时，服务器自己下载才有意义。因此默认只做文件夹选择，URL 拉取作为可选入口。
+
+### 更新流程
+
+按「不留备份、直接替换」设计：
 
 ```
-CheckEnvironment        服务器体检（只读）
-InspectServices         游戏服务端状态（只读）
-StartService            启动服务端
-StopService             停止服务端
-RestartService          重启服务端
-ViewServiceLog          读取最近日志
-WatchdogStatus          看门狗状态（只读）
-SetMaintenance          切换维护模式
-TestWatchdogMail        发送测试邮件
-RepairWatchdog          安装/修复看门狗
-UploadServerBuild       上传服务端构建
-ReplaceServerBuild      停服替换并启动
-RollbackServerBuild     回滚到上一版
-ScanDownloads           扫描分发目录（只读）
-UploadResource          上传资源文件
-VerifyResource          校验远端文件哈希
-RemoveResource          删除资源
-PublishManifest         生成并发布清单
-VerifyManifestUrl       校验清单与下载 URL
+1  预检      读取实例状态、系统盘可用空间、目标目录
+2  上传      新构建传到同卷暂存目录 <目标目录>.incoming，此时服务仍在运行
+3  校验      暂存目录的文件数量、总大小与哈希和源目录一致
+4  置维护    对受影响实例置维护模式（必须先做，否则看门狗会在替换过程中拉起服务）
+5  停服      停止受影响实例并确认进程退出、端口释放
+6  切换      旧目录改名 → 暂存目录改名到正式路径（同卷改名，毫秒级）
+7  启动      按看门狗配置的参数拉起实例
+8  健康检查  进程存活 + 端口监听 + 最近日志无致命错误，宽限 180 秒
+9  收尾      解除维护模式，删除旧目录残留
+   失败      在停服状态下把旧目录改名回正式路径并重启；暂存目录保留供排查
 ```
 
-只读动作不进入确认流程；所有写操作、删除与替换均需二次确认。
+两个关键点：
 
-## 五、配置模型
+- **第 4 步不能省。** `Watchdog.ps1` 会在实例意外退出后自动拉起，若不在替换前进入维护模式，会出现文件占用或半更新状态。「直接替换」省掉的是备份，不是停服。
+- **上传与切换分离。** 上传发生在服务运行期间，走暂存目录；真正停服的只有第 5 到第 7 步，中间是两次同卷改名，停服时间以秒计。即使上传中途失败，正式目录也不会变成半成品。
 
-新增 `AppSettings.Servers`（`Dictionary<string, ServerProfile>`），`SchemaVersion` 递增。密钥与口令仍只走 SSH 配置与环境变量，不写入 JSON。
+### 不留备份的取舍
+
+不保留上一版构建后，新版本一旦有问题，只能重新打包上传，无法一键回滚。若之后觉得代价偏高，最小改动是把第 6 步的旧目录改名保留而不是删除。
+
+### 版本记录
+
+每次更新在服务器上写入一份 `server-version.json`，记录程序名、版本、更新时间和本次源目录哈希，用于判断服务器上跑的是哪一版。不留备份时它只作记录，不承担回滚。
+
+## 六、配置模型
+
+新增 `AppSettings.Servers`（`Dictionary<string, ServerProfile>`），`SchemaVersion` 递增。密钥与口令仍只走 SSH 配置，不写入 JSON。
 
 ```csharp
 public sealed class ServerProfile
 {
-    public string StableKey { get; set; }      // AliyunControlPlane / YecaoyunDownload
+    public string StableKey { get; set; }      // AliyunControlPlane
     public string DisplayName { get; set; }
-    public string Platform { get; set; }       // Windows / Linux
-    public string SshTarget { get; set; }      // crossing-server / yecaoyun-hk
+    public string Platform { get; set; }       // Windows
+    public string SshTarget { get; set; }      // crossing-server
     public string Host { get; set; }
     public int Port { get; set; } = 22;
     public string UserName { get; set; }
-    public string RootPath { get; set; }       // 服务器上的管理根目录
-    public string PublicBaseUrl { get; set; }  // https://dl.crossingvoid.top
-    public string PublishVersion { get; set; }
+    public string WatchdogRoot { get; set; }   // C:\UEWatchdog
+    public string ManageScriptPath { get; set; }
+    public string SourceFolderHint { get; set; }  // 上次选择的服务端构建目录
 }
 ```
 
-## 六、代码与脚本落点
+## 七、代码与脚本落点
 
 | 层 | 文件 |
 | --- | --- |
 | 模型 | `AxTools.Core/Models/ServerModels.cs` |
 | 目录 | `AxTools.Core/Catalog/ManagedServerCatalog.cs` |
-| 适配器 | `AxTools.Core/Servers/IServerAdapter.cs`、`ServerAdapterBase.cs`、`AliyunServerAdapter.cs`、`YecaoyunDownloadAdapter.cs` |
+| 适配器 | `AxTools.Core/Servers/IServerAdapter.cs`、`ServerAdapterBase.cs`、`AliyunServerAdapter.cs` |
 | 视图模型 | `AxTools.Core/ViewModels/ServerPageViewModel.cs` |
 | 视图 | `Views/ServerPage.xaml`、`Views/ServerPage.xaml.cs` |
 | 导航 | `MainWindow.xaml`（分组项）、`MainWindow.Navigation.cs`（Tag 映射） |
 | 脚本公共层 | `Scripts/Common/AxRemoteServer.psm1` |
-| 脚本入口 | `Scripts/Servers/Aliyun/Invoke-AliyunServerAction.ps1`、`Scripts/Servers/Yecaoyun/Invoke-YecaoyunDownloadAction.ps1` |
+| 脚本入口 | `Scripts/Servers/Aliyun/Invoke-AliyunServerAction.ps1` |
+| 服务器侧补充 | 维护模式与状态输出的非交互封装 |
 
-`AxRemoteServer.psm1` 统一封装 SSH/SCP 子进程调用，直接沿用 PC 启动器里已验证的 `Invoke-OpenSshProcess` 修复（显式创建 stdin/stdout/stderr 管道），避免再次出现 `DuplicatedHandle() : dup() in/out/err failed` 导致 ssh 退出码 255。
+`AxRemoteServer.psm1` 统一封装 SSH/SCP 子进程调用，沿用 PC 启动器里已验证的 `Invoke-OpenSshProcess` 修复（显式创建 stdin/stdout/stderr 管道），避免再次出现 `DuplicatedHandle() : dup() in/out/err failed` 导致 ssh 退出码 255。
 
-## 七、实施顺序
+远端 PowerShell 一律使用 `EncodedCommand` 传递，避免中文、引号与路径被远端 `cmd.exe` 解析。
+
+## 八、实施顺序
 
 | 阶段 | 内容 | 说明 |
 | --- | --- | --- |
-| 1 | 只读概览：服务器体检、游戏服务端状态、野草云目录与磁盘/证书 | 无写操作，先验证 SSH 封装与页面骨架 |
-| 2 | 野草云资源上传：上传 + 哈希校验 + URL 输出 | 当前最急，服务器侧已就绪 |
-| 3 | 看门狗：状态、维护模式、测试邮件、日志、修复 | 复用服务器上现有 `Manage-UEWatchdog.ps1` |
-| 4 | 游戏服务端更新：上传、停服替换、健康检查、回滚 | 风险最高，需要维护窗口与备份 |
-| 5 | 清单与下载源切换：`sign-download` 指向野草云，OSS 留作回退 | 服务端改动，客户端零改动 |
+| 1 | 概览页 + 看门狗状态读取 | 纯只读，先验证 SSH 封装与页面骨架 |
+| 2 | 实例控制：启动 / 停止 / 重启 / 日志 | 复用现成参数，风险低 |
+| 3 | 维护模式与监控开关 | 需补服务器侧非交互封装 |
+| 4 | 服务端更新：选文件夹、上传暂存、停服切换、健康检查 | 风险最高，需维护窗口 |
 
-## 八、安全边界
+## 九、安全边界
 
-- 野草云新建 `uploader` 账号：仅 SFTP、chroot 到 `/srv/downloads`、独立密钥、禁用 shell 与密码登录；`root` 不进入任何客户端配置。
-- AxTools 只保存 SSH 别名与路径，不保存私钥、口令或 AccessKey。
-- 删除、替换、停服一律先扫描并显示影响范围，再要求二次确认。
-- 游戏服务端更新必须先备份当前构建，健康检查失败自动回滚。
-- 看门狗维护模式必须设置自动失效时间，避免遗忘后长期失去监控。
+- AxTools 只保存 SSH 别名与路径，不保存私钥或口令。
+- 停服、替换、暂停监控、停用每日重启一律先扫描并显示影响范围，再二次确认。
+- 更新前必须置维护模式，且维护模式需带失效时间。
+- 不留备份，因此切换前必须完成暂存目录校验；校验不通过一律不进入切换步骤。
+- 零境服务端更新会同时影响两个实例，界面上必须明确提示。
 
-## 九、待确认
+## 十、待确认
 
-1. ToolboxUpdateServer 的源码位置：服务器上只有发布产物，本机未找到对应 `csproj`，后续要改 `sign-download` 需要先定位源码。
-2. 游戏资源的长期归属：迁到野草云为主、OSS 为备，还是 OSS 为主、野草云做镜像。
-3. 游戏服务端构建产物从哪里产出（UE 打包输出路径），决定「服务端更新」的取件来源。
-4. 上传账号命名，例如 `uploader` 或 `ax-uploader`。
-5. 是否需要在野草云再放一份清单（建议不复制，控制面统一留在阿里云）。
-
-## 十、对服务器配置方的两个接口回答
-
-| 问题 | 回答 |
-| --- | --- |
-| 上传协议 | SFTP（SSH 子系统）。AxTools 已用 ssh/scp，服务器已开 SSH，只需新建受限账号，无需安装 FTP/WebDAV。 |
-| 版本判断 | 读服务端 JSON 清单，客户端不写死。启动器走 `www.crossingvoid.top/api/toolbox-updates`，游戏资源走 `www.crossingvoid.top/manifests/game/*-latest.json`，两者均需 no-cache（现状已满足）。 |
+1. 三个服务端程序的构建产物目录结构（UE 打包输出路径），决定文件夹选择器的校验规则。
+2. 是否需要保留「从 URL 拉取」入口；若不需要，本页只保留文件夹选择。
+3. 暂存目录放在哪个盘、需要预留多少临时空间。
+4. 是否需要把野草云的磁盘与证书状态也纳入本分区的只读页。
