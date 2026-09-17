@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace AxTools.Core.Models;
 
 public sealed class ServerStatusSnapshot
@@ -50,3 +52,9 @@ public sealed class ServerInstanceStatus
 
     public string? LastError { get; set; }
 }
+
+public sealed record ServerActionResult(
+    bool Success,
+    string Action,
+    string Message,
+    JsonElement? Data);

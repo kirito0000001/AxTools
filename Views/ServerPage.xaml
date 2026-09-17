@@ -30,6 +30,21 @@
                                 x:Name="DetailText"
                                 Style="{StaticResource SubtleTextStyle}"
                                 Text="" />
+                            <StackPanel
+                                x:Name="BusyPanel"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                Visibility="Collapsed">
+                                <ProgressRing
+                                    x:Name="BusyRing"
+                                    Width="16"
+                                    Height="16"
+                                    IsActive="False" />
+                                <TextBlock
+                                    x:Name="BusyText"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource SubtleTextStyle}" />
+                            </StackPanel>
                         </StackPanel>
                         <Button
                             x:Name="RefreshButton"
@@ -43,6 +58,17 @@
                     <StackPanel x:Name="InstancePanel" Spacing="8" />
                 </StackPanel>
             </Border>
+
+            <SelectorBar
+                x:Name="TargetSelector"
+                SelectionChanged="TargetSelector_SelectionChanged">
+                <SelectorBarItem x:Name="ServerTabItem" Text="阿里云服务器" IsSelected="True" />
+                <SelectorBarItem x:Name="CrossingVoidTabItem" Text="零境交错" />
+                <SelectorBarItem x:Name="NarutoTabItem" Text="火影BP" />
+                <SelectorBarItem x:Name="FantasyTabItem" Text="幻杀" />
+            </SelectorBar>
+
+            <StackPanel x:Name="ActionPanelHost" Spacing="14" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>

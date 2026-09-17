@@ -60,8 +60,8 @@ function Get-AxLogDirectories {
     return @($directories | Select-Object -Unique)
 }
 
-function Get-AxLogTail {
-    param($Server, [int]$TailLines)
+function Get-AxLogFileInfo {
+    param($Server)
 
     $files = @()
     foreach ($directory in (Get-AxLogDirectories -Server $Server)) {
@@ -71,35 +71,44 @@ function Get-AxLogTail {
 
     $latest = $files | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($null -eq $latest) {
-        return [ordered]@{ path = ''; updatedAt = $null; lines = @() }
+        return [ordered]@{ path = ''; updatedAt = $null }
     }
 
-    $lines = @(Get-Content -LiteralPath $latest.FullName -Tail $TailLines -ErrorAction SilentlyContinue)
     return [ordered]@{
         path      = $latest.FullName
         updatedAt = $latest.LastWriteTime.ToString('o')
-        lines     = $lines
     }
 }
 
-function Get-AxCacheTargets {
-    return @(
-        [ordered]@{ id = 'watchdog-backups'; path = 'C:\UEWatchdog\backups'; keepNewest = 5; maxAgeDays = 0 }
-        [ordered]@{ id = 'watchdog-logs';    path = 'C:\UEWatchdog\logs';    keepNewest = 0; maxAgeDays = 7 }
-        [ordered]@{ id = 'windows-temp';     path = 'C:\Windows\Temp';       keepNewest = 0; maxAgeDays = 1 }
-        [ordered]@{ id = 'iis-logs';         path = 'C:\inetpub\logs';       keepNewest = 0; maxAgeDays = 7 }
+function Get-AxTargets {
+    param([Parameter(Mandatory)][ValidateSet('logs', 'caches')][string]$Category)
+
+    $all = @(
+        [ordered]@{ id = 'watchdog-logs';    category = 'logs';   path = 'C:\UEWatchdog\logs';  keepNewest = 0; maxAgeDays = 7;  activeFile = 'C:\UEWatchdog\logs\watchdog.log' }
+        [ordered]@{ id = 'iis-logs';         category = 'logs';   path = 'C:\inetpub\logs';     keepNewest = 0; maxAgeDays = 7;  activeFile = '' }
+        [ordered]@{ id = 'windows-temp';     category = 'caches'; path = 'C:\Windows\Temp';     keepNewest = 0; maxAgeDays = 1;  activeFile = '' }
+        [ordered]@{ id = 'watchdog-backups'; category = 'caches'; path = 'C:\UEWatchdog\backups'; keepNewest = 5; maxAgeDays = 0; activeFile = '' }
     )
+    return @($all | Where-Object { $_.category -eq $Category })
 }
 
-function Get-AxCleanableFiles {
+function Get-AxTargetFiles {
     param($Target)
 
     if (-not (Test-Path -LiteralPath $Target.path -PathType Container)) {
         return @()
     }
 
-    $files = @(Get-ChildItem -LiteralPath $Target.path -File -Recurse -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending)
+    return @(Get-ChildItem -LiteralPath $Target.path -File -Recurse -ErrorAction SilentlyContinue)
+}
+
+function Get-AxCleanableFiles {
+    param($Target, [switch]$All)
+
+    $files = @(Get-AxTargetFiles -Target $Target | Sort-Object LastWriteTime -Descending)
+    if ($All) {
+        return @($files | Where-Object { $_.FullName -ne $Target.activeFile })
+    }
     if ($Target.keepNewest -gt 0 -and $files.Count -gt $Target.keepNewest) {
         $files = @($files | Select-Object -Skip $Target.keepNewest)
     }
@@ -110,15 +119,14 @@ function Get-AxCleanableFiles {
     return $files
 }
 
-function Get-AxCacheScan {
+function Get-AxScan {
+    param([string]$Category, [bool]$All)
+
     $targets = @()
-    foreach ($target in (Get-AxCacheTargets)) {
+    foreach ($target in (Get-AxTargets -Category $Category)) {
         $exists = Test-Path -LiteralPath $target.path -PathType Container
-        $all = @()
-        if ($exists) {
-            $all = @(Get-ChildItem -LiteralPath $target.path -File -Recurse -ErrorAction SilentlyContinue)
-        }
-        $cleanable = @(Get-AxCleanableFiles -Target $target)
+        $all = @(Get-AxTargetFiles -Target $target)
+        $cleanable = @(Get-AxCleanableFiles -Target $target -All:$All)
         $totalSum = $all | Measure-Object -Property Length -Sum
         $cleanSum = $cleanable | Measure-Object -Property Length -Sum
         $targets += [ordered]@{
@@ -134,13 +142,16 @@ function Get-AxCacheScan {
     return [ordered]@{ targets = $targets }
 }
 
-function Invoke-AxCacheClean {
+function Invoke-AxClean {
+    param([string]$Category, [bool]$All)
+
     $targets = @()
-    foreach ($target in (Get-AxCacheTargets)) {
+    foreach ($target in (Get-AxTargets -Category $Category)) {
         $removedFiles = 0
         $removedBytes = 0
         $failures = @()
-        foreach ($file in (Get-AxCleanableFiles -Target $target)) {
+
+        foreach ($file in (Get-AxCleanableFiles -Target $target -All:$All)) {
             try {
                 $size = $file.Length
                 Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
@@ -151,9 +162,101 @@ function Invoke-AxCacheClean {
                 $failures += [ordered]@{ path = $file.FullName; error = $_.Exception.Message }
             }
         }
+
+        # 全部清除时，正在写入的日志文件不能删除，改为清空内容。
+        if ($All -and -not [string]::IsNullOrWhiteSpace($target.activeFile) -and
+            (Test-Path -LiteralPath $target.activeFile -PathType Leaf)) {
+            try {
+                $activeSize = (Get-Item -LiteralPath $target.activeFile).Length
+                [IO.File]::WriteAllText($target.activeFile, '')
+                $removedFiles++
+                $removedBytes += $activeSize
+            }
+            catch {
+                $failures += [ordered]@{ path = $target.activeFile; error = $_.Exception.Message }
+            }
+        }
+
         $targets += [ordered]@{
             id           = $target.id
             path         = $target.path
+            removedFiles = $removedFiles
+            removedBytes = [long]$removedBytes
+            failures     = $failures
+        }
+    }
+    return [ordered]@{ targets = $targets }
+}
+
+function Get-AxCrashRoots {
+    return @(
+        [ordered]@{ id = 'crossingvoid-crashes'; path = 'C:\Users\Administrator\Desktop\WindowsServer\CrossingVoid\Saved\Crashes'; keepNewest = 20 }
+        [ordered]@{ id = 'narutobp-crashes';    path = 'C:\Users\Administrator\Desktop\BP_Server\WindowsServer\NarutoBP\Saved\Crashes'; keepNewest = 20 }
+        [ordered]@{ id = 'fantasy-crashes';     path = 'C:\Users\Administrator\Desktop\幻杀_Server\WindowsServer\FantasyProject\Saved\Crashes'; keepNewest = 20 }
+    )
+}
+
+function Get-AxCrashScan {
+    $targets = @()
+    foreach ($root in (Get-AxCrashRoots)) {
+        $exists = Test-Path -LiteralPath $root.path -PathType Container
+        $dirs = @()
+        $files = @()
+        if ($exists) {
+            $dirs = @(Get-ChildItem -LiteralPath $root.path -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
+            $files = @(Get-ChildItem -LiteralPath $root.path -Recurse -File -ErrorAction SilentlyContinue)
+        }
+        $cleanableDirs = @()
+        if ($dirs.Count -gt $root.keepNewest) {
+            $cleanableDirs = @($dirs | Select-Object -Skip $root.keepNewest)
+        }
+        $cleanableBytes = 0
+        foreach ($dir in $cleanableDirs) {
+            $cleanableBytes += (Get-ChildItem -LiteralPath $dir.FullName -Recurse -File -ErrorAction SilentlyContinue |
+                Measure-Object -Property Length -Sum).Sum
+        }
+        $targets += [ordered]@{
+            id             = $root.id
+            path           = $root.path
+            exists         = $exists
+            fileCount      = $dirs.Count
+            totalBytes     = [long](($files | Measure-Object -Property Length -Sum).Sum)
+            cleanableCount = $cleanableDirs.Count
+            cleanableBytes = [long]$cleanableBytes
+        }
+    }
+    return [ordered]@{ targets = $targets }
+}
+
+function Invoke-AxCrashClean {
+    $targets = @()
+    foreach ($root in (Get-AxCrashRoots)) {
+        $removedFiles = 0
+        $removedBytes = 0
+        $failures = @()
+        $dirs = @()
+        if (Test-Path -LiteralPath $root.path -PathType Container) {
+            $dirs = @(Get-ChildItem -LiteralPath $root.path -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
+        }
+        $cleanableDirs = @()
+        if ($dirs.Count -gt $root.keepNewest) {
+            $cleanableDirs = @($dirs | Select-Object -Skip $root.keepNewest)
+        }
+        foreach ($dir in $cleanableDirs) {
+            try {
+                $size = (Get-ChildItem -LiteralPath $dir.FullName -Recurse -File -ErrorAction SilentlyContinue |
+                    Measure-Object -Property Length -Sum).Sum
+                Remove-Item -LiteralPath $dir.FullName -Recurse -Force -ErrorAction Stop
+                $removedFiles++
+                $removedBytes += $size
+            }
+            catch {
+                $failures += [ordered]@{ path = $dir.FullName; error = $_.Exception.Message }
+            }
+        }
+        $targets += [ordered]@{
+            id           = $root.id
+            path         = $root.path
             removedFiles = $removedFiles
             removedBytes = [long]$removedBytes
             failures     = $failures
@@ -252,6 +355,8 @@ function Invoke-AxRemoteAction {
         $config = Get-AxWatchdogConfig
         switch ($Action) {
             'logs' {
+                # 只返回文件位置；日志内容由 AxTools 用 scp 取回后本地读取，
+                # 避免在服务端读取正在被写入的日志文件。
                 if ([string]::IsNullOrWhiteSpace($InstanceName) -or $InstanceName -ieq 'watchdog') {
                     $watchdogLog = 'C:\UEWatchdog\logs\watchdog.log'
                     $updatedAt = $null
@@ -263,12 +368,11 @@ function Invoke-AxRemoteAction {
                         label     = 'Watchdog'
                         path      = $watchdogLog
                         updatedAt = $updatedAt
-                        lines     = @(Get-Content -LiteralPath $watchdogLog -Tail $TailLines -ErrorAction SilentlyContinue)
                     }
                 }
                 else {
                     $entry = Get-AxServerEntry -Config $config -InstanceName $InstanceName
-                    $tail = Get-AxLogTail -Server $entry -TailLines $TailLines
+                    $tail = Get-AxLogFileInfo -Server $entry
                     $label = [string]$entry.Name
                     if ($entry.ContainsKey('DisplayName') -and -not [string]::IsNullOrWhiteSpace([string]$entry.DisplayName)) {
                         $label = [string]$entry.DisplayName
@@ -278,12 +382,17 @@ function Invoke-AxRemoteAction {
                         label     = $label
                         path      = $tail.path
                         updatedAt = $tail.updatedAt
-                        lines     = $tail.lines
                     }
                 }
             }
-            'scan-caches' { $result.data = Get-AxCacheScan }
-            'clean-caches' { $result.data = Invoke-AxCacheClean }
+            'scan-old-logs' { $result.data = Get-AxScan -Category 'logs' -All $false }
+            'clean-old-logs' { $result.data = Invoke-AxClean -Category 'logs' -All $false }
+            'scan-all-logs' { $result.data = Get-AxScan -Category 'logs' -All $true }
+            'clean-all-logs' { $result.data = Invoke-AxClean -Category 'logs' -All $true }
+            'scan-caches' { $result.data = Get-AxScan -Category 'caches' -All $false }
+            'clean-caches' { $result.data = Invoke-AxClean -Category 'caches' -All $false }
+            'scan-crashes' { $result.data = Get-AxCrashScan }
+            'clean-crashes' { $result.data = Invoke-AxCrashClean }
             'start' { $result.data = Invoke-AxInstanceAction -Config $config -InstanceName $InstanceName -Mode 'start' }
             'stop' { $result.data = Invoke-AxInstanceAction -Config $config -InstanceName $InstanceName -Mode 'stop' }
             'restart' { $result.data = Invoke-AxInstanceAction -Config $config -InstanceName $InstanceName -Mode 'restart' }

@@ -11,6 +11,9 @@ public sealed class ApplicationViewModel : ObservableObject
 {
     private const string DefaultServerSshTarget = "crossing-server";
 
+    private const string DefaultServerStatusUrl =
+        "https://www.crossingvoid.top/status/ca4bc259f3a20d66a1b87b8eef2021f2.json";
+
     private readonly AppSettings _settings;
     private string _currentPageTag;
 
@@ -30,9 +33,6 @@ public sealed class ApplicationViewModel : ObservableObject
     {
         _settings = settings;
         TaskRunner = taskRunner;
-        Server = serverStatusService is null
-            ? null
-            : new ServerPageViewModel(serverStatusService, DefaultServerSshTarget);
         RunnerDiagnostics = runnerDiagnostics ?? new RunnerDiagnosticsViewModel(
             null,
             "任务运行器尚未初始化。");
@@ -87,6 +87,13 @@ public sealed class ApplicationViewModel : ObservableObject
             () => new LogFileOptions(
                 Settings.LogSaveToFileEnabled,
                 Settings.ProjectRootPath));
+        Server = serverStatusService is null
+            ? null
+            : new ServerPageViewModel(
+                serverStatusService,
+                DefaultServerSshTarget,
+                DefaultServerStatusUrl,
+                LogService);
         TaskHistoryService = taskHistoryService;
         _currentPageTag = NormalizePageTag(settings.LastPageTag);
         _settings.LastPageTag = _currentPageTag;
