@@ -1,4 +1,5 @@
 using AxTools.Core.Models;
+using AxTools.Core.Catalog;
 using AxTools.Core.Services;
 
 namespace AxTools.Core.ViewModels;
@@ -122,10 +123,72 @@ public sealed class ServerPageViewModel(
     ServerStatusService statusService,
     string sshTarget,
     string statusUrl,
-    LogService? logService = null)
+    LogService? logService = null,
+    ServerGitUpdateService? updateService = null,
+    GlobalProgressViewModel? globalProgress = null)
 {
     /// <summary>供页面把服务器动作的结果写进 AxTools 输出日志。</summary>
     public LogService? Log => logService;
+
+    /// <summary>AxTools 底部那条全局进度条；服务器动作期间由页面驱动它。</summary>
+    public GlobalProgressViewModel? GlobalProgress => globalProgress;
+
+    private readonly ServerGitUpdateService? _updateService = updateService;
+
+    private readonly Dictionary<string, ServerProgramUpdateState> _updateStates =
+        new(StringComparer.Ordinal);
+
+    /// <summary>是否具备服务端 Git 更新能力（缺少任务运行器时为 false）。</summary>
+    public bool HasUpdateService => _updateService is not null;
+
+    public ServerProgramUpdateState? GetUpdateState(string programKey) =>
+        _updateStates.GetValueOrDefault(programKey);
+
+    /// <summary>
+    /// 只刷新一个程序的服务端更新状态。远端状态要起一次 SSH，因此只在用户进入
+    /// 对应页签或执行动作后调用，不跟着看门狗轮询一起跑。
+    /// </summary>
+    public async Task<ServerProgramUpdateState> RefreshUpdateStateAsync(
+        ServerProgramProfile profile,
+        CancellationToken cancellationToken)
+    {
+        var state = new ServerProgramUpdateState
+        {
+            Profile = profile,
+            LocalRepoPath = ServerProgramCatalog.GetLocalRepoPath(profile)
+        };
+
+        if (_updateService is null)
+        {
+            state.Error = "任务运行器尚未初始化，无法执行服务端更新。";
+            _updateStates[profile.Key] = state;
+            return state;
+        }
+
+        try
+        {
+            state.Remote = await _updateService.ReadRemoteStatusAsync(profile, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            state.Error = exception.Message;
+        }
+
+        try
+        {
+            state.Local = await _updateService.ReadLocalStatusAsync(profile, null, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            state.Error ??= exception.Message;
+        }
+
+        _updateStates[profile.Key] = state;
+        return state;
+    }
+
+    public ServerGitUpdateService UpdateService =>
+        _updateService ?? throw new InvalidOperationException("服务端更新服务不可用。");
 
     public IReadOnlyList<ServerInstanceViewModel> Instances { get; private set; } = [];
 

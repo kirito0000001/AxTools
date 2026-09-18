@@ -8,6 +8,9 @@ public partial class App : Application
 {
     private Window? _window;
 
+    /// <summary>主窗口引用；UserControl 里弹文件夹选择器需要拿窗口句柄。</summary>
+    public static Window? ShellWindow { get; private set; }
+
     public App()
     {
         InitializeComponent();
@@ -112,6 +115,11 @@ public partial class App : Application
             : new ServerStatusService(
                 processHost,
                 Path.Combine(AppContext.BaseDirectory, "Scripts"));
+        var serverGitUpdateService = processHost is null
+            ? null
+            : new ServerGitUpdateService(
+                processHost,
+                Path.Combine(AppContext.BaseDirectory, "Scripts"));
         var historyService = new TaskHistoryService(
             settings.ProjectRootPath,
             new AtomicJsonFileService());
@@ -124,7 +132,8 @@ public partial class App : Application
             pathDetectionStatuses: pathDetectionStatuses,
             toolchainStatuses: toolchainStatuses,
             environmentChangeSummary: environmentChangeSummary,
-            serverStatusService: serverStatusService);
+            serverStatusService: serverStatusService,
+            serverGitUpdateService: serverGitUpdateService);
 
         var selfRebuildResult = SelfRebuildResultService.Take(
             SelfRebuildResultService.GetDefaultResultPath());
@@ -138,6 +147,7 @@ public partial class App : Application
         }
 
         _window = new MainWindow(viewModel);
+        ShellWindow = _window;
         _window.Activate();
     }
 }

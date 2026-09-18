@@ -29,7 +29,8 @@ public sealed class ApplicationViewModel : ObservableObject
         IReadOnlyList<ToolchainStatusItem>? toolchainStatuses = null,
         string? environmentChangeSummary = null,
         string? scriptsRoot = null,
-        ServerStatusService? serverStatusService = null)
+        ServerStatusService? serverStatusService = null,
+        ServerGitUpdateService? serverGitUpdateService = null)
     {
         _settings = settings;
         TaskRunner = taskRunner;
@@ -93,7 +94,9 @@ public sealed class ApplicationViewModel : ObservableObject
                 serverStatusService,
                 DefaultServerSshTarget,
                 DefaultServerStatusUrl,
-                LogService);
+                LogService,
+                serverGitUpdateService,
+                GlobalProgress);
         TaskHistoryService = taskHistoryService;
         _currentPageTag = NormalizePageTag(settings.LastPageTag);
         _settings.LastPageTag = _currentPageTag;

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using AxTools.Core.Catalog;
 using AxTools.Core.Models;
 using AxTools.Core.ViewModels;
 using Microsoft.UI.Dispatching;
@@ -8,7 +9,9 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage.Pickers;
 using Windows.UI;
+using WinRT.Interop;
 
 namespace AxTools.Views;
 
@@ -18,6 +21,9 @@ public sealed partial class ServerPage : UserControl
     private DispatcherQueueTimer? _timer;
     private bool _isRefreshing;
     private bool _isBusy;
+
+    /// <summary>当前页签里「服务端更新」小节的宿主，异步回填时用来判断是否仍然是同一份。</summary>
+    private StackPanel? _updateHost;
 
     public ServerPage()
     {
@@ -29,7 +35,7 @@ public sealed partial class ServerPage : UserControl
     {
         _timer ??= CreateTimer();
         _timer.Start();
-        _ = RefreshAsync();
+        _ = RefreshCurrentAsync();
     }
 
     public void OnNavigatedFrom() => _timer?.Stop();
@@ -53,10 +59,37 @@ public sealed partial class ServerPage : UserControl
         ActionPanelHost.IsHitTestVisible = !busy;
         ActionPanelHost.Opacity = busy ? 0.6 : 1;
         RefreshButton.IsEnabled = !busy;
+
+        // 耗时动作同时驱动 AxTools 底部那条全局进度条。
+        if (ViewModel?.GlobalProgress is not { } progress)
+        {
+            return;
+        }
+
+        if (busy)
+        {
+            progress.Start("服务器", message);
+            progress.IsIndeterminate = true;
+            progress.SetCancellationMode(AxTaskCancellationMode.Locked, message);
+        }
+        else
+        {
+            progress.Complete("服务器", string.IsNullOrWhiteSpace(message) ? "已完成" : message);
+            progress.Hide();
+        }
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e) =>
+        await RefreshCurrentAsync();
+
+    private async Task RefreshCurrentAsync()
+    {
         await RefreshAsync();
+        if (ViewModel is { } viewModel && CurrentProgramProfile() is { } profile && viewModel.HasUpdateService)
+        {
+            await FetchProgramUpdateAsync(viewModel, profile.Key);
+        }
+    }
 
     private async Task RefreshAsync()
     {
@@ -100,14 +133,35 @@ public sealed partial class ServerPage : UserControl
         RenderActionPanel(viewModel);
     }
 
-    private void TargetSelector_SelectionChanged(
+    private async void TargetSelector_SelectionChanged(
         SelectorBar sender,
         SelectorBarSelectionChangedEventArgs args)
     {
-        if (ViewModel is { } viewModel)
+        if (ViewModel is not { } viewModel)
         {
-            RenderActionPanel(viewModel);
+            return;
         }
+
+        RenderActionPanel(viewModel);
+        if (CurrentProgramProfile() is { } profile && viewModel.HasUpdateService)
+        {
+            await FetchProgramUpdateAsync(viewModel, profile.Key);
+        }
+    }
+
+    /// <summary>当前页签对应的服务端程序；阿里云服务器页签返回 null。</summary>
+    private ServerProgramProfile? CurrentProgramProfile()
+    {
+        var index = TargetSelector.SelectedItem is { } selected
+            ? TargetSelector.Items.IndexOf(selected)
+            : 0;
+        return index switch
+        {
+            1 => ServerProgramCatalog.Get("crossingvoid"),
+            2 => ServerProgramCatalog.Get("narutobp"),
+            3 => ServerProgramCatalog.Get("fantasyproject"),
+            _ => null
+        };
     }
 
     /// <summary>按页签渲染动作区：阿里云服务器 / 零境交错 / 火影BP / 幻杀。</summary>
@@ -224,11 +278,154 @@ public sealed partial class ServerPage : UserControl
             });
         }
 
+        var updateHost = new StackPanel { Spacing = 10 };
+        _updateHost = updateHost;
+        var profile = ServerProgramCatalog.Get(programKey);
+        RenderUpdateFromCache(updateHost, viewModel, profile);
+        content.Children.Add(CreatePanel(
+            "服务端更新",
+            $"Git 增量更新 · 只保留最近两版 · {profile.UpdateNote}",
+            updateHost,
+            profile.UpdateNote.Contains("Saved", StringComparison.Ordinal)
+                ? null
+                : "Saved\\ 是玩家数据，更新与回退都不会改动它。"));
+
         return CreatePanel(
             title,
             $"{instances.Length} 个实例 · 停止与重启会先确认",
             content,
             null);
+    }
+
+    /// <summary>先用缓存渲染，避免看门狗轮询把 SSH 也一起拉起来。</summary>
+    private void RenderUpdateFromCache(
+        StackPanel host,
+        ServerPageViewModel viewModel,
+        ServerProgramProfile profile)
+    {
+        host.Children.Clear();
+        if (viewModel.GetUpdateState(profile.Key) is { } cached)
+        {
+            RenderUpdateSection(host, viewModel, profile, cached);
+            return;
+        }
+
+        host.Children.Add(CreateHintText(
+            viewModel.HasUpdateService
+                ? "尚未读取状态。点「立即刷新」或重新进入该页签即可读取。"
+                : "服务端更新需要任务运行器，当前不可用。"));
+    }
+
+    private async Task FetchProgramUpdateAsync(ServerPageViewModel viewModel, string programKey)
+    {
+        var host = _updateHost;
+        if (host is null || !viewModel.HasUpdateService)
+        {
+            if (host is not null)
+            {
+                host.Children.Clear();
+                host.Children.Add(CreateHintText("服务端更新需要任务运行器，当前不可用。"));
+            }
+
+            return;
+        }
+
+        var profile = ServerProgramCatalog.Get(programKey);
+        ServerProgramUpdateState state;
+        try
+        {
+            state = await viewModel.RefreshUpdateStateAsync(profile, CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            viewModel.Log?.Write(LogKind.Error, $"读取 {profile.DisplayName} 服务端更新状态失败。", exception);
+            if (!ReferenceEquals(host, _updateHost))
+            {
+                return;
+            }
+
+            host.Children.Clear();
+            host.Children.Add(CreateHintText($"读取失败：{exception.Message}"));
+            return;
+        }
+
+        if (!ReferenceEquals(host, _updateHost))
+        {
+            return;
+        }
+
+        RenderUpdateSection(host, viewModel, profile, state);
+    }
+
+    private void RenderUpdateSection(
+        StackPanel host,
+        ServerPageViewModel viewModel,
+        ServerProgramProfile profile,
+        ServerProgramUpdateState state)
+    {
+        host.Children.Clear();
+
+        if (!string.IsNullOrWhiteSpace(state.Error))
+        {
+            host.Children.Add(CreateHintText($"状态读取不完整：{state.Error}"));
+        }
+
+        host.Children.Add(CreateKeyValueLine("部署中", state.DeployedText));
+        host.Children.Add(CreateKeyValueLine("上一版", state.PreviousText));
+        host.Children.Add(CreateKeyValueLine("本机仓库", state.LocalAheadText));
+        host.Children.Add(CreateKeyValueLine("服务器", state.PendingText));
+        host.Children.Add(CreateKeyValueLine("实例", state.InstancesText));
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        buttons.Children.Add(CreateActionButton("导入新构建", "\uE8E5", () => ImportBuildAsync(viewModel, profile)));
+        buttons.Children.Add(CreateActionButton("推送新版本", "\uE72A", () => PushNewVersionAsync(viewModel, profile)));
+        buttons.Children.Add(CreateActionButton(
+            "切换最新版本",
+            "\uE72C",
+            () => ApplyAsync(viewModel, profile),
+            isEnabled: state.CanSwitchLatest));
+        buttons.Children.Add(CreateActionButton(
+            "回退上个版本",
+            "\uE7A7",
+            () => RollbackAsync(viewModel, profile),
+            isEnabled: state.CanRollback));
+        buttons.Children.Add(CreateActionButton("查看待更新内容", "\uE8A5", () => PreviewAsync(viewModel, profile)));
+        host.Children.Add(buttons);
+
+        host.Children.Add(CreateHintText($"本机仓库：{state.LocalRepoPath}"));
+        if (!string.IsNullOrWhiteSpace(state.WorkTreePath))
+        {
+            host.Children.Add(CreateHintText($"服务器运行目录：{state.WorkTreePath}"));
+        }
+    }
+
+    private static TextBlock CreateHintText(string text) => new()
+    {
+        Text = text,
+        FontSize = 12,
+        Opacity = 0.72,
+        TextWrapping = TextWrapping.Wrap
+    };
+
+    private static Grid CreateKeyValueLine(string label, string value)
+    {
+        var grid = new Grid { ColumnSpacing = 10 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(88) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var caption = new TextBlock { Text = label, FontSize = 13, Opacity = 0.7 };
+        var content = new TextBlock
+        {
+            Text = value,
+            FontSize = 13,
+            TextWrapping = TextWrapping.Wrap,
+            IsTextSelectionEnabled = true
+        };
+        Grid.SetColumn(caption, 0);
+        Grid.SetColumn(content, 1);
+        grid.Children.Add(caption);
+        grid.Children.Add(content);
+        return grid;
     }
 
     private static Border CreatePanel(string title, string subtitle, UIElement content, string? footer)
@@ -275,12 +472,17 @@ public sealed partial class ServerPage : UserControl
         };
     }
 
-    private static Button CreateActionButton(string text, string glyph, Func<Task> onClick)
+    private static Button CreateActionButton(
+        string text,
+        string glyph,
+        Func<Task> onClick,
+        bool isEnabled = true)
     {
         var button = new Button
         {
             Height = 40,
             Width = 200,
+            IsEnabled = isEnabled,
             Content = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -513,6 +715,324 @@ public sealed partial class ServerPage : UserControl
         await RefreshAsync();
     }
 
+    // ---- 服务端 Git 更新 ----------------------------------------------------
+
+    private async Task<string?> PickFolderAsync()
+    {
+        var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.ComputerFolder };
+        if (App.ShellWindow is { } window)
+        {
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(window));
+        }
+
+        picker.FileTypeFilter.Add("*");
+        var folder = await picker.PickSingleFolderAsync();
+        return folder?.Path;
+    }
+
+    /// <summary>耗时动作统一走这里：显示进度、锁住动作区、写日志、失败弹详情。</summary>
+    private async Task<T?> RunUpdateOperationAsync<T>(
+        ServerPageViewModel viewModel,
+        string title,
+        Func<Task<T>> operation)
+        where T : class
+    {
+        if (_isBusy)
+        {
+            return null;
+        }
+
+        _isBusy = true;
+        SetBusy(true, $"正在执行：{title}…");
+        try
+        {
+            var result = await operation();
+            viewModel.Log?.Write(LogKind.User, $"{title}已完成。");
+            return result;
+        }
+        catch (Exception exception)
+        {
+            viewModel.Log?.Write(LogKind.Error, $"{title}失败。", exception);
+            await ShowTextAsync($"{title} 失败", string.Empty, exception.Message);
+            return null;
+        }
+        finally
+        {
+            _isBusy = false;
+            SetBusy(false, string.Empty);
+        }
+    }
+
+    private async Task ImportBuildAsync(ServerPageViewModel viewModel, ServerProgramProfile profile)
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        var source = await PickFolderAsync();
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return;
+        }
+
+        var import = await RunUpdateOperationAsync(
+            viewModel,
+            $"{profile.DisplayName} · 导入新构建",
+            () => viewModel.UpdateService.ImportBuildAsync(profile, source, null, CancellationToken.None));
+        if (import is null)
+        {
+            return;
+        }
+
+        var report = new StringBuilder();
+        report.AppendLine($"源目录：{source}");
+        report.AppendLine();
+        var sync = import.Sync;
+        report.AppendLine(
+            $"镜像结果：新增 {sync?.AddedFiles ?? 0} 个 · 更新 {sync?.UpdatedFiles ?? 0} 个 · " +
+            $"删除 {sync?.RemovedFiles ?? 0} 个（{FormatSize(sync?.RemovedBytes ?? 0)}）");
+        report.AppendLine();
+        if (import.Changes.Count == 0)
+        {
+            report.AppendLine("没有检测到任何差异：服务器上跑的就是这份构建。");
+        }
+        else
+        {
+            report.AppendLine($"变更 {import.Changes.Count} 项：");
+            foreach (var change in import.Changes.Take(60))
+            {
+                var size = change.Kind == "removed" ? "-" : FormatSize(change.Bytes);
+                report.AppendLine($"[{change.Kind,-8}] {size,10}  {change.Path}");
+            }
+
+            if (import.Changes.Count > 60)
+            {
+                report.AppendLine($"… 其余 {import.Changes.Count - 60} 项省略");
+            }
+        }
+
+        var defaultMessage = profile.DefaultCommitSubject(DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
+        var message = await ShowCommitDialogAsync(
+            $"{profile.DisplayName} · 确认导入",
+            report.ToString(),
+            defaultMessage);
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            viewModel.Log?.Write(LogKind.Info, $"{profile.DisplayName} 已镜像到本机仓库，但未提交。");
+            await RefreshUpdateSectionAsync(viewModel, profile);
+            return;
+        }
+
+        var commit = await RunUpdateOperationAsync(
+            viewModel,
+            $"{profile.DisplayName} · 提交",
+            () => viewModel.UpdateService.CommitAsync(profile, message, null, CancellationToken.None));
+        if (commit is null)
+        {
+            return;
+        }
+
+        await RefreshUpdateSectionAsync(viewModel, profile);
+
+        if (commit.Committed)
+        {
+            var pushNow = await ShowConfirmAsync(
+                "立即推送？",
+                $"已提交：{message}{Environment.NewLine}{Environment.NewLine}" +
+                "现在推送到服务器吗？推送过程中服务端照常运行，不会重启。",
+                "推送");
+            if (pushNow)
+            {
+                await PushNewVersionAsync(viewModel, profile);
+            }
+        }
+        else
+        {
+            await ShowTextAsync($"{profile.DisplayName} · 没有新变更", string.Empty, commit.Detail);
+        }
+    }
+
+    private async Task PushNewVersionAsync(ServerPageViewModel viewModel, ServerProgramProfile profile)
+    {
+        var status = await RunUpdateOperationAsync(
+            viewModel,
+            $"{profile.DisplayName} · 推送新版本",
+            () => viewModel.UpdateService.PushAsync(profile, null, CancellationToken.None));
+        if (status is null)
+        {
+            return;
+        }
+
+        await RefreshUpdateSectionAsync(viewModel, profile);
+        await ShowTextAsync(
+            $"{profile.DisplayName} · 推送完成",
+            string.Empty,
+            "服务器已收到新版本，服务端仍在运行。确认无误后点「应用并重启」。" + Environment.NewLine +
+            $"本机领先 {status.Ahead} 个提交。");
+    }
+
+    private async Task ApplyAsync(ServerPageViewModel viewModel, ServerProgramProfile profile)
+    {
+        var confirmed = await ShowConfirmAsync(
+            $"{profile.DisplayName} · 切换最新版本",
+            "将执行：暂挂看门狗 → 停止服务端 → 切换到最新版本 → 启动 → 健康检查 180 秒 → 恢复看门狗。" +
+            Environment.NewLine + Environment.NewLine +
+            $"受影响实例：{string.Join("、", profile.InstanceNames)}" +
+            Environment.NewLine +
+            "切换期间玩家会掉线（玩家创建的房间也会一起结束）。" +
+            Environment.NewLine +
+            "切过去之后，当前这一版会变成「上个版本」，随时可以退回来。确定继续吗？",
+            "开始切换");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var report = await RunUpdateOperationAsync(
+            viewModel,
+            $"{profile.DisplayName} · 切换最新版本",
+            () => viewModel.UpdateService.ApplyAsync(profile, CancellationToken.None));
+        if (report is null)
+        {
+            return;
+        }
+
+        await RefreshUpdateSectionAsync(viewModel, profile);
+        await RefreshAsync();
+        await ShowTextAsync($"{profile.DisplayName} · 切换结果", string.Empty, report.Describe());
+    }
+
+    private async Task RollbackAsync(ServerPageViewModel viewModel, ServerProgramProfile profile)
+    {
+        var confirmed = await ShowConfirmAsync(
+            $"{profile.DisplayName} · 回退上个版本",
+            "将把服务器切回上一个版本，流程与更新相同：暂挂看门狗 → 停服 → 切换 → 启动 → 健康检查。" +
+            Environment.NewLine + Environment.NewLine +
+            $"受影响实例：{string.Join("、", profile.InstanceNames)}" +
+            Environment.NewLine +
+            "最新版本不会被删除，仍然留在服务器上，随时可以再切回去。" +
+            Environment.NewLine +
+            "确定回退吗？",
+            "回退");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var report = await RunUpdateOperationAsync(
+            viewModel,
+            $"{profile.DisplayName} · 回退上个版本",
+            () => viewModel.UpdateService.RollbackAsync(profile, CancellationToken.None));
+        if (report is null)
+        {
+            return;
+        }
+
+        await RefreshUpdateSectionAsync(viewModel, profile);
+        await RefreshAsync();
+        await ShowTextAsync($"{profile.DisplayName} · 回退结果", string.Empty, report.Describe());
+    }
+
+    private async Task PreviewAsync(ServerPageViewModel viewModel, ServerProgramProfile profile)
+    {
+        var preview = await RunUpdateOperationAsync(
+            viewModel,
+            $"{profile.DisplayName} · 查看待更新内容",
+            () => viewModel.UpdateService.PreviewAsync(profile, null, CancellationToken.None));
+        if (preview is null)
+        {
+            return;
+        }
+
+        var report = new StringBuilder();
+        report.AppendLine($"本机仓库：{ServerProgramCatalog.GetLocalRepoPath(profile)}");
+        report.AppendLine();
+        report.AppendLine("最近提交：");
+        foreach (var commit in preview.Commits)
+        {
+            report.AppendLine($"  {commit.Short}  {commit.Date?.LocalDateTime:yyyy-MM-dd HH:mm}  {commit.Subject}");
+        }
+
+        report.AppendLine();
+        if (preview.DiffStat.Count == 0)
+        {
+            report.AppendLine("与服务器一致的提交之间没有文件差异。");
+        }
+        else
+        {
+            report.AppendLine("与服务器相比的文件差异：");
+            foreach (var line in preview.DiffStat)
+            {
+                report.AppendLine("  " + line);
+            }
+        }
+
+        await ShowTextAsync($"{profile.DisplayName} · 待更新内容", string.Empty, report.ToString());
+    }
+
+    private async Task RefreshUpdateSectionAsync(ServerPageViewModel viewModel, ServerProgramProfile profile)
+    {
+        // 只有当前页签仍然停在这个程序上时才重绘。
+        var index = TargetSelector.SelectedItem is { } selected
+            ? TargetSelector.Items.IndexOf(selected)
+            : 0;
+        var expected = profile.Key switch
+        {
+            "crossingvoid" => 1,
+            "narutobp" => 2,
+            "fantasyproject" => 3,
+            _ => 0
+        };
+        if (index != expected)
+        {
+            return;
+        }
+
+        await FetchProgramUpdateAsync(viewModel, profile.Key);
+    }
+
+    private async Task<string?> ShowCommitDialogAsync(string title, string body, string defaultMessage)
+    {
+        var textBox = new TextBox
+        {
+            Text = defaultMessage,
+            Header = "提交说明",
+            TextWrapping = TextWrapping.Wrap
+        };
+        var panel = new StackPanel { Spacing = 12 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = body,
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+            IsTextSelectionEnabled = true
+        });
+        panel.Children.Add(textBox);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
+            Title = title,
+            MaxWidth = ResolveDialogContentWidth() + 120,
+            Content = new ScrollViewer
+            {
+                Width = ResolveDialogContentWidth(),
+                MaxHeight = 460,
+                Content = panel
+            },
+            PrimaryButtonText = "提交",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary
+        };
+        ApplyDialogWidth(dialog);
+
+        var result = await dialog.ShowAsync();
+        return result == ContentDialogResult.Primary ? textBox.Text.Trim() : null;
+    }
+
     private async Task<ServerActionResult?> RunActionAsync(
         string instanceName,
         string action,
@@ -583,15 +1103,20 @@ public sealed partial class ServerPage : UserControl
             content.Children.Add(CreateLogLineBlock(line));
         }
 
+        // 用 XamlRoot 的实际尺寸算宽度：不再给 ContentDialog 设 MaxWidth
+        // （设了会让它偏到左边），改成约束内容宽度，弹窗自然居中。
+        var availableHeight = XamlRoot?.Size.Height ?? 800;
+
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
             RequestedTheme = ActualTheme,
             Title = $"{title}（{lines.Length} 行）",
-            MaxWidth = 960,
+            MaxWidth = ResolveDialogContentWidth() + 120,
             Content = new ScrollViewer
             {
-                MaxHeight = 520,
+                Width = ResolveDialogContentWidth(),
+                MaxHeight = Math.Max(320, availableHeight - 300),
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 Content = content
             },
@@ -599,6 +1124,7 @@ public sealed partial class ServerPage : UserControl
             CloseButtonText = "关闭",
             DefaultButton = ContentDialogButton.Close
         };
+        ApplyDialogWidth(dialog);
 
         var result = await dialog.ShowAsync();
         if (result == ContentDialogResult.Primary)
@@ -609,10 +1135,7 @@ public sealed partial class ServerPage : UserControl
 
     private Border CreateLogLineBlock(string line)
     {
-        var upper = line.ToUpperInvariant();
-        var isError = upper.Contains("[ERROR]") || upper.Contains("[FATAL]");
-        var isWarning = upper.Contains("[WARN]") || upper.Contains("[WARNING]");
-        var suffix = isError ? "Error" : isWarning ? "Warning" : "Default";
+        var suffix = ClassifyLogLine(line);
 
         var text = new TextBlock
         {
@@ -647,6 +1170,34 @@ public sealed partial class ServerPage : UserControl
         return border;
     }
 
+    /// <summary>
+    /// UE 的日志分级写在类别后面：`[时间][帧]LogNet: Error: 消息`。
+    /// 只认方括号写法会把所有 UE 报错都当默认白字，所以两种写法都要覆盖。
+    /// </summary>
+    private static string ClassifyLogLine(string line)
+    {
+        if (line.Contains(": Fatal:", StringComparison.Ordinal) ||
+            line.Contains(": Error:", StringComparison.Ordinal) ||
+            line.Contains("[ERROR]", StringComparison.OrdinalIgnoreCase) ||
+            line.Contains("[FATAL]", StringComparison.OrdinalIgnoreCase) ||
+            line.Contains("Fatal error", StringComparison.OrdinalIgnoreCase) ||
+            line.Contains("Critical error", StringComparison.OrdinalIgnoreCase) ||
+            line.Contains("Assertion failed", StringComparison.OrdinalIgnoreCase) ||
+            line.Contains("Exception:", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Error";
+        }
+
+        if (line.Contains(": Warning:", StringComparison.Ordinal) ||
+            line.Contains("[WARN]", StringComparison.OrdinalIgnoreCase) ||
+            line.Contains("[WARNING]", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Warning";
+        }
+
+        return "Default";
+    }
+
     private async Task CopyTextAsync(string text, string label)
     {
         if (string.IsNullOrEmpty(text))
@@ -665,6 +1216,33 @@ public sealed partial class ServerPage : UserControl
         Application.Current.Resources.TryGetValue(key, out var value) && value is Style style
             ? style
             : null;
+
+    /// <summary>
+    /// 弹窗内容宽度。跟随窗口宽度，最宽 1360。
+    /// XamlRoot.Size 在部分场景拿不到真实窗口宽度（会返回 0 或很小的值），
+    /// 那样会被压到下限，所以这里带兜底：拿到明显不合理的小值时按 1780 估算。
+    /// </summary>
+    private double ResolveDialogContentWidth()
+    {
+        var available = XamlRoot?.Size.Width ?? 0;
+        if (available < 900)
+        {
+            available = 1780;
+        }
+
+        return Math.Clamp(available - 320, 900, 1360);
+    }
+
+    /// <summary>
+    /// ContentDialog 的宽度由模板里的主题资源 ContentDialogMaxWidth 决定（默认约 548），
+    /// 直接设控件上的 MaxWidth 不起作用，必须把这个资源覆盖掉，弹窗才会真的变宽。
+    /// </summary>
+    private void ApplyDialogWidth(ContentDialog dialog)
+    {
+        var maxWidth = ResolveDialogContentWidth() + 120;
+        dialog.Resources["ContentDialogMaxWidth"] = maxWidth;
+        dialog.MaxWidth = maxWidth;
+    }
 
     private async Task ShowTextAsync(string title, string subtitle, string body)
     {
@@ -685,8 +1263,10 @@ public sealed partial class ServerPage : UserControl
             XamlRoot = XamlRoot,
             RequestedTheme = ActualTheme,
             Title = title,
+            MaxWidth = ResolveDialogContentWidth() + 120,
             Content = new ScrollViewer
             {
+                Width = ResolveDialogContentWidth(),
                 MaxHeight = 460,
                 Content = new TextBlock
                 {
@@ -700,6 +1280,7 @@ public sealed partial class ServerPage : UserControl
             PrimaryButtonText = primaryText,
             DefaultButton = withPrimary ? ContentDialogButton.Close : ContentDialogButton.Close
         };
+        ApplyDialogWidth(dialog);
 
         var result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary;
