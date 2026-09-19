@@ -96,7 +96,9 @@ public sealed class ApplicationViewModel : ObservableObject
                 DefaultServerStatusUrl,
                 LogService,
                 serverGitUpdateService,
-                GlobalProgress);
+                GlobalProgress,
+                settings,          // 《导入新构建》按程序记住上次选的目录
+                settingsService);
         TaskHistoryService = taskHistoryService;
         _currentPageTag = NormalizePageTag(settings.LastPageTag);
         _settings.LastPageTag = _currentPageTag;

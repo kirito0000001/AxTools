@@ -144,8 +144,34 @@ public sealed class ServerProgramUpdateState
 
     public string DeployedText => Remote?.Deployed?.Describe() ?? "尚未初始化";
 
-    public string PreviousText => Remote?.Previous?.Describe()
-        ?? (Remote?.RollbackPossible == true ? "（按上一提交回退）" : "没有可回退的版本");
+    /// <summary>
+    /// 「上一版」那一行。
+    ///
+    /// 回退之后 previous 会和 deployed 指向同一个提交（这两个按键是"一步切换开关"：
+    /// main 是最新推送的那一版，previous 是上一个版本），这时如果直接印同一个版本号，
+    /// 读起来就像"上一版＝当前版"，越看越糊涂 —— 所以这种情况单独说明，并按实际状态
+    /// 告诉用户还能往哪边走。
+    /// </summary>
+    public string PreviousText
+    {
+        get
+        {
+            if (Remote?.Previous is null)
+            {
+                return Remote?.RollbackPossible == true ? "（按上一提交回退）" : "没有可回退的版本";
+            }
+
+            if (Remote.Deployed is { } deployed &&
+                string.Equals(deployed.Sha, Remote.Previous.Sha, StringComparison.Ordinal))
+            {
+                return CanSwitchLatest
+                    ? "—（当前就停在这一版上，可切回最新版）"
+                    : "—（当前就停在这一版上，没有更旧的版本可退）";
+            }
+
+            return Remote.Previous.Describe();
+        }
+    }
 
     public string LocalAheadText => Local is null
         ? "本机仓库状态未知"

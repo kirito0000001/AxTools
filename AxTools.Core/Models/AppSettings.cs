@@ -46,6 +46,12 @@ public sealed class AppSettings
 
     public CrossingVoidPackageSettings CrossingVoidPackage { get; set; } = new();
 
+    /// <summary>
+    /// 服务端《导入新构建》按程序记住的源目录（key = ServerProgramCatalog 的 Key）。
+    /// 和 ManagedTools 一个路子：设置里只放路径，不放命令。
+    /// </summary>
+    public Dictionary<string, string> ServerImportSources { get; set; } = new(StringComparer.Ordinal);
+
     public static Dictionary<string, ManagedToolPaths> CreateManagedTools() =>
         ManagedToolCatalog.All.ToDictionary(
             tool => tool.StableKey,

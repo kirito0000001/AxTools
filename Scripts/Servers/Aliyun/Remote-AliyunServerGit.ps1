@@ -4,11 +4,15 @@ param(
     [Parameter(Mandatory)][string]$ProgramKey,
     [string]$CommitMessage = '',
     [string]$TargetRef = '',
-    [int]$HealthTimeoutSeconds = 180
+    # 180 秒对现在的产物不够：服务端启动时会跑游戏自己的 DreamChunkDownloader，
+    # 它对着 CDN/GitHub 反复 404 重试（5s→10s→20s…），实测端口要 ~183 秒才监听。
+    # 这个值同时是"等多久算失败"的上限，放宽到 7 分钟。
+    [int]$HealthTimeoutSeconds = 420
 )
 
-# Runs on the Aliyun server. Kept ASCII-only so Windows PowerShell 5.1 parses it
-# regardless of file encoding. Chinese display labels are mapped on the AxTools side.
+# Runs on the Aliyun server under Windows PowerShell 5.1.
+# Deploy-AliyunServerGit.ps1 会带上 UTF-8 BOM 再 scp，因此这里可以出现中文；
+# 千万别用不带 BOM 的方式手改服务器上那份，否则中文会变乱码（不会影响解析，但很难看）。
 #
 # Repository shape: a bare repo per program plus an external work tree that IS the
 # live server directory. The work tree never receives a .git directory, and Saved/
@@ -21,6 +25,44 @@ $RepoRoot = 'C:\Users\Administrator\Desktop\ServerRepos'
 $ConfigPath = 'C:\UEWatchdog\watchdog.config.psd1'
 $MaintenanceFile = 'C:\UEWatchdog\maintenance.txt'
 $MenuCore = 'C:\UEWatchdog\UEWatchdogMenu.Core.ps1'
+
+# ---- 进度事件 ----------------------------------------------------------------
+# 和本机脚本同一套协议：stdout 上写 "::axtools {json}"，AxTools 端解析成进度条。
+# 必须用 [Console]::Out 直写，不能用 Write-Output —— 后者会被调用方的函数返回值
+# 吞进结果数据里。最终那份结果 JSON 仍然是最后一次性写 stdout，本机 wrapper 会把
+# 事件行和 JSON 分开，两者互不干扰。
+function Write-AxEvent {
+    param(
+        [Parameter(Mandatory)][string]$Type,
+        [Parameter(Mandatory)][string]$Stage,
+        [int]$Percent = -1,
+        [string]$Message = '',
+        [string]$Detail = ''
+    )
+    $payload = [ordered]@{ type = $Type; stage = $Stage }
+    if ($Percent -ge 0) { $payload.percent = $Percent }
+    if (-not [string]::IsNullOrWhiteSpace($Message)) { $payload.message = $Message }
+    if (-not [string]::IsNullOrWhiteSpace($Detail)) { $payload.detail = $Detail }
+    [Console]::Out.WriteLine('::axtools ' + ($payload | ConvertTo-Json -Compress -Depth 4))
+    [Console]::Out.Flush()
+}
+
+function Write-AxStage {
+    param([Parameter(Mandatory)][string]$Stage, [string]$Message = '', [string]$Detail = '')
+    Write-AxEvent -Type 'stage' -Stage $Stage -Message $Message -Detail $Detail
+}
+
+function Write-AxProgress {
+    param([Parameter(Mandatory)][string]$Stage, [Parameter(Mandatory)][int]$Percent, [string]$Message = '', [string]$Detail = '')
+    Write-AxEvent -Type 'progress' -Stage $Stage -Percent $Percent -Message $Message -Detail $Detail
+}
+
+function Get-AxShortSha {
+    param([string]$Sha)
+    if ([string]::IsNullOrWhiteSpace($Sha)) { return '(空)' }
+    if ($Sha.Length -le 8) { return $Sha }
+    return $Sha.Substring(0, 8)
+}
 
 $script:Git = $null
 function Get-AxGit {
@@ -76,8 +118,20 @@ function Get-AxRepoPath {
 
 function Invoke-AxGit {
     param([string[]]$Arguments)
-    $output = & (Get-AxGit) @Arguments 2>&1
-    $code = $LASTEXITCODE
+    # Windows PowerShell 5.1 的坑：$ErrorActionPreference='Stop' 时，把写 stderr 的
+    # 原生命令输出赋给变量（`$out = & git ... 2>&1`）会直接抛 RemoteException，消息
+    # 就是那行 stderr。而 git checkout -f 恰恰会把 "HEAD is now at ..." 写到 stderr，
+    # 于是"其实已经切换成功"被当成失败（2026-09-19 实测：切换后服务端被留在维护模式）。
+    # 原生命令的成败只能看 ExitCode，所以这里临时放开 EAP。
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & (Get-AxGit) @Arguments 2>&1
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
     return [pscustomobject]@{
         ExitCode = $code
         Output   = @($output | ForEach-Object { [string]$_ })
@@ -124,7 +178,43 @@ function Get-AxProcessesForServer {
     param($ServerEntry)
     $target = [IO.Path]::GetFullPath([string]$ServerEntry.ExePath)
     $escaped = $target.Replace('\', '\\')
-    return @(Get-CimInstance Win32_Process -Filter "ExecutablePath = '$escaped'" -ErrorAction SilentlyContinue)
+    $exeName = [IO.Path]::GetFileName($target)
+    $port = [int]$ServerEntry.Port
+    $portToken = "-PORT=$port"
+
+    $matches = @()
+    $matches += @(Get-CimInstance Win32_Process -Filter "ExecutablePath = '$escaped'" -ErrorAction SilentlyContinue)
+
+    # 只按 ExePath 找是不够的：配置可以指向包根部的启动器，而真正占着文件、吃着端口的
+    # 是它拉起的内层进程（CrossingVoidServer-Win64-Shipping.exe）。漏掉内层进程就停不
+    # 干净，紧接着的 git checkout 会因为"文件被占用"整片失败（2026-09-19 实测踩过：
+    # unable to unlink ... Invalid argument），最后连回滚都动不了。
+    $matches += @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+            $commandLine = [string]$_.CommandLine
+            $matched = $false
+            if (-not [string]::IsNullOrWhiteSpace($commandLine)) {
+                if ($commandLine -like "*$portToken*") { $matched = $true }
+                elseif (-not [string]::IsNullOrWhiteSpace($exeName) -and $commandLine -like "*$exeName*") { $matched = $true }
+            }
+            $matched
+        })
+
+    # 端口的实际占用者也一定算进来，避免命令行长什么样都不认识。
+    $portOwnerIds = @()
+    if ([string]$ServerEntry.Protocol -ieq 'UDP') {
+        $portOwnerIds = @(Get-NetUDPEndpoint -LocalPort $port -ErrorAction SilentlyContinue |
+            ForEach-Object { [int]$_.OwningProcess })
+    }
+    else {
+        $portOwnerIds = @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
+            ForEach-Object { [int]$_.OwningProcess })
+    }
+    foreach ($ownerId in $portOwnerIds) {
+        if ($ownerId -le 0) { continue }
+        $matches += @(Get-CimInstance Win32_Process -Filter "ProcessId = $ownerId" -ErrorAction SilentlyContinue)
+    }
+
+    return @($matches | Where-Object { $null -ne $_ } | Sort-Object ProcessId -Unique)
 }
 
 function Set-AxMaintenanceState {
@@ -189,11 +279,18 @@ function Start-AxInstance {
 }
 
 function Test-AxInstanceHealth {
-    param($Config, [string]$InstanceName, [int]$TimeoutSeconds)
+    param(
+        $Config,
+        [string]$InstanceName,
+        [int]$TimeoutSeconds,
+        [int]$PercentFrom = -1,
+        [int]$PercentTo = -1
+    )
     $entry = Get-AxEntry -Config $Config -InstanceName $InstanceName
     $port = [int]$entry.Port
     $protocol = [string]$entry.Protocol
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $started = Get-Date
+    $deadline = $started.AddSeconds($TimeoutSeconds)
     $running = $false
     $listening = $false
     while ((Get-Date) -lt $deadline) {
@@ -206,6 +303,16 @@ function Test-AxInstanceHealth {
                 $listening = @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue).Count -gt 0
             }
             if ($listening) { break }
+        }
+        if ($PercentFrom -ge 0 -and $PercentTo -ge $PercentFrom) {
+            $elapsed = ((Get-Date) - $started).TotalSeconds
+            $ratio = [Math]::Min(1.0, $elapsed / [Math]::Max(1, $TimeoutSeconds))
+            $state = if (-not $running) { '进程未运行' } elseif (-not $listening) { '进程在，端口未监听' } else { '就绪' }
+            Write-AxProgress `
+                -Stage 'health' `
+                -Percent ([int]($PercentFrom + ($PercentTo - $PercentFrom) * $ratio)) `
+                -Message ("正在等待 " + $InstanceName + " 就绪（已等 " + [int]$elapsed + " 秒 / 最多 " + $TimeoutSeconds + " 秒）") `
+                -Detail ($state + '：' + $protocol + ' ' + [string]$port)
         }
         Start-Sleep -Seconds 3
     }
@@ -322,6 +429,8 @@ function Invoke-AxBootstrap {
 function Invoke-AxStatus {
     param([string]$Key)
 
+    Write-AxStage -Stage 'prepare' -Message '正在读取服务器仓库与实例状态…'
+
     $root = Get-AxProgramRoot -Key $Key
     $repo = Get-AxRepoPath -Key $Key
     $initialized = (Test-Path -LiteralPath $repo -PathType Container) -and
@@ -410,30 +519,65 @@ function Invoke-AxSwitchTo {
         steps            = @()
     }
 
+    Write-AxStage -Stage 'prepare' -Message '正在检查服务器仓库与配置…' -Detail ($root)
+
     try {
         foreach ($name in $instances) {
             Set-AxMaintenanceState -InstanceName $name -Enabled $true
             $maintenanceOn += $name
         }
         $report.steps += 'maintenance-on'
+        Write-AxProgress `
+            -Stage 'maintenance' `
+            -Percent 6 `
+            -Message '已进入维护模式，看门狗暂时不会自动重启' `
+            -Detail (($instances -join '、') + '；这一步是为了避免切换过程中被自动拉起。')
 
         foreach ($name in $instances) {
             $stopped = Stop-AxInstance -Config $config -InstanceName $name
             $report.steps += "stopped:$name=$stopped"
         }
+        Write-AxProgress `
+            -Stage 'stop' `
+            -Percent 12 `
+            -Message '已停止服务端实例' `
+            -Detail (($report.steps | Where-Object { $_ -like 'stopped:*' }) -join '，')
 
+        # git checkout 不报百分比（stderr 不是终端时 git 不出进度），所以这一段是不确定进度，
+        # 进度条会转圈、计时器在走；真正的百分比等到健康检查阶段才有。
+        Write-AxStage `
+            -Stage 'checkout' `
+            -Message '正在把服务器目录切换到目标版本…' `
+            -Detail ('目标 ' + (Get-AxShortSha -Sha $targetSha) + '；这一步要写上万个小文件，最慢的一段。')
         Invoke-AxRepoGit -Repo $repo -WorkTree $root -Arguments @('checkout', '-f', $targetSha) | Out-Null
         Invoke-AxGitOrThrow -Arguments @("--git-dir=$repo", 'update-ref', 'refs/heads/deployed', $targetSha) | Out-Null
         $report.steps += 'checkout'
+        Write-AxProgress `
+            -Stage 'checkout' `
+            -Percent 55 `
+            -Message '服务器目录已切换到目标版本' `
+            -Detail ('deployed -> ' + (Get-AxShortSha -Sha $targetSha))
 
         foreach ($name in $instances) {
-            $pid = Start-AxInstance -Config $config -InstanceName $name
-            $report.steps += "started:$name=$pid"
+            # 别写成 $pid = ...：$PID 是 PowerShell 的只读自动变量，赋值会抛
+            # "无法覆盖变量 PID" —— 于是"其实已经切好、进程也已经起来"却被判成失败
+            # （2026-09-19 实测：切换成功的瞬间报了失败，还把服务端回滚了一遍）。
+            $startedId = Start-AxInstance -Config $config -InstanceName $name
+            $report.steps += "started:$name=$startedId"
         }
+        Write-AxProgress `
+            -Stage 'start' `
+            -Percent 60 `
+            -Message '已启动服务端实例，开始等待端口就绪' `
+            -Detail (($report.steps | Where-Object { $_ -like 'started:*' }) -join '，')
 
         $health = @()
-        foreach ($name in $instances) {
-            $health += (Test-AxInstanceHealth -Config $config -InstanceName $name -TimeoutSeconds $HealthTimeoutSeconds)
+        $total = $instances.Count
+        for ($index = 0; $index -lt $total; $index++) {
+            $from = 62 + [int](35 * $index / $total)
+            $to = 62 + [int](35 * ($index + 1) / $total)
+            $health += (Test-AxInstanceHealth -Config $config -InstanceName $instances[$index] `
+                    -TimeoutSeconds $HealthTimeoutSeconds -PercentFrom $from -PercentTo $to)
         }
         $report.health = $health
         $unhealthy = @($health | Where-Object { -not $_.healthy })
@@ -447,6 +591,11 @@ function Invoke-AxSwitchTo {
         if ($RecordPrevious -and -not [string]::IsNullOrWhiteSpace($deployedBefore) -and $deployedBefore -ne $targetSha) {
             Invoke-AxGitOrThrow -Arguments @("--git-dir=$repo", 'update-ref', 'refs/heads/previous', $deployedBefore) | Out-Null
             $report.previousAfter = $deployedBefore
+            Write-AxProgress `
+                -Stage 'previous' `
+                -Percent 97 `
+                -Message '已记录上一版本，随时可以退回去' `
+                -Detail ('previous -> ' + (Get-AxShortSha -Sha $deployedBefore))
         }
 
         $report.success = $true
@@ -458,15 +607,28 @@ function Invoke-AxSwitchTo {
         # Put the previously deployed tree back, but keep maintenance on so the
         # watchdog cannot start a half-switched server while we report the failure.
         if (-not [string]::IsNullOrWhiteSpace($deployedBefore) -and $deployedBefore -ne $targetSha) {
+            Write-AxStage `
+                -Stage 'restore' `
+                -Message '切换失败，正在恢复到切换前的版本…' `
+                -Detail ($report.message)
             try {
                 foreach ($name in $instances) { [void](Stop-AxInstance -Config $config -InstanceName $name) }
                 Invoke-AxRepoGit -Repo $repo -WorkTree $root -Arguments @('checkout', '-f', $deployedBefore) | Out-Null
                 Invoke-AxGitOrThrow -Arguments @("--git-dir=$repo", 'update-ref', 'refs/heads/deployed', $deployedBefore) | Out-Null
                 foreach ($name in $instances) { [void](Start-AxInstance -Config $config -InstanceName $name) }
                 $report.restored = $true
+                Write-AxProgress `
+                    -Stage 'restore' `
+                    -Percent 95 `
+                    -Message '已恢复到切换前的版本，服务端重新启动' `
+                    -Detail ('deployed -> ' + (Get-AxShortSha -Sha $deployedBefore))
             }
             catch {
                 $report.restoreError = $_.Exception.Message
+                Write-AxStage `
+                    -Stage 'restore' `
+                    -Message '恢复也失败了，服务端保持维护模式，需要人工介入' `
+                    -Detail ($report.restoreError)
             }
         }
     }
@@ -476,6 +638,117 @@ function Invoke-AxSwitchTo {
                 try { Set-AxMaintenanceState -InstanceName $name -Enabled $false } catch { }
             }
             $report.maintenanceReleased = $true
+            Write-AxProgress -Stage 'maintenance' -Percent 99 -Message '已恢复看门狗自动重启'
+        }
+        else {
+            $report.maintenanceReleased = $false
+        }
+    }
+
+    return $report
+}
+
+# 把服务端从"停着 / 卡在维护模式"救回来：对齐工作目录 → 起进程 → 健康检查 → 放开看门狗。
+# 之前的失败路径只保证"能恢复就恢复"，恢复本身再失败就没人管了 —— 这个动作就是那个兜底。
+function Invoke-AxRecover {
+    param([string]$Key)
+
+    $root = Get-AxProgramRoot -Key $Key
+    $repo = Get-AxRepoPath -Key $Key
+    $config = Get-AxServerConfig
+    $instances = Get-AxProgramInstances -Key $Key
+    $deployed = Get-AxRef -Repo $repo -RefName 'refs/heads/deployed'
+    if ([string]::IsNullOrWhiteSpace($deployed)) {
+        throw "deployed ref not found; initialization is required before recovery: $repo"
+    }
+
+    $maintenanceOn = @()
+    $report = [ordered]@{
+        program = $Key
+        action  = 'recover'
+        root    = $root
+        target  = (Get-AxCommitInfo -Repo $repo -RefName 'refs/heads/deployed')
+        steps   = @()
+        health  = @()
+    }
+
+    Write-AxStage -Stage 'prepare' -Message '正在检查服务器仓库与配置…' -Detail $root
+
+    try {
+        # 先把维护模式打开并停掉进程，再动工作目录：进程还活着的时候 git checkout
+        # 会因为文件被占用整片失败（"unable to unlink ... Invalid argument"），
+        # 那样目录会停在一个半新半旧的混合状态。
+        foreach ($name in $instances) {
+            Set-AxMaintenanceState -InstanceName $name -Enabled $true
+            $maintenanceOn += $name
+        }
+        Write-AxProgress -Stage 'maintenance' -Percent 8 -Message '已暂时接管，看门狗先不参与重启'
+
+        foreach ($name in $instances) {
+            $stopped = Stop-AxInstance -Config $config -InstanceName $name
+            $report.steps += "stopped:$name=$stopped"
+        }
+        Write-AxProgress `
+            -Stage 'stop' `
+            -Percent 14 `
+            -Message '已停止残留的服务端进程' `
+            -Detail (($report.steps | Where-Object { $_ -like 'stopped:*' }) -join '，')
+
+        # 工作目录必须和 deployed 一致，否则"启动"起来跑的是一份混着两版的目录。
+        Write-AxStage -Stage 'checkout' -Message '正在把服务器目录对齐到部署版本…' -Detail ('deployed ' + (Get-AxShortSha -Sha $deployed))
+        $dirty = Invoke-AxGit -Arguments @("--git-dir=$repo", "--work-tree=$root", 'status', '--porcelain')
+        if ($dirty.ExitCode -ne 0 -or $dirty.Output.Count -gt 0) {
+            Invoke-AxRepoGit -Repo $repo -WorkTree $root -Arguments @('checkout', '-f', $deployed) | Out-Null
+            $report.steps += "checkout(差异 $($dirty.Output.Count) 项)"
+        }
+        else {
+            $report.steps += 'checkout(已一致)'
+        }
+        Write-AxProgress `
+            -Stage 'checkout' `
+            -Percent 50 `
+            -Message '服务器目录已对齐到部署版本' `
+            -Detail ('deployed -> ' + (Get-AxShortSha -Sha $deployed))
+
+        foreach ($name in $instances) {
+            $startedId = Start-AxInstance -Config $config -InstanceName $name
+            $report.steps += "started:$name=$startedId"
+        }
+        Write-AxProgress `
+            -Stage 'start' `
+            -Percent 60 `
+            -Message '已重新启动服务端实例' `
+            -Detail (($report.steps | Where-Object { $_ -like 'started:*' }) -join '，')
+
+        $health = @()
+        $total = $instances.Count
+        for ($index = 0; $index -lt $total; $index++) {
+            $from = 62 + [int](35 * $index / $total)
+            $to = 62 + [int](35 * ($index + 1) / $total)
+            $health += (Test-AxInstanceHealth -Config $config -InstanceName $instances[$index] `
+                    -TimeoutSeconds $HealthTimeoutSeconds -PercentFrom $from -PercentTo $to)
+        }
+        $report.health = $health
+        $unhealthy = @($health | Where-Object { -not $_.healthy })
+        if ($unhealthy.Count -gt 0) {
+            $names = ($unhealthy | ForEach-Object { $_.instance }) -join ', '
+            throw "health check failed after $HealthTimeoutSeconds seconds: $names"
+        }
+
+        $report.success = $true
+    }
+    catch {
+        $report.success = $false
+        $report.message = $_.Exception.Message
+    }
+    finally {
+        # 只有真的健康起来才放开看门狗；否则保持维护模式，别让它在半死状态里反复重启。
+        if ($report.success) {
+            foreach ($name in $maintenanceOn) {
+                try { Set-AxMaintenanceState -InstanceName $name -Enabled $false } catch { }
+            }
+            $report.maintenanceReleased = $true
+            Write-AxProgress -Stage 'maintenance' -Percent 99 -Message '已恢复看门狗自动重启'
         }
         else {
             $report.maintenanceReleased = $false
@@ -503,6 +776,7 @@ function Invoke-AxRemoteGitAction {
                 $result.data = Invoke-AxSwitchTo -Key $ProgramKey -Target 'refs/heads/previous' `
                     -Label 'rollback' -RecordPrevious $false
             }
+            'recover' { $result.data = Invoke-AxRecover -Key $ProgramKey }
             default { throw "unsupported action: $Action" }
         }
         $result.success = $true

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using AxTools.Core.Catalog;
 using AxTools.Core.Models;
@@ -17,6 +18,8 @@ public sealed class ServerGitUpdateService(
         PropertyNameCaseInsensitive = true
     };
 
+    private readonly AxTaskEventParser _parser = new();
+
     private readonly string _remoteScriptPath = Path.Combine(
         Path.GetFullPath(scriptsRoot),
         "Servers",
@@ -30,6 +33,12 @@ public sealed class ServerGitUpdateService(
         "Invoke-AliyunServerRepo.ps1");
 
     public string? LastDiagnostic { get; private set; }
+
+    /// <summary>
+    /// 脚本通过 ::axtools 协议上报的阶段与百分比。回调在后台线程触发，接的一方要自己
+    /// 切回 UI 线程。不接就让进度条一直停在"正在准备…"。
+    /// </summary>
+    public Action<AxTaskEvent>? EventSink { get; set; }
 
     /// <summary>读取一个程序在服务器上的部署状态。</summary>
     public async Task<ServerGitRemoteStatus> ReadRemoteStatusAsync(
@@ -205,6 +214,25 @@ public sealed class ServerGitUpdateService(
         _ => action
     };
 
+    private void RaiseEvent(AxTaskEvent taskEvent)
+    {
+        var sink = EventSink;
+        if (sink is null)
+        {
+            return;
+        }
+
+        try
+        {
+            sink(taskEvent);
+        }
+        catch (Exception)
+        {
+            // 接的一方（页面）出问题不能连带把脚本结果判成失败：进度显示是附加信息，
+            // 任务的成败由退出码与结果 JSON 决定。
+        }
+    }
+
     private async Task<T> RunScriptAsync<T>(
         string scriptPath,
         IReadOnlyList<string> arguments,
@@ -233,9 +261,16 @@ public sealed class ServerGitUpdateService(
                 definition,
                 (_, line) =>
                 {
+                    var parsed = _parser.Parse(line);
+                    if (parsed.Event is { } taskEvent)
+                    {
+                        RaiseEvent(taskEvent);
+                        return ValueTask.CompletedTask;
+                    }
+
                     lock (lines)
                     {
-                        lines.Add(line);
+                        lines.Add(parsed.Text);
                     }
 
                     return ValueTask.CompletedTask;
@@ -332,8 +367,22 @@ public sealed class ServerGitSwitchReport
         var target = Target?.Describe() ?? "未知版本";
         if (!Success)
         {
-            return $"{verb}失败：{Message ?? "未返回原因"}"
-                + (Restored ? "（已恢复到切换前的版本）" : "（未能恢复，服务端保持维护模式）");
+            var builder = new StringBuilder()
+                .Append($"{verb}失败：{Message ?? "未返回原因"}");
+            if (Health.Count > 0)
+            {
+                builder.Append("；实例状态：").Append(string.Join(
+                    "，",
+                    Health.Select(item => $"{item.Instance} {(item.Healthy ? "正常" : "异常")}")));
+            }
+
+            builder.Append(Restored ? "（已恢复到切换前的版本）" : "（未能恢复，服务端保持维护模式）");
+            if (!string.IsNullOrWhiteSpace(RestoreError))
+            {
+                builder.Append("；恢复报错：").Append(RestoreError);
+            }
+
+            return builder.ToString();
         }
 
         var health = Health.Count == 0

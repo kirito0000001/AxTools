@@ -55,6 +55,7 @@ public sealed class AppSettingsService
         settings.SchemaVersion = Math.Max(settings.SchemaVersion, 9);
         settings.CrossingVoidPackage ??= new CrossingVoidPackageSettings();
         settings.ManagedTools ??= AppSettings.CreateManagedTools();
+        settings.ServerImportSources ??= new Dictionary<string, string>(StringComparer.Ordinal);
         settings.Toolchains ??= new ToolchainSettings();
         settings.UpdateConnectionTimeoutSeconds = Math.Clamp(
             settings.UpdateConnectionTimeoutSeconds,

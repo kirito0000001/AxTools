@@ -2,12 +2,13 @@
 param(
     [Parameter(Mandatory)][string]$SshTarget,
     [Parameter(Mandatory)]
-    [ValidateSet('bootstrap', 'status', 'apply', 'rollback')]
+    [ValidateSet('bootstrap', 'status', 'apply', 'rollback', 'recover')]
     [string]$Action,
     [Parameter(Mandatory)][string]$ProgramKey,
     [Parameter(Mandatory)][string]$OutputPath,
     [string]$CommitMessage = '',
-    [int]$HealthTimeoutSeconds = 180,
+    # 与远端脚本一致：现在这套产物要 ~183 秒才监听端口（服务端上的分片下载器在重试 404）。
+    [int]$HealthTimeoutSeconds = 420,
     [int]$TimeoutSeconds = 300
 )
 
@@ -67,19 +68,71 @@ function Invoke-AxRemoteProcess {
 
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
+    $payloadLines = [System.Collections.Generic.List[string]]::new()
+    $errorLines = [System.Collections.Generic.List[string]]::new()
     try {
         [void]$process.Start()
         $process.StandardInput.Close()
-        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        $stderrTask = $process.StandardError.ReadToEndAsync()
-        if (-not $process.WaitForExit($TimeoutMilliseconds)) {
+
+        # ssh 的 stdout 里混着两种东西：运行中不断吐出的进度事件（::axtools 行）和最后
+        # 那份结果 JSON。逐行读才能让进度条实时动 —— 一次性 ReadToEnd 要等 ssh 结束，
+        # 那正好是"拉取更新整段时间里界面没有任何反馈"的原因。
+        # 注意：这里必须用"主线程轮询 ReadLineAsync"的写法，不能把读取丢给
+        # Task.Run([Action]{...})：PowerShell 的脚本块换线程执行拿不到外层变量，
+        # 读取任务会当场死掉，ssh 的管道没人读，远端一写满 64 KB 就永远卡住
+        # （2026-09-19 实测：远端明明已经切换完成，本机却一直等不到返回）。
+        $stdoutTask = $process.StandardOutput.ReadLineAsync()
+        $stderrTask = $process.StandardError.ReadLineAsync()
+        $deadline = (Get-Date).AddMilliseconds($TimeoutMilliseconds)
+        $timedOut = $false
+
+        while ($true) {
+            if ($null -ne $stdoutTask -and $stdoutTask.Wait(120)) {
+                $line = $stdoutTask.Result
+                if ($null -eq $line) {
+                    $stdoutTask = $null
+                }
+                else {
+                    if ($line.StartsWith('::axtools ', [StringComparison]::Ordinal)) {
+                        [Console]::Out.WriteLine($line)
+                        [Console]::Out.Flush()
+                    }
+                    else {
+                        $payloadLines.Add($line)
+                    }
+                    $stdoutTask = $process.StandardOutput.ReadLineAsync()
+                }
+            }
+
+            if ($null -ne $stderrTask -and $stderrTask.Wait(0)) {
+                $line = $stderrTask.Result
+                if ($null -eq $line) {
+                    $stderrTask = $null
+                }
+                else {
+                    $errorLines.Add($line)
+                    $stderrTask = $process.StandardError.ReadLineAsync()
+                }
+            }
+
+            # 两个流都读到 EOF 才算读完（进程退出但管道还有尾巴的情况也要收干净）。
+            if ($null -eq $stdoutTask -and $null -eq $stderrTask) { break }
+            if ((Get-Date) -gt $deadline) {
+                $timedOut = $true
+                break
+            }
+        }
+
+        if (-not $process.HasExited -and -not $process.WaitForExit(2000)) {
             try { $process.Kill($true) } catch { }
+        }
+        if ($timedOut) {
             throw "服务器 Git 动作超时（$Action）。"
         }
         return [pscustomobject]@{
             ExitCode = $process.ExitCode
-            StdOut   = $stdoutTask.GetAwaiter().GetResult()
-            StdErr   = $stderrTask.GetAwaiter().GetResult()
+            StdOut   = ($payloadLines -join "`n")
+            StdErr   = ($errorLines -join "`n")
         }
     }
     finally {

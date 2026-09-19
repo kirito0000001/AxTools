@@ -125,7 +125,9 @@ public sealed class ServerPageViewModel(
     string statusUrl,
     LogService? logService = null,
     ServerGitUpdateService? updateService = null,
-    GlobalProgressViewModel? globalProgress = null)
+    GlobalProgressViewModel? globalProgress = null,
+    AppSettings? appSettings = null,
+    AppSettingsService? appSettingsService = null)
 {
     /// <summary>供页面把服务器动作的结果写进 AxTools 输出日志。</summary>
     public LogService? Log => logService;
@@ -134,6 +136,36 @@ public sealed class ServerPageViewModel(
     public GlobalProgressViewModel? GlobalProgress => globalProgress;
 
     private readonly ServerGitUpdateService? _updateService = updateService;
+
+    private readonly AppSettings? _appSettings = appSettings;
+
+    private readonly AppSettingsService? _appSettingsService = appSettingsService;
+
+    /// <summary>
+    /// 《导入新构建》上次用的源目录（按程序记）。记过就直接用它，省一次翻目录；
+    /// 返回 null 表示还没选过，页面会弹文件夹选择。
+    /// </summary>
+    public string? GetImportSource(string programKey) =>
+        _appSettings is not null &&
+        _appSettings.ServerImportSources.TryGetValue(programKey, out var path) &&
+        !string.IsNullOrWhiteSpace(path)
+            ? path
+            : null;
+
+    /// <summary>记住这次选的源目录（只写路径，顺手落盘）。</summary>
+    public async Task RememberImportSourceAsync(
+        string programKey,
+        string source,
+        CancellationToken cancellationToken)
+    {
+        if (_appSettings is null || _appSettingsService is null || string.IsNullOrWhiteSpace(source))
+        {
+            return;
+        }
+
+        _appSettings.ServerImportSources[programKey] = source;
+        await _appSettingsService.SaveAsync(_appSettings, cancellationToken);
+    }
 
     private readonly Dictionary<string, ServerProgramUpdateState> _updateStates =
         new(StringComparer.Ordinal);

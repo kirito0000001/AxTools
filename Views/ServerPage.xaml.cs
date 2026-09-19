@@ -397,6 +397,51 @@ public sealed partial class ServerPage : UserControl
         {
             host.Children.Add(CreateHintText($"服务器运行目录：{state.WorkTreePath}"));
         }
+
+        host.Children.Add(CreateImportSourceLink(viewModel, profile));
+    }
+
+    /// <summary>
+    /// 「导入目录」那一行：显示按程序记住的《导入新构建》源目录，点一下换一个。
+    /// 做成可点的而不是纯提示文字 —— 记住之后总得有个出口，否则只能去删设置文件。
+    /// </summary>
+    private Button CreateImportSourceLink(ServerPageViewModel viewModel, ServerProgramProfile profile)
+    {
+        var remembered = viewModel.GetImportSource(profile.Key);
+        var text = string.IsNullOrWhiteSpace(remembered)
+            ? "导入目录：还没选过（点这里选）"
+            : Directory.Exists(remembered)
+                ? $"导入目录：{remembered}（点这里更换）"
+                : $"导入目录：{remembered}（目录已不在，点这里重选）";
+
+        var button = new Button
+        {
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            Content = new TextBlock
+            {
+                Text = text,
+                FontSize = 12,
+                Opacity = 0.72,
+                TextWrapping = TextWrapping.Wrap
+            }
+        };
+
+        button.Click += async (_, _) =>
+        {
+            var picked = await PickFolderAsync();
+            if (string.IsNullOrWhiteSpace(picked))
+            {
+                return;
+            }
+
+            await viewModel.RememberImportSourceAsync(profile.Key, picked, CancellationToken.None);
+            await RefreshUpdateSectionAsync(viewModel, profile);
+        };
+
+        return button;
     }
 
     private static TextBlock CreateHintText(string text) => new()
@@ -734,7 +779,9 @@ public sealed partial class ServerPage : UserControl
     private async Task<T?> RunUpdateOperationAsync<T>(
         ServerPageViewModel viewModel,
         string title,
-        Func<Task<T>> operation)
+        Func<Task<T>> operation,
+        Func<T, bool>? succeeded = null,
+        Func<T, string>? outcome = null)
         where T : class
     {
         if (_isBusy)
@@ -744,23 +791,85 @@ public sealed partial class ServerPage : UserControl
 
         _isBusy = true;
         SetBusy(true, $"正在执行：{title}…");
+        // 脚本会用 ::axtools 报阶段和百分比；不接这条线，进度条就只能停在"正在准备…"。
+        var updateService = viewModel.HasUpdateService ? viewModel.UpdateService : null;
+        if (updateService is not null)
+        {
+            updateService.EventSink = ForwardServerGitEvent;
+        }
+
         try
         {
             var result = await operation();
-            viewModel.Log?.Write(LogKind.User, $"{title}已完成。");
+            if (succeeded is null || succeeded(result))
+            {
+                viewModel.Log?.Write(LogKind.User, $"{title}已完成。");
+            }
+            else
+            {
+                // "脚本跑完了"不等于"这件事成了"：切换版本失败时脚本照样正常退出，
+                // 真实成败在返回体里（report.success），不能一律写"已完成"。
+                viewModel.Log?.Write(
+                    LogKind.Error,
+                    $"{title}失败：{outcome?.Invoke(result) ?? "脚本返回了失败结果"}");
+            }
+
             return result;
         }
         catch (Exception exception)
         {
+            // 失败只写日志，不弹窗 —— 输出日志区本来就有这条（带完整堆栈），
+            // 弹窗还会把界面挡住、得手动关掉。
             viewModel.Log?.Write(LogKind.Error, $"{title}失败。", exception);
-            await ShowTextAsync($"{title} 失败", string.Empty, exception.Message);
             return null;
         }
         finally
         {
+            if (updateService is not null)
+            {
+                updateService.EventSink = null;
+            }
+
             _isBusy = false;
             SetBusy(false, string.Empty);
         }
+    }
+
+    /// <summary>
+    /// 脚本事件来自后台读取线程，必须切回 UI 线程再改 ViewModel。
+    /// 有百分比的（复制/统计文件）走确定进度；只有阶段的走"不确定"，让圆环转起来。
+    /// </summary>
+    private void ForwardServerGitEvent(AxTaskEvent taskEvent)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (ViewModel?.GlobalProgress is not { } progress)
+            {
+                return;
+            }
+
+            switch (taskEvent.Type)
+            {
+                case AxTaskEventType.Progress:
+                    progress.Report(new ProgressUpdate(
+                        taskEvent.Message ?? "正在执行…",
+                        taskEvent.Percent ?? progress.Percent,
+                        taskEvent.Detail));
+                    break;
+                case AxTaskEventType.Stage:
+                    progress.Report(new ProgressUpdate(
+                        taskEvent.Message ?? "正在执行…",
+                        taskEvent.Percent ?? progress.Percent,
+                        taskEvent.Detail,
+                        IsIndeterminate: taskEvent.Percent is null));
+                    break;
+                case AxTaskEventType.Warning:
+                    ViewModel?.Log?.Write(
+                        LogKind.Warning,
+                        taskEvent.Message ?? taskEvent.Code ?? "脚本警告");
+                    break;
+            }
+        });
     }
 
     private async Task ImportBuildAsync(ServerPageViewModel viewModel, ServerProgramProfile profile)
@@ -770,10 +879,18 @@ public sealed partial class ServerPage : UserControl
             return;
         }
 
-        var source = await PickFolderAsync();
-        if (string.IsNullOrWhiteSpace(source))
+        // 记住过、而且目录还在 → 直接用（省一次翻目录）；否则弹文件夹选择。
+        // 想换目录：点卡片上那行「导入目录：…（点这里更换）」。
+        var source = viewModel.GetImportSource(profile.Key);
+        if (string.IsNullOrWhiteSpace(source) || !Directory.Exists(source))
         {
-            return;
+            source = await PickFolderAsync();
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return;
+            }
+
+            await viewModel.RememberImportSourceAsync(profile.Key, source, CancellationToken.None);
         }
 
         var import = await RunUpdateOperationAsync(
@@ -813,6 +930,8 @@ public sealed partial class ServerPage : UserControl
         }
 
         var defaultMessage = profile.DefaultCommitSubject(DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
+        // 差异清单同时写进输出日志：弹窗可以随手关掉，日志留着能回看、能复制
+        viewModel.Log?.Write(LogKind.Info, $"{profile.DisplayName} · 导入新构建 差异清单：{Environment.NewLine}{report}");
         var message = await ShowCommitDialogAsync(
             $"{profile.DisplayName} · 确认导入",
             report.ToString(),
@@ -892,7 +1011,9 @@ public sealed partial class ServerPage : UserControl
         var report = await RunUpdateOperationAsync(
             viewModel,
             $"{profile.DisplayName} · 切换最新版本",
-            () => viewModel.UpdateService.ApplyAsync(profile, CancellationToken.None));
+            () => viewModel.UpdateService.ApplyAsync(profile, CancellationToken.None),
+            succeeded: result => result.Success,
+            outcome: result => result.Describe());
         if (report is null)
         {
             return;
@@ -923,7 +1044,9 @@ public sealed partial class ServerPage : UserControl
         var report = await RunUpdateOperationAsync(
             viewModel,
             $"{profile.DisplayName} · 回退上个版本",
-            () => viewModel.UpdateService.RollbackAsync(profile, CancellationToken.None));
+            () => viewModel.UpdateService.RollbackAsync(profile, CancellationToken.None),
+            succeeded: result => result.Success,
+            outcome: result => result.Describe());
         if (report is null)
         {
             return;

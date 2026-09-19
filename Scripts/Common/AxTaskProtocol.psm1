@@ -16,7 +16,10 @@ function Write-AxTaskEvent {
     }
 
     $json = $Data | ConvertTo-Json -Compress -Depth 8
-    Write-Output "::axtools $json"
+    # 直接写 stdout，不走 Write-Output：协议行是给宿主进程读的，一旦被 Write-Output
+    # 发出就会被调用方的 `$x = SomeFunction` 当成返回值收进变量，把结果数据污染成
+    # "事件字符串 + 真结果"的混合数组（服务端仓库脚本的 import 就踩过这条）。
+    [Console]::Out.WriteLine("::axtools $json")
 }
 
 function Write-AxTaskStage {

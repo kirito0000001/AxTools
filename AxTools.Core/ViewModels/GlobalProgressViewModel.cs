@@ -45,9 +45,9 @@ public sealed partial class GlobalProgressViewModel : ObservableObject
         Detail = NormalizeDetail(detail);
         Percent = 0;
         LastPercent = 0;
-        PercentText = "0%";
         ElapsedText = "00:00";
         IsIndeterminate = false;
+        RefreshPercentText();
         CanCancel = true;
         CancelLabel = "取消当前操作";
         IsVisible = true;
@@ -58,10 +58,10 @@ public sealed partial class GlobalProgressViewModel : ObservableObject
         var clampedPercent = Math.Clamp(update.Percent, 0, 100);
         LastPercent = Percent;
         Percent = clampedPercent;
-        PercentText = $"{clampedPercent:0}%";
         Title = update.Message;
         Detail = NormalizeDetail(update.Detail);
         IsIndeterminate = update.IsIndeterminate;
+        RefreshPercentText();
         IsVisible = true;
     }
 
@@ -94,10 +94,10 @@ public sealed partial class GlobalProgressViewModel : ObservableObject
     {
         LastPercent = Percent;
         Percent = 100;
-        PercentText = "100%";
         Title = title;
         Detail = NormalizeDetail(detail);
         IsIndeterminate = false;
+        RefreshPercentText();
         CanCancel = false;
         IsVisible = true;
     }
@@ -109,4 +109,13 @@ public sealed partial class GlobalProgressViewModel : ObservableObject
 
     private static string NormalizeDetail(string? detail) =>
         (detail ?? string.Empty).Replace('\r', ' ').Replace('\n', ' ');
+
+    /// <summary>
+    /// 阶段时长未知时进度条是滚动条，此时显示 "0%" 会让人以为界面卡死，
+    /// 统一改成 "—"，等脚本给出真实百分比再显示数字。
+    /// </summary>
+    partial void OnIsIndeterminateChanged(bool value) => RefreshPercentText();
+
+    private void RefreshPercentText() =>
+        PercentText = IsIndeterminate ? "—" : $"{Percent:0}%";
 }

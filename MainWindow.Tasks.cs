@@ -241,7 +241,14 @@ public sealed partial class MainWindow
     private void StartTaskElapsedTimer()
     {
         _taskStartedAt = DateTimeOffset.Now;
-        _taskElapsedTimer?.Stop();
+        if (_taskElapsedTimer is not null)
+        {
+            // 计时器跟着进度条的显示状态走（见 MainWindow.Progress.cs），
+            // 托管任务在这里再调一次只是把起点对齐到"任务真正开始"，不重建计时器。
+            TaskElapsedTimer_Tick(_taskElapsedTimer, EventArgs.Empty);
+            return;
+        }
+
         _taskElapsedTimer = DispatcherQueue.CreateTimer();
         _taskElapsedTimer.Interval = TimeSpan.FromSeconds(1);
         _taskElapsedTimer.Tick += TaskElapsedTimer_Tick;

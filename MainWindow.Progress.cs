@@ -13,16 +13,25 @@ public sealed partial class MainWindow
         {
             if (_viewModel.GlobalProgress.IsVisible)
             {
+                // 计时器跟着进度条一起出现：任何页面（含服务器页）只要驱动全局进度条，
+                // 就自动有时间显示，不必各自再管一个计时器。
+                StartTaskElapsedTimer();
                 ShowGlobalProgress();
             }
             else
             {
+                StopTaskElapsedTimer();
                 HideGlobalProgress();
             }
         }
         else if (e.PropertyName == nameof(_viewModel.GlobalProgress.Percent))
         {
             UpdateGlobalProgressGeometry(_viewModel.GlobalProgress.Percent);
+        }
+        else if (e.PropertyName == nameof(_viewModel.GlobalProgress.IsIndeterminate))
+        {
+            // 阶段总时长未知时让圆环转起来，别停在那儿假装 0%。
+            GlobalProgressRing.IsIndeterminate = _viewModel.GlobalProgress.IsIndeterminate;
         }
     }
 

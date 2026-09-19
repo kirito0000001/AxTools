@@ -33,4 +33,22 @@ public sealed class GlobalProgressViewModelTests
         Assert.Equal("AxTools.exe", viewModel.Detail);
         Assert.False(viewModel.CanCancel);
     }
+
+    /// <summary>
+    /// 阶段总时长未知时进度条是滚动条，此时显示 "0%" 会让人以为卡死了。
+    /// </summary>
+    [Fact]
+    public void IndeterminateStage_ReplacesMeaninglessZeroPercent()
+    {
+        var viewModel = new GlobalProgressViewModel();
+        viewModel.Start("导入新构建", "正在准备...");
+
+        viewModel.IsIndeterminate = true;
+
+        Assert.Equal("—", viewModel.PercentText);
+
+        viewModel.Report(new ProgressUpdate("正在同步产物文件 40/100", 40));
+
+        Assert.Equal("40%", viewModel.PercentText);
+    }
 }
