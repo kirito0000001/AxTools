@@ -242,15 +242,25 @@ try {
         Where-Object { $_ -match 'unreachable|dangling' })
     Assert-True ($leftovers.Count -eq 0) "本机仓库里还留着上一版的对象：$($leftovers -join '; ')"
 
-    # 安卓：只发主 APK + OBB。
+    # 安卓：发主 APK + OBB 里的条目（OBB 本体不发），外加一个旁车告诉启动器怎么组装回 OBB。
     $androidRoot = Join-Path $testRoot 'AndroidPackage'
     New-Item -ItemType Directory -Force -Path $androidRoot | Out-Null
     New-TestFile -Root $androidRoot -Relative 'CrossingVoid-Android-Shipping-arm64.apk' -Content ('P' * 1024)
     New-TestFile -Root $androidRoot -Relative 'AFS_CrossingVoid-Android-Shipping-arm64.apk' -Content 'afs'
-    New-TestFile -Root $androidRoot -Relative 'main.1.com.TFAC.CorssingVoid.obb' -Content ('O' * 4096)
     New-TestFile -Root $androidRoot -Relative 'Install_CrossingVoid.bat' -Content 'bat'
     New-TestFile -Root $androidRoot -Relative 'CrossingVoid_Symbols_v1\native.so' -Content 'symbols'
     New-TestFile -Root $androidRoot -Relative 'win-x64\UnrealAndroidFileTool.exe' -Content 'tool'
+
+    # 造一个"真的 ZIP"当 OBB（UE 产出的 OBB 就是不压缩 ZIP，条目就是 chunk 容器）
+    $obbPayload = Join-Path $testRoot 'obb-payload'
+    New-TestFile -Root $obbPayload -Relative 'CrossingVoid\Content\Paks\pakchunk0-Android_ASTC.pak' -Content ('O' * 4096)
+    New-TestFile -Root $obbPayload -Relative 'Engine\Config\StagedBuild_Test.ini' -Content 'engine-config'
+    $obbPath = Join-Path $androidRoot 'main.1.com.TFAC.CorssingVoid.obb'
+    [IO.Compression.ZipFile]::CreateFromDirectory(
+        $obbPayload,
+        $obbPath,
+        [IO.Compression.CompressionLevel]::NoCompression,
+        $false)
 
     $androidRemote = Join-Path $remoteRoot 'game-axtest-android.git'
     & git init --bare -b main $androidRemote | Out-Null
@@ -270,10 +280,19 @@ try {
     Assert-True ($androidManifest.runtime -eq 'Android') '安卓清单平台标识错误。'
     Assert-True ($androidManifest.baseUrl -eq 'https://dl.crossingvoid.top/games/axtest-android/0.9.2/') '安卓清单 baseUrl 错误。'
     Assert-True ($androidPaths -contains 'CrossingVoid-Android-Shipping-arm64.apk') '安卓清单缺少主 APK。'
-    Assert-True ($androidPaths -contains 'main.1.com.TFAC.CorssingVoid.obb') '安卓清单缺少 OBB。'
+    Assert-True (-not ($androidPaths -contains 'main.1.com.TFAC.CorssingVoid.obb')) '安卓清单不该再直接发 OBB 本体。'
+    Assert-True ($androidPaths -contains 'CrossingVoid/Content/Paks/pakchunk0-Android_ASTC.pak') '安卓清单缺少 OBB 里的 chunk 条目。'
+    Assert-True ($androidPaths -contains 'Engine/Config/StagedBuild_Test.ini') '安卓清单缺少 OBB 里的其它条目。'
+    Assert-True ($androidPaths -contains 'CrossingVoid.obb.json') '安卓清单缺少 OBB 旁车文件。'
     Assert-True (-not ($androidPaths -contains 'AFS_CrossingVoid-Android-Shipping-arm64.apk')) '安卓清单不应包含 AFS APK。'
     Assert-True (-not ($androidPaths -contains 'Install_CrossingVoid.bat')) '安卓清单不应包含安装 bat。'
     Assert-True (-not ($androidPaths | Where-Object { $_ -like 'CrossingVoid_Symbols_v1/*' })) '安卓清单不应包含符号文件。'
+
+    # 旁车内容：OBB 名字 + 组成它的条目
+    $sidecar = Get-Content -LiteralPath (Join-Path $stagingRoot 'axtest-android\games\axtest-android\0.9.2\CrossingVoid.obb.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-True ($sidecar.obbFileName -eq 'main.1.com.TFAC.CorssingVoid.obb') "旁车里的 OBB 名字不对：$($sidecar.obbFileName)"
+    Assert-True (@($sidecar.entries).Count -eq 2) "旁车里的条目数不对：$(@($sidecar.entries).Count)"
+    Assert-True ($sidecar.entries -contains 'CrossingVoid/Content/Paks/pakchunk0-Android_ASTC.pak') '旁车里缺 chunk 条目。'
 
     # 重整仓库：压成一条没有父提交的提交（也就是全量重传）。
     $rebuild = Invoke-ReleaseKernel -ExtraArguments (@('-Mode', 'RebuildRepo', '-ReleaseVersion', '0.9.2') + $common)

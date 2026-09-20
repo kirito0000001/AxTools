@@ -44,7 +44,8 @@ param(
 # 游戏包发布内核（P3 重写，2026-09-20）
 #
 # 干什么：把"文件夹形态的打包产物"变成"下载站上的一个版本"，全程不压缩、不切片：
-#   1) 检查产物（按平台过滤：PC 排除 pdb/Saved 日志，安卓只发主 APK + OBB）
+#   1) 检查产物（按平台过滤：PC 排除 pdb/Saved 日志；安卓发主 APK + **OBB 里的每个条目**
+#      —— OBB 本体不发，它就是一个不压缩 ZIP，拆开发文件级清单才能给出"只下变化的 chunk"）
 #   2) 生成 v1 文件级清单（schemaVersion=1 + baseUrl + 每个文件的 sha256）
 #   3) 把产物同步进本机暂存仓库（树里只保留这一个版本，更早的版本物理删掉）
 #   4) 提交（amend，保持单提交）→ git push --force 到下载站裸仓库（增量、带百分比）
@@ -94,6 +95,14 @@ $ManifestProductKey = if ($Channel -eq 'Test') { "$ProductSegment-game-test" } e
 $ChannelLabel = if ($Channel -eq 'Test') { 'test' } else { 'stable' }
 $PlatformLabel = if ($Platform -eq 'Android') { 'Android' } else { 'Windows' }
 if ([string]::IsNullOrWhiteSpace($VersionMarkerName)) { $VersionMarkerName = 'CrossingVoid.version.json' }
+# 安卓 OBB 的旁车文件名（从版本标记名派生：CrossingVoid.version.json → CrossingVoid.obb.json）。
+# 它告诉启动器"要组装回哪个 OBB、由哪些条目组成"——OBB 本体不上传，只上传里面的条目。
+$ObbSidecarName = if ($VersionMarkerName -like '*.version.json') {
+    $VersionMarkerName.Substring(0, $VersionMarkerName.Length - 'version.json'.Length) + 'obb.json'
+}
+else {
+    "$ProductSegment.obb.json"
+}
 
 $script:GitOutput = [System.Collections.Generic.List[string]]::new()
 $script:RebuildBackup = ''
@@ -225,12 +234,53 @@ function Test-ExcludedWindowsRelativePath {
 function Test-IsAndroidReleaseFile {
     param([string]$Name)
 
-    # 只发"玩家真正需要"的两个文件：主 APK + OBB。
+    # 只发"玩家真正需要"的东西：主 APK + OBB 里的条目（见 Expand-AndroidObb）。
     # 排除掉打包目录里的符号、AFS 调试工具、安装/卸载 bat（旧发布流程也是这么过滤的）。
-    if ($Name -match '^main\.\d+\..+\.obb$') { return $true }
+    # OBB 本身【不发】：它就是一个不压缩 ZIP，把里面每个条目当独立文件发出去，
+    # 文件级清单才能给出"只下变化的 chunk"（否则改一个 chunk = 重下整个 2 GB OBB）。
+    if ($Name -match '^main\.\d+\..+\.obb$') { return $false }
     if ($Name.StartsWith('AFS_', [StringComparison]::OrdinalIgnoreCase)) { return $false }
     if ($Name -match '-Android-Shipping-.+\.apk$') { return $true }
     return $false
+}
+
+# 把安卓 OBB 里的每个条目解成一个独立文件（不压缩 ZIP，条目路径就是工程内路径）。
+# 解到 $StagingRoot 下的临时目录（和暂存仓库同一个盘 → 后面能直接硬链接，不额外占空间）。
+function Expand-AndroidObb {
+    param(
+        [Parameter(Mandatory)][string]$ObbPath,
+        [Parameter(Mandatory)][string]$UnpackRoot
+    )
+
+    if (Test-Path -LiteralPath $UnpackRoot) { Remove-Item -LiteralPath $UnpackRoot -Recurse -Force }
+    New-Item -ItemType Directory -Path $UnpackRoot -Force | Out-Null
+
+    $entries = [System.Collections.Generic.List[object]]::new()
+    $zip = [IO.Compression.ZipFile]::OpenRead($ObbPath)
+    try {
+        foreach ($entry in $zip.Entries) {
+            if ([string]::IsNullOrWhiteSpace($entry.Name)) { continue }   # 目录条目
+            $relative = $entry.FullName.Replace('\', '/')
+            if ($relative.StartsWith('/') -or $relative -match '^[A-Za-z]:' -or ($relative -split '/') -contains '..') {
+                throw "OBB 里的路径不合法，拒绝解包：$relative"
+            }
+            $target = Join-Path $UnpackRoot ($relative -replace '/', '\')
+            $directory = Split-Path -Parent $target
+            if (-not [string]::IsNullOrWhiteSpace($directory)) {
+                New-Item -ItemType Directory -Path $directory -Force | Out-Null
+            }
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $target, $true)
+            $entries.Add([pscustomobject]@{
+                Relative = $relative
+                FullName = $target
+                Length   = [int64](Get-Item -LiteralPath $target -Force).Length
+            })
+        }
+    }
+    finally {
+        $zip.Dispose()
+    }
+    return @($entries | Sort-Object -Property Relative -CaseSensitive)
 }
 
 # ---------------------------------------------------------------------------
@@ -782,7 +832,26 @@ try {
     }
 
     Write-AxTaskStage -Stage 'scan' -Message "正在扫描 $PlatformLabel 打包产物" -Detail $GameDirectory
-    $releaseFiles = Get-ReleaseFileList -Root $GameDirectory -Platform $Platform
+    $releaseFiles = @(Get-ReleaseFileList -Root $GameDirectory -Platform $Platform)
+
+    # 安卓：OBB 不发本体，发它里面的条目（+ 一个旁车文件告诉启动器怎么组装回 OBB）
+    $obbFile = $null
+    $obbEntries = @()
+    $obbUnpackRoot = Join-Path $StagingRoot ("_obb-" + $ProductSegment)
+    if ($Platform -eq 'Android') {
+        $obbFile = Get-ChildItem -LiteralPath $GameDirectory -Recurse -File -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^main\.\d+\..+\.obb$' } |
+            Sort-Object Name | Select-Object -First 1
+        if ($null -ne $obbFile) {
+            $obbEntries = Expand-AndroidObb -ObbPath $obbFile.FullName -UnpackRoot $obbUnpackRoot
+            $releaseFiles = @($releaseFiles) + @($obbEntries) |
+                Sort-Object -Property Relative -CaseSensitive
+            Write-AxTaskStage `
+                -Stage 'scan' `
+                -Message "OBB 已解成 $($obbEntries.Count) 个条目（$($obbFile.Name) 本身不上传）" `
+                -Detail $obbUnpackRoot
+        }
+    }
     if ($releaseFiles.Count -eq 0) {
         throw "打包目录里没有一个可以发布的文件：$GameDirectory"
     }
@@ -822,6 +891,22 @@ try {
         ConvertTo-Json |
         Set-Content -LiteralPath (Join-Path $VersionDirectory $VersionMarkerName) -Encoding UTF8 -NoNewline
 
+    # 安卓多一个旁车：告诉启动器"要组装回哪个 OBB、由哪些条目组成"（OBB 本体不上传）。
+    $obbSidecarFile = $null
+    if ($null -ne $obbFile) {
+        $obbSidecarFile = Join-Path $VersionDirectory $ObbSidecarName
+        $sidecar = [ordered]@{
+            obbFileName = $obbFile.Name
+            entries     = @($obbEntries | ForEach-Object { $_.Relative })
+            version     = $ReleaseVersion
+            productKey  = $ManifestProductKey
+        }
+        [IO.File]::WriteAllText(
+            $obbSidecarFile,
+            ($sidecar | ConvertTo-Json -Depth 4),
+            [Text.UTF8Encoding]::new($false))
+    }
+
     $stale = Remove-StaleVersions
     if ($stale -gt 0) {
         Write-AxTaskProgress -Stage 'stage' -Percent 58 -Message "已清理 $stale 个更早的版本目录/清单（保留策略：树里只留当前版本）"
@@ -842,6 +927,13 @@ try {
         sizeBytes = [int64]$markerFile.Length
         sha256    = (Get-FileHash -LiteralPath $markerFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     })
+    if ($null -ne $obbSidecarFile) {
+        $manifestFiles.Add([ordered]@{
+            path      = $ObbSidecarName
+            sizeBytes = [int64](Get-Item -LiteralPath $obbSidecarFile -Force).Length
+            sha256    = (Get-FileHash -LiteralPath $obbSidecarFile -Algorithm SHA256).Hash.ToLowerInvariant()
+        })
+    }
 
     $generatedAt = [DateTimeOffset]::Now.ToString('o')
     $manifest = [ordered]@{
@@ -858,6 +950,12 @@ try {
     if (Test-ManifestEquivalent -Previous $previousManifest -Manifest $manifest) {
         $manifest['generatedAt'] = [string]$previousManifest.GeneratedAt
     }
+
+    # 安卓解出来的 OBB 条目只是"中转"：已经硬链接进版本目录了，临时目录可以收掉。
+    if ($Platform -eq 'Android' -and (Test-Path -LiteralPath $obbUnpackRoot)) {
+        Remove-Item -LiteralPath $obbUnpackRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
     if (-not (Test-Path -LiteralPath $ManifestDirectory -PathType Container)) {
         New-Item -ItemType Directory -Path $ManifestDirectory -Force | Out-Null
     }
@@ -876,7 +974,9 @@ try {
         VersionDirectory = $VersionDirectory
         BaseUrl        = $BaseUrl
         FileCount      = $manifestFiles.Count
-        TotalBytes     = ($totalBytes + $markerFile.Length)
+        TotalBytes     = ($totalBytes + $markerFile.Length + $(if ($null -ne $obbSidecarFile) { (Get-Item -LiteralPath $obbSidecarFile -Force).Length } else { 0 }))
+        ObbFileName    = $(if ($null -ne $obbFile) { $obbFile.Name } else { '' })
+        ObbEntryCount  = $obbEntries.Count
         Added          = $changeSummary.Added
         Updated        = $changeSummary.Updated
         Removed        = $changeSummary.Removed

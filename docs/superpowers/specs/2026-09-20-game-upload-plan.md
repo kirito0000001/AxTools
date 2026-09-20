@@ -315,6 +315,7 @@ uploader 的强制命令白名单本来就是 `/srv/repos/game-*.git`，**不需
 | 产品 | 状态 |
 | --- | --- |
 | 幻杀 · 安卓 | ✅ 2026-09-20 跑通：106 MB（apk 67.4 MB + obb 43.8 MB），清单 3 条（含 `FantasyProject.version.json`），全新裸仓库落位 + 回收 + 公网校验通过 → `https://dl.crossingvoid.top/games/fantasyproject-android/0.1.0/` |
+| 幻杀 · 安卓（**chunk 化**） | ✅ 2026-09-20 跑通 `0.1.1`：不再发 OBB 本体，改发 **OBB 里的 3 个条目** + `FantasyProject.obb.json` 旁车，清单 6 条；公网抽样 4 个文件通过 → `/games/fantasyproject-android/0.1.1/`（旧 `0.1.0` 已归档） |
 | 幻杀 · PC | ⬜ 产物就位（`F:\DaBaoV\Fantasy\Windows` 1.9 GB），等一次发布 |
 | 火影 · PC / 安卓 | ⬜ 还没有打包产物（工程在 `D:\UnrealMap\NarutoBP`，版本号 `0.1`）；页面上产物目录本来也是空的 |
 | 零境 · PC / 安卓 | ✅ P3 已跑通 |
