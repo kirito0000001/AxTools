@@ -14,13 +14,16 @@ public sealed class ToolPageXamlLayoutTests
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
         var expected = new Dictionary<string, (string Title, string Icon)>
         {
-            ["AxToolsNavItem"] = ("Ax工具箱", "AxTools.png"),
-            ["FantasyToolsNavItem"] = ("幻杀工具箱", "FantasyTools.png"),
-            ["GalExcleToolsNavItem"] = ("剧情工具箱", "GalExcleTools.png"),
-            ["CrossingVoidZDToolNavItem"] = ("ZD空界幻境", "CrossingVoidZDTool.png"),
-            ["FantasyProjectPcNavItem"] = ("幻杀启动器 PC", "FantasyProjectPc.png"),
-            ["CrossingVoidPcNavItem"] = ("零境启动器 PC", "CrossingVoidPc.png"),
-            ["CrossingVoidAndroidNavItem"] = ("零境启动器 Android", "CrossingVoidAndroid.png")
+            ["AxToolsNavItem"] = ("Ax管理器", "AxTools.png"),
+            ["CrossingVoidGameNavItem"] = ("游戏-零境交错", "CrossingVoidPc.png"),
+            ["FantasyGameNavItem"] = ("游戏-幻杀", "FantasyTools.png"),
+            ["NarutoGameNavItem"] = ("游戏-火影BP", "FantasyTools.png"),
+            ["CrossingVoidZDToolNavItem"] = ("工具-零境素材", "CrossingVoidZDTool.png"),
+            ["GalExcleToolsNavItem"] = ("工具-剧情填表", "GalExcleTools.png"),
+            ["FantasyToolsNavItem"] = ("工具-幻杀卡牌", "FantasyTools.png"),
+            ["CrossingVoidPcNavItem"] = ("TFAC启动平台", "CrossingVoidPc.png"),
+            ["CrossingVoidAndroidNavItem"] = ("平台-零境-安卓", "CrossingVoidAndroid.png"),
+            ["FantasyAndroidNavItem"] = ("平台-幻杀-安卓", "FantasyProjectPc.png")
         };
 
         foreach (var item in document.Descendants(presentation + "NavigationViewItem"))
@@ -38,7 +41,7 @@ public sealed class ToolPageXamlLayoutTests
     }
 
     [Fact]
-    public void MainWindow_PlacesGalExcleToolsAndZdToolBeforeFantasyProjectPc()
+    public void MainWindow_PlacesZdToolBeforeGalExcleToolsBeforeFantasyTools()
     {
         var document = XDocument.Load(FindProjectFile("MainWindow.xaml"));
         XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
@@ -53,15 +56,13 @@ public sealed class ToolPageXamlLayoutTests
                 Content = (string?)element.Attribute("Content")
             })
             .ToList();
-        var fantasyIndex = navigationItems.FindIndex(item => item.Name == "FantasyToolsNavItem");
-        var galExcleIndex = navigationItems.FindIndex(item => item.Name == "GalExcleToolsNavItem");
         var zdIndex = navigationItems.FindIndex(item => item.Name == "CrossingVoidZDToolNavItem");
-        var fantasyProjectIndex = navigationItems.FindIndex(item => item.Name == "FantasyProjectPcNavItem");
+        var galExcleIndex = navigationItems.FindIndex(item => item.Name == "GalExcleToolsNavItem");
+        var fantasyToolsIndex = navigationItems.FindIndex(item => item.Name == "FantasyToolsNavItem");
 
-        Assert.Equal(fantasyIndex + 1, galExcleIndex);
-        Assert.Equal(galExcleIndex + 1, zdIndex);
-        Assert.Equal(zdIndex + 1, fantasyProjectIndex);
-        Assert.Equal("剧情工具箱", navigationItems[galExcleIndex].Content);
+        Assert.Equal(zdIndex + 1, galExcleIndex);
+        Assert.Equal(galExcleIndex + 1, fantasyToolsIndex);
+        Assert.Equal("工具-剧情填表", navigationItems[galExcleIndex].Content);
         Assert.Contains(
             document.Descendants(views + "ToolPage"),
             element => (string?)element.Attribute(xaml + "Name") == "GalExcleToolsPage");
@@ -85,11 +86,11 @@ public sealed class ToolPageXamlLayoutTests
             .ToList();
         var galIndex = items.FindIndex(item => item.Name == "GalExcleToolsNavItem");
         var zdIndex = items.FindIndex(item => item.Name == "CrossingVoidZDToolNavItem");
-        var fantasyProjectIndex = items.FindIndex(item => item.Name == "FantasyProjectPcNavItem");
+        var fantasyToolsIndex = items.FindIndex(item => item.Name == "FantasyToolsNavItem");
 
-        Assert.Equal(galIndex + 1, zdIndex);
-        Assert.Equal(zdIndex + 1, fantasyProjectIndex);
-        Assert.Equal("ZD空界幻境", items[zdIndex].Content);
+        Assert.Equal(zdIndex + 1, galIndex);
+        Assert.Equal(galIndex + 1, fantasyToolsIndex);
+        Assert.Equal("工具-零境素材", items[zdIndex].Content);
         Assert.Equal("CrossingVoidZDTool", items[zdIndex].Tag);
         Assert.Contains(
             document.Descendants(views + "ToolPage"),
@@ -101,13 +102,13 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains("\"CrossingVoidZDTool\" => CrossingVoidZDToolNavItem", routing);
 
         var windowCode = File.ReadAllText(FindProjectFile("MainWindow.xaml.cs"));
-        Assert.Contains("CrossingVoidZDToolPage.DataContext = viewModel.Tools[3]", windowCode);
+        Assert.Contains("CrossingVoidZDToolPage.DataContext = viewModel.Tools[4]", windowCode);
         Assert.Contains("CrossingVoidZDToolPage.ToolActionRequested += ToolPage_ToolActionRequested", windowCode);
         Assert.Contains("CrossingVoidZDToolPage.ToolActionRequested -= ToolPage_ToolActionRequested", windowCode);
     }
 
     [Fact]
-    public void MainWindow_PlacesAndroidLauncherAfterPcLauncherAndRemovesOldGamePage()
+    public void MainWindow_PlacesAndroidLauncherAfterPcLauncher()
     {
         var document = XDocument.Load(FindProjectFile("MainWindow.xaml"));
         XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
@@ -120,7 +121,7 @@ public sealed class ToolPageXamlLayoutTests
         var pc = names.IndexOf("CrossingVoidPcNavItem");
         var android = names.IndexOf("CrossingVoidAndroidNavItem");
         Assert.Equal(pc + 1, android);
-        Assert.DoesNotContain("CrossingVoidGameNavItem", names);
+        Assert.DoesNotContain("FantasyProjectPcNavItem", names);
         Assert.DoesNotContain("CrossingVoidPackagePage", names);
     }
 

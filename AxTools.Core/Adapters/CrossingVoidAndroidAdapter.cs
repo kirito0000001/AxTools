@@ -66,6 +66,6 @@ public sealed class CrossingVoidAndroidAdapter : ManagedToolAdapterBase
         return task with { EnvironmentVariables = environment };
     }
 
-    protected override string GetDisplayName() => "零境启动器 Android";
+    protected override string GetDisplayName() => "平台-零境-安卓";
 
 }

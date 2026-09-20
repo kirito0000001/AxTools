@@ -246,7 +246,7 @@ public sealed class ManagedToolAdapterTests : IDisposable
         var pcTask = pc.CreateTask(
             new ManagedToolActionRequest(ManagedToolAction.RunDevelopment),
             new ManagedToolPaths { SourceRoot = Path.Combine(_root, "CrossingVoidinitiator-PC") });
-        Assert.StartsWith("零境启动器 PC", pcTask.Title);
+        Assert.StartsWith("TFAC启动平台", pcTask.Title);
         Assert.DoesNotContain(pc.Actions, action => action.Action == ManagedToolAction.SetVersion);
         Assert.All(
             pc.Actions.Where(action => action.Action is ManagedToolAction.PublishDryRun or ManagedToolAction.Publish),

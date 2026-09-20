@@ -27,16 +27,16 @@ public sealed class ApplicationViewModelTests : IDisposable
         Assert.Collection(
             viewModel.Tools,
             tool => Assert.Equal("AxTools", tool.NavigationTag),
-            tool => Assert.Equal("FantasyTools", tool.NavigationTag),
-            tool => Assert.Equal("GalExcleTools", tool.NavigationTag),
+            tool => Assert.Equal("CrossingVoidGame", tool.NavigationTag),
+            tool => Assert.Equal("FantasyGame", tool.NavigationTag),
+            tool => Assert.Equal("NarutoGame", tool.NavigationTag),
             tool => Assert.Equal("CrossingVoidZDTool", tool.NavigationTag),
-            tool => Assert.Equal("FantasyProjectPc", tool.NavigationTag),
+            tool => Assert.Equal("GalExcleTools", tool.NavigationTag),
+            tool => Assert.Equal("FantasyTools", tool.NavigationTag),
             tool => Assert.Equal("CrossingVoidPc", tool.NavigationTag),
             tool => Assert.Equal("CrossingVoidAndroid", tool.NavigationTag),
-            tool => Assert.Equal("FantasyGame", tool.NavigationTag),
             tool => Assert.Equal("FantasyAndroid", tool.NavigationTag),
-            tool => Assert.Equal("CrossingVoidGame", tool.NavigationTag),
-            tool => Assert.Equal("NarutoGame", tool.NavigationTag));
+            tool => Assert.Equal("FantasyProjectPc", tool.NavigationTag));
         Assert.Equal("AxTools", viewModel.CurrentPageTag);
     }
 

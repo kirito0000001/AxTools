@@ -20,16 +20,15 @@ public sealed partial class MainWindow : Window
         RootGrid.DataContext = viewModel;
         InitializeLogPanel();
         AxToolsPage.DataContext = viewModel.Tools[0];
-        FantasyToolsPage.DataContext = viewModel.Tools[1];
-        GalExcleToolsPage.DataContext = viewModel.Tools[2];
-        CrossingVoidZDToolPage.DataContext = viewModel.Tools[3];
-        FantasyProjectPcPage.DataContext = viewModel.Tools[4];
-        CrossingVoidPcPage.DataContext = viewModel.Tools[5];
-        CrossingVoidAndroidPage.DataContext = viewModel.Tools[6];
-        FantasyGamePage.DataContext = viewModel.Tools[7];
-        FantasyAndroidPage.DataContext = viewModel.Tools[8];
-        CrossingVoidGamePage.DataContext = viewModel.Tools[9];
-        NarutoGamePage.DataContext = viewModel.Tools[10];
+        CrossingVoidGamePage.DataContext = viewModel.Tools[1];
+        FantasyGamePage.DataContext = viewModel.Tools[2];
+        NarutoGamePage.DataContext = viewModel.Tools[3];
+        CrossingVoidZDToolPage.DataContext = viewModel.Tools[4];
+        GalExcleToolsPage.DataContext = viewModel.Tools[5];
+        FantasyToolsPage.DataContext = viewModel.Tools[6];
+        CrossingVoidPcPage.DataContext = viewModel.Tools[7];
+        CrossingVoidAndroidPage.DataContext = viewModel.Tools[8];
+        FantasyAndroidPage.DataContext = viewModel.Tools[9];
         ServerAliyunPage.DataContext = viewModel.Server;
         GlobalSettingsPage.DataContext = viewModel.Settings;
         GlobalSettingsPage.PathSelectionRequested += GlobalSettingsPage_PathSelectionRequested;
@@ -49,7 +48,6 @@ public sealed partial class MainWindow : Window
         FantasyToolsPage.ToolActionRequested += ToolPage_ToolActionRequested;
         GalExcleToolsPage.ToolActionRequested += ToolPage_ToolActionRequested;
         CrossingVoidZDToolPage.ToolActionRequested += ToolPage_ToolActionRequested;
-        FantasyProjectPcPage.ToolActionRequested += ToolPage_ToolActionRequested;
         CrossingVoidPcPage.ToolActionRequested += ToolPage_ToolActionRequested;
         CrossingVoidAndroidPage.ToolActionRequested += ToolPage_ToolActionRequested;
         FantasyGamePage.ToolActionRequested += ToolPage_ToolActionRequested;
@@ -60,7 +58,6 @@ public sealed partial class MainWindow : Window
         FantasyToolsPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         GalExcleToolsPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         CrossingVoidZDToolPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
-        FantasyProjectPcPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         CrossingVoidPcPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         CrossingVoidAndroidPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         FantasyGamePage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
@@ -75,8 +72,6 @@ public sealed partial class MainWindow : Window
         GalExcleToolsPage.DownloadLinkRequested += ToolPage_DownloadLinkRequested;
         CrossingVoidZDToolPage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
         CrossingVoidZDToolPage.DownloadLinkRequested += ToolPage_DownloadLinkRequested;
-        FantasyProjectPcPage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
-        FantasyProjectPcPage.DownloadLinkRequested += ToolPage_DownloadLinkRequested;
         CrossingVoidPcPage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
         CrossingVoidPcPage.DownloadLinkRequested += ToolPage_DownloadLinkRequested;
         CrossingVoidAndroidPage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
@@ -164,7 +159,6 @@ public sealed partial class MainWindow : Window
         FantasyToolsPage.ToolActionRequested -= ToolPage_ToolActionRequested;
         GalExcleToolsPage.ToolActionRequested -= ToolPage_ToolActionRequested;
         CrossingVoidZDToolPage.ToolActionRequested -= ToolPage_ToolActionRequested;
-        FantasyProjectPcPage.ToolActionRequested -= ToolPage_ToolActionRequested;
         CrossingVoidPcPage.ToolActionRequested -= ToolPage_ToolActionRequested;
         CrossingVoidAndroidPage.ToolActionRequested -= ToolPage_ToolActionRequested;
         FantasyGamePage.ToolActionRequested -= ToolPage_ToolActionRequested;
@@ -175,7 +169,6 @@ public sealed partial class MainWindow : Window
         FantasyToolsPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         GalExcleToolsPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         CrossingVoidZDToolPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
-        FantasyProjectPcPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         CrossingVoidPcPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         CrossingVoidAndroidPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         FantasyGamePage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
@@ -190,8 +183,6 @@ public sealed partial class MainWindow : Window
         GalExcleToolsPage.DownloadLinkRequested -= ToolPage_DownloadLinkRequested;
         CrossingVoidZDToolPage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;
         CrossingVoidZDToolPage.DownloadLinkRequested -= ToolPage_DownloadLinkRequested;
-        FantasyProjectPcPage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;
-        FantasyProjectPcPage.DownloadLinkRequested -= ToolPage_DownloadLinkRequested;
         CrossingVoidPcPage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;
         CrossingVoidPcPage.DownloadLinkRequested -= ToolPage_DownloadLinkRequested;
         CrossingVoidAndroidPage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;

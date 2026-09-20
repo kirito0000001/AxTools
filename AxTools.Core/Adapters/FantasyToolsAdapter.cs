@@ -27,5 +27,5 @@ public sealed class FantasyToolsAdapter(string scriptsRoot) : ManagedToolAdapter
         Action(ManagedToolAction.Publish, "完整发布", ManagedToolActionSection.Publish, "\uE72D", true, true, true)
     ];
 
-    protected override string GetDisplayName() => "FantasyTools";
+    protected override string GetDisplayName() => "工具-幻杀卡牌";
 }

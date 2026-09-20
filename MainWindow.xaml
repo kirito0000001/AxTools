@@ -58,41 +58,38 @@
                 <x:Double x:Key="NavigationViewItemOnLeftMinHeight">64</x:Double>
             </NavigationView.Resources>
             <NavigationView.MenuItems>
-                <NavigationViewItem x:Name="AxToolsNavItem" Content="Ax工具箱" Tag="AxTools">
+                <NavigationViewItem x:Name="AxToolsNavItem" Content="Ax管理器" Tag="AxTools">
                     <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/AxTools.png" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Name="FantasyToolsNavItem" Content="幻杀工具箱" Tag="FantasyTools">
-                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/FantasyTools.png" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="GalExcleToolsNavItem" Content="剧情工具箱" Tag="GalExcleTools">
-                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/GalExcleTools.png" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="CrossingVoidZDToolNavItem" Content="ZD空界幻境" Tag="CrossingVoidZDTool">
-                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidZDTool.png" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="FantasyProjectPcNavItem" Content="幻杀启动器 PC" Tag="FantasyProjectPc">
-                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/FantasyProjectPc.png" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="CrossingVoidPcNavItem" Content="零境启动器 PC" Tag="CrossingVoidPc">
+                <NavigationViewItem x:Name="CrossingVoidGameNavItem" Content="游戏-零境交错" Tag="CrossingVoidGame">
                     <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidPc.png" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Name="CrossingVoidAndroidNavItem" Content="零境启动器 Android" Tag="CrossingVoidAndroid">
-                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidAndroid.png" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="FantasyGameNavItem" Content="幻杀" Tag="FantasyGame">
+                <NavigationViewItem x:Name="FantasyGameNavItem" Content="游戏-幻杀" Tag="FantasyGame">
                     <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/FantasyTools.png" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Name="FantasyAndroidNavItem" Content="幻杀启动器-安卓" Tag="FantasyAndroid">
-                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/FantasyProjectPc.png" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="CrossingVoidGameNavItem" Content="零境交错：空界幻境" Tag="CrossingVoidGame">
-                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidPc.png" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="NarutoGameNavItem" Content="火影" Tag="NarutoGame">
+                <NavigationViewItem x:Name="NarutoGameNavItem" Content="游戏-火影BP" Tag="NarutoGame">
                     <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/FantasyTools.png" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem x:Name="ServerAliyunNavItem" Content="服务器" Tag="ServerAliyun">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="World" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="CrossingVoidZDToolNavItem" Content="工具-零境素材" Tag="CrossingVoidZDTool">
+                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidZDTool.png" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="GalExcleToolsNavItem" Content="工具-剧情填表" Tag="GalExcleTools">
+                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/GalExcleTools.png" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="FantasyToolsNavItem" Content="工具-幻杀卡牌" Tag="FantasyTools">
+                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/FantasyTools.png" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="CrossingVoidPcNavItem" Content="TFAC启动平台" Tag="CrossingVoidPc">
+                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidPc.png" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="CrossingVoidAndroidNavItem" Content="平台-零境-安卓" Tag="CrossingVoidAndroid">
+                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidAndroid.png" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="FantasyAndroidNavItem" Content="平台-幻杀-安卓" Tag="FantasyAndroid">
+                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/FantasyProjectPc.png" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
@@ -111,7 +108,6 @@
                     <views:ToolPage x:Name="FantasyToolsPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="GalExcleToolsPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="CrossingVoidZDToolPage" Visibility="Collapsed" />
-                    <views:ToolPage x:Name="FantasyProjectPcPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="CrossingVoidPcPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="CrossingVoidAndroidPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="FantasyGamePage" Visibility="Collapsed" />

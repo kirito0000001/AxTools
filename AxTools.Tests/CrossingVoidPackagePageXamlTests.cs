@@ -6,12 +6,10 @@ namespace AxTools.Tests;
 public sealed class CrossingVoidPackagePageXamlTests
 {
     [Fact]
-    public void MainWindow_RemovesLegacyCrossingVoidGameNavigation()
+    public void MainWindow_DoesNotExposeLegacyCrossingVoidPackagePage()
     {
         var document = XDocument.Load(FindProjectFile("MainWindow.xaml"));
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
-        Assert.DoesNotContain(document.Descendants(),
-            element => (string?)element.Attribute(xaml + "Name") == "CrossingVoidGameNavItem");
         Assert.DoesNotContain(document.Descendants(),
             element => (string?)element.Attribute(xaml + "Name") == "CrossingVoidPackagePage");
     }

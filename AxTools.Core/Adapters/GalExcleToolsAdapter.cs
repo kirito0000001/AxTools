@@ -24,5 +24,5 @@ public sealed class GalExcleToolsAdapter(string scriptsRoot) : ManagedToolAdapte
         Action(ManagedToolAction.ValidatePackage, "校验打包产物", ManagedToolActionSection.Publish, "\uE9D5", true)
     ];
 
-    protected override string GetDisplayName() => "剧情工具箱";
+    protected override string GetDisplayName() => "工具-剧情填表";
 }

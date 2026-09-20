@@ -56,7 +56,7 @@ public sealed class CrossingVoidPcAdapter(string scriptsRoot) : ManagedToolAdapt
         return task;
     }
 
-    protected override string GetDisplayName() => "零境启动器 PC";
+    protected override string GetDisplayName() => "TFAC启动平台";
 
     private static bool IsInsideUnrealProject(string path)
     {

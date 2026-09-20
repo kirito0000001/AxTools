@@ -49,5 +49,5 @@ public sealed class AxToolsAdapter(string scriptsRoot) : ManagedToolAdapterBase(
         };
     }
 
-    protected override string GetDisplayName() => "Ax工具箱";
+    protected override string GetDisplayName() => "Ax管理器";
 }

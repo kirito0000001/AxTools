@@ -30,5 +30,5 @@ public sealed class FantasyProjectPcAdapter(string scriptsRoot) : ManagedToolAda
         Action(ManagedToolAction.Publish, "完整发布", ManagedToolActionSection.Publish, "\uE72D", true, true, true)
     ];
 
-    protected override string GetDisplayName() => "FantasyProject-PC";
+    protected override string GetDisplayName() => "幻杀启动器 PC";
 }

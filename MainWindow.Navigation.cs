@@ -22,7 +22,7 @@ public sealed partial class MainWindow
 
     private void ShowPageByTag(string tag, bool playAnimation)
     {
-        var normalizedTag = tag is "FantasyTools" or "GalExcleTools" or "CrossingVoidZDTool" or "FantasyProjectPc" or "CrossingVoidPc" or "CrossingVoidAndroid" or "FantasyGame" or "FantasyAndroid" or "CrossingVoidGame" or "NarutoGame" or "ServerAliyun" or "Settings"
+        var normalizedTag = tag is "FantasyTools" or "GalExcleTools" or "CrossingVoidZDTool" or "CrossingVoidPc" or "CrossingVoidAndroid" or "FantasyGame" or "FantasyAndroid" or "CrossingVoidGame" or "NarutoGame" or "ServerAliyun" or "Settings"
                 ? tag
                 : "AxTools";
         FrameworkElement visiblePage = normalizedTag switch
@@ -30,7 +30,6 @@ public sealed partial class MainWindow
             "FantasyTools" => FantasyToolsPage,
             "GalExcleTools" => GalExcleToolsPage,
             "CrossingVoidZDTool" => CrossingVoidZDToolPage,
-            "FantasyProjectPc" => FantasyProjectPcPage,
             "CrossingVoidPc" => CrossingVoidPcPage,
             "CrossingVoidAndroid" => CrossingVoidAndroidPage,
             "FantasyGame" => FantasyGamePage,
@@ -46,7 +45,6 @@ public sealed partial class MainWindow
         FantasyToolsPage.Visibility = visiblePage == FantasyToolsPage ? Visibility.Visible : Visibility.Collapsed;
         GalExcleToolsPage.Visibility = visiblePage == GalExcleToolsPage ? Visibility.Visible : Visibility.Collapsed;
         CrossingVoidZDToolPage.Visibility = visiblePage == CrossingVoidZDToolPage ? Visibility.Visible : Visibility.Collapsed;
-        FantasyProjectPcPage.Visibility = visiblePage == FantasyProjectPcPage ? Visibility.Visible : Visibility.Collapsed;
         CrossingVoidPcPage.Visibility = visiblePage == CrossingVoidPcPage ? Visibility.Visible : Visibility.Collapsed;
         CrossingVoidAndroidPage.Visibility = visiblePage == CrossingVoidAndroidPage ? Visibility.Visible : Visibility.Collapsed;
         FantasyGamePage.Visibility = visiblePage == FantasyGamePage ? Visibility.Visible : Visibility.Collapsed;
@@ -71,7 +69,6 @@ public sealed partial class MainWindow
             "FantasyTools" => FantasyToolsNavItem,
             "GalExcleTools" => GalExcleToolsNavItem,
             "CrossingVoidZDTool" => CrossingVoidZDToolNavItem,
-            "FantasyProjectPc" => FantasyProjectPcNavItem,
             "CrossingVoidPc" => CrossingVoidPcNavItem,
             "CrossingVoidAndroid" => CrossingVoidAndroidNavItem,
             "FantasyGame" => FantasyGameNavItem,

@@ -30,5 +30,5 @@ public sealed class CrossingVoidZDToolAdapter(string scriptsRoot) : ManagedToolA
         Action(ManagedToolAction.ReplaceRelease, "替换正式版", ManagedToolActionSection.Publish, "\uE74E", true, requiresConfirmation: true)
     ];
 
-    protected override string GetDisplayName() => "ZD空界幻境";
+    protected override string GetDisplayName() => "工具-零境素材";
 }

@@ -19,5 +19,5 @@ public sealed class FantasyAndroidAdapter(string scriptsRoot) : ManagedToolAdapt
         Action(ManagedToolAction.Publish, "完整发布", ManagedToolActionSection.Publish, "\uE72D", true, true, true)
     ];
 
-    protected override string GetDisplayName() => "幻杀启动器-安卓";
+    protected override string GetDisplayName() => "平台-幻杀-安卓";
 }
