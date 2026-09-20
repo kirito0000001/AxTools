@@ -19,9 +19,10 @@ foreach ($requiredText in @('Initialize-AxMsvcEnvironment', 'linker=$($nativeEnv
         throw "Crossing 适配入口缺少 MSVC 链接器兼容逻辑：$requiredText"
     }
 }
-foreach ($requiredText in @('BuildGameChunks', 'UploadGameChunks', 'PublishGamePackage', 'Publish-CrossingVoidGame.ps1', "'Windows'")) {
-    if (!$source.Contains($requiredText, [StringComparison]::Ordinal)) {
-        throw "Crossing PC 适配入口缺少游戏发布合同：$requiredText"
+# 游戏本体发布已经搬到「零境交错：空界幻境」那个工具里（平台只是参数），启动器这边不该再有游戏分包入口。
+foreach ($forbiddenText in @('BuildGameChunks', 'UploadGameChunks', 'PublishGamePackage', 'Publish-CrossingVoidGame.ps1')) {
+    if ($source.Contains($forbiddenText, [StringComparison]::Ordinal)) {
+        throw "Crossing PC 适配入口仍残留游戏分包入口：$forbiddenText"
     }
 }
 foreach ($requiredText in @('Assert-CrossingPublicVersion', 'api/toolbox-updates/tauri/crossingvoid-launcher-pc', '期望：$ExpectedVersion')) {
@@ -53,13 +54,12 @@ foreach ($requiredText in @(
         throw "PC 发布脚本缺少服务器快照容错合同：$requiredText"
     }
 }
-foreach ($requiredText in @(
-    "Join-Path (Get-CrossingOutputRoot) 'Launcher'",
-    "Join-Path (Get-CrossingOutputRoot) 'GamePackages'",
-    '$output = Get-CrossingGameOutputRoot')) {
-    if (!$source.Contains($requiredText, [StringComparison]::Ordinal)) {
-        throw "Crossing PC 适配入口没有隔离启动器与游戏产物：$requiredText"
-    }
+# 游戏产物目录的隔离已经跟着游戏发布一起搬走了，这里只剩启动器自己的 Launcher 目录。
+if (!$source.Contains("Join-Path (Get-CrossingOutputRoot) 'Launcher'", [StringComparison]::Ordinal)) {
+    throw 'Crossing PC 适配入口没有隔离启动器产物目录。'
+}
+if ($source.Contains('Get-CrossingGameOutputRoot', [StringComparison]::Ordinal)) {
+    throw 'Crossing PC 适配入口仍残留游戏产物目录函数。'
 }
 if ([regex]::Matches($source, '\$output = Get-CrossingLauncherOutputRoot').Count -lt 2) {
     throw 'Crossing PC 构建与发布没有统一使用独立 Launcher 目录。'

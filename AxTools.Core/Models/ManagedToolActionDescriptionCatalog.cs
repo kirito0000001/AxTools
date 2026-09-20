@@ -41,9 +41,9 @@ public static class ManagedToolActionDescriptionCatalog
         ManagedToolAction.Upload => "上传已经构建并校验的现有发布包，不重新构建源码。",
         ManagedToolAction.PublishDryRun => "执行完整发布所需的本地构建、打包和检查；不上传任何文件，不修改远端版本、Release 或清单。",
         ManagedToolAction.Publish => "构建、校验并真实发布新版本，会写入配置的远端发布目标。",
-        ManagedToolAction.BuildGameChunks => "从选定游戏包制作分片和校验清单，只写入 AxTools 工作区。",
-        ManagedToolAction.UploadGameChunks => "续传并核对已有游戏分片，服务器清单和最新版指针只在全部验证通过后更新。",
-        ManagedToolAction.PublishGamePackage => "重新制作游戏分片后执行完整上传、服务器白名单和最终清单发布。",
+        ManagedToolAction.CheckGamePackage => "扫描所选游戏包、算出每个文件的哈希并生成清单，报告体积与差异；不提交、不上传。",
+        ManagedToolAction.PublishGameVersion => "把所选游戏包按文件清单增量推送到下载站，落位后做公网抽样校验；没变化就什么都不传。",
+        ManagedToolAction.RebuildGameDownloadRepo => "重建本机暂存仓库并压成单提交，顺便清掉历史对象；代价是这一次要全量重传（整包）。",
         ManagedToolAction.EditLauncherReleaseNotes => "打开启动器 Release 介绍编辑窗口，保存后立即写入 AX 设置。",
         ManagedToolAction.EditGameReleaseNotes => "打开游戏 Release 介绍编辑窗口，保存后立即写入 AX 设置。",
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, "未知工具动作。")

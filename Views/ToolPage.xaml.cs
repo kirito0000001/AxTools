@@ -136,9 +136,9 @@ public sealed partial class ToolPage : UserControl
         ToolPageViewModel viewModel,
         ManagedToolAction action)
     {
-        if (action is ManagedToolAction.BuildGameChunks or
-            ManagedToolAction.UploadGameChunks or
-            ManagedToolAction.PublishGamePackage)
+        if (action is ManagedToolAction.CheckGamePackage or
+            ManagedToolAction.PublishGameVersion or
+            ManagedToolAction.RebuildGameDownloadRepo)
         {
             viewModel.GamePublishVersion = ComposeVersion(
                 GameMajorVersionNumberBox,

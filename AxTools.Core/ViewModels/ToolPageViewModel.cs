@@ -85,6 +85,13 @@ public sealed class ToolPageViewModel : ObservableObject
         var gamePublishActions = PublishActions
             .Where(item => IsGamePublishingAction(item.Action))
             .ToArray();
+        // 「发布新版本 / 只检查」是日常入口；「重整仓库」是维护动作，收进折叠区。
+        var gameMaintenanceActions = gamePublishActions
+            .Where(item => IsGameMaintenanceAction(item.Action))
+            .ToArray();
+        var gamePrimaryActions = gamePublishActions
+            .Where(item => !IsGameMaintenanceAction(item.Action))
+            .ToArray();
         LauncherReleaseNotesAction = new ToolActionItemViewModel(new ManagedToolActionDefinition(
             ManagedToolAction.EditLauncherReleaseNotes,
             "编辑 Release 介绍",
@@ -100,9 +107,10 @@ public sealed class ToolPageViewModel : ObservableObject
         LauncherPublishActions = launcherPublishActions.Length == 0
             ? []
             : [LauncherReleaseNotesAction, .. launcherPublishActions];
-        GamePublishActions = gamePublishActions.Length == 0
+        GamePublishActions = gamePrimaryActions.Length == 0
             ? []
-            : [GameReleaseNotesAction, .. gamePublishActions];
+            : [GameReleaseNotesAction, .. gamePrimaryActions];
+        GameMaintenanceActions = gameMaintenanceActions;
         if (_sharedGamePublishState is not null)
         {
             _sharedGamePublishState.PropertyChanged += SharedGamePublishState_PropertyChanged;
@@ -160,6 +168,10 @@ public sealed class ToolPageViewModel : ObservableObject
 
     public IReadOnlyList<ToolActionItemViewModel> GamePublishActions { get; }
 
+    public IReadOnlyList<ToolActionItemViewModel> GameMaintenanceActions { get; }
+
+    public bool HasGameMaintenanceActions => GameMaintenanceActions.Count > 0;
+
     public ToolActionItemViewModel LauncherReleaseNotesAction { get; }
 
     public ToolActionItemViewModel GameReleaseNotesAction { get; }
@@ -168,13 +180,17 @@ public sealed class ToolPageViewModel : ObservableObject
 
     public bool HasLauncherPublishActions => LauncherPublishActions.Count > 0;
 
-    public bool HasGamePackagePublishing => Descriptor.Key == ManagedToolKey.CrossingVoidGame;
+    /// <summary>这个工具是不是"游戏包发布"工具（由动作集合决定，三个游戏共用同一套）。</summary>
+    public bool HasGamePackagePublishing =>
+        PublishActions.Any(item => IsGamePublishingAction(item.Action));
 
-    public string GamePackageLabel => "游戏包目录";
+    public string GamePackageLabel => "游戏包目录（PC / 安卓各记一个）";
 
-    public string GamePublishingTitle => "零境游戏发布";
+    public string GamePublishingTitle => $"{DisplayName} · 游戏包发布";
 
-    public string GamePublishingDescription => "统一制作并发布 PC 与 Android 游戏本体分片，发布前保持双端版本一致。";
+    public string GamePublishingDescription =>
+        "把选定的产物目录按文件清单增量发到下载站：PC 与安卓各发各的，" +
+        "每个平台记自己的目录；没变化的文件不会重复上传。";
 
     public string GameReleaseDescription
     {
@@ -360,8 +376,19 @@ public sealed class ToolPageViewModel : ObservableObject
     public string GamePublishPlatform
     {
         get => _sharedGamePublishState is null ? _paths.GamePublishPlatform : _paths.GamePublishPlatform;
-        set => SetProperty(_paths.GamePublishPlatform, value is "Android" ? "Android" : "Windows", _paths,
-            static (model, newValue) => model.GamePublishPlatform = newValue);
+        set
+        {
+            if (SetProperty(_paths.GamePublishPlatform, value is "Android" ? "Android" : "Windows", _paths,
+                    static (model, newValue) => model.GamePublishPlatform = newValue))
+            {
+                // 换平台 = 换一整套产物目录和校验结果，整页状态都要跟着重算
+                OnPropertyChanged(nameof(GamePackageRoot));
+                OnPropertyChanged(nameof(ConfigurationStatus));
+                OnPropertyChanged(nameof(IsExecutionAvailable));
+                OnPropertyChanged(nameof(ExecutionAvailabilityText));
+                RefreshActionAvailability();
+            }
+        }
     }
 
     public string GamePublishReleaseNotes
@@ -383,10 +410,11 @@ public sealed class ToolPageViewModel : ObservableObject
     }
 
     public string GamePublishedVersionText =>
-        _sharedGamePublishState?.PublishedVersionText ?? "尚未检查线上双端版本。";
+        _sharedGamePublishState?.PublishedVersionText ?? "线上版本检查：这个游戏还没接（发布时会做公网校验）。";
 
     public string GameVersionCheckStatus =>
-        _sharedGamePublishState?.VersionCheckStatus ?? "此工具没有双端游戏版本。";
+        _sharedGamePublishState?.VersionCheckStatus ??
+            "下载站上没有历史版本记录；同一个版本号重发会直接覆盖。";
 
     public bool IsGameVersionChecking => _sharedGamePublishState?.IsChecking == true;
 
@@ -474,19 +502,25 @@ public sealed class ToolPageViewModel : ObservableObject
 
     public string GamePackageRoot
     {
-        get => _paths.GamePackageRoot;
+        // PC 和安卓是两个完全不同的产物目录，各记一个；切平台时这一格自动换成对应那份。
+        get => IsAndroidPlatform ? _paths.GamePackageRootAndroid : _paths.GamePackageRoot;
         set
         {
-            if (SetProperty(
-                _paths.GamePackageRoot,
-                value,
-                _paths,
-                static (model, newValue) => model.GamePackageRoot = newValue))
+            var stored = IsAndroidPlatform ? _paths.GamePackageRootAndroid : _paths.GamePackageRoot;
+            if (!string.Equals(stored, value, StringComparison.Ordinal))
             {
+                if (IsAndroidPlatform) { _paths.GamePackageRootAndroid = value; }
+                else { _paths.GamePackageRoot = value; }
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ConfigurationStatus));
+                OnPropertyChanged(nameof(IsExecutionAvailable));
+                OnPropertyChanged(nameof(ExecutionAvailabilityText));
                 RefreshActionAvailability();
             }
         }
     }
+
+    internal bool IsAndroidPlatform => _paths.GamePublishPlatform is "Android";
 
     public bool HasValidSourceRoot =>
         !string.IsNullOrWhiteSpace(SourceRoot) && Directory.Exists(SourceRoot);
@@ -600,8 +634,16 @@ public sealed class ToolPageViewModel : ObservableObject
         string? onlineVersion;
         if (IsGamePublishingAction(action))
         {
+            // 只有接了线上版本检查的游戏（零境，读 www 清单）才做版本门禁。
+            // 幻杀/火影还没上过任何清单，硬套"必须比线上高"只会把它们锁死。
+            if (_sharedGamePublishState is null)
+            {
+                return PublishingVersionValidationResult.Allowed(
+                    "这个游戏还没接线上版本检查；发布时会做下载站公网校验。");
+            }
+
             await CheckGamePublishedVersionAsync(cancellationToken);
-            if (_sharedGamePublishState is null || !_sharedGamePublishState.PublishedCheckSucceeded)
+            if (!_sharedGamePublishState.PublishedCheckSucceeded)
             {
                 return PublishingVersionValidationResult.Blocked("无法确认线上最新游戏版本，已停止打包或发布。");
             }
@@ -745,9 +787,7 @@ public sealed class ToolPageViewModel : ObservableObject
         ManagedToolAction.Upload or
         ManagedToolAction.PublishDryRun or
         ManagedToolAction.Publish or
-        ManagedToolAction.BuildGameChunks or
-        ManagedToolAction.UploadGameChunks or
-        ManagedToolAction.PublishGamePackage;
+        ManagedToolAction.PublishGameVersion;
 
     private IReadOnlyList<ToolActionItemViewModel> FilterActions(
         ManagedToolActionSection section) =>
@@ -790,13 +830,15 @@ public sealed class ToolPageViewModel : ObservableObject
     private bool IsBlockedByGameVersionMismatch(ManagedToolAction action) =>
         _sharedGamePublishState is not null &&
         _sharedGamePublishState.OnlineVersionsAligned != true &&
-        action is (ManagedToolAction.UploadGameChunks or
-            ManagedToolAction.PublishGamePackage);
+        action is ManagedToolAction.PublishGameVersion;
 
     private static bool IsGamePublishingAction(ManagedToolAction action) => action is
-        ManagedToolAction.BuildGameChunks or
-        ManagedToolAction.UploadGameChunks or
-        ManagedToolAction.PublishGamePackage;
+        ManagedToolAction.CheckGamePackage or
+        ManagedToolAction.PublishGameVersion or
+        ManagedToolAction.RebuildGameDownloadRepo;
+
+    private static bool IsGameMaintenanceAction(ManagedToolAction action) =>
+        action is ManagedToolAction.RebuildGameDownloadRepo;
 
     private void SharedGamePublishState_PropertyChanged(
         object? sender,

@@ -228,7 +228,32 @@ public sealed class ToolPageViewModelTests : IDisposable
     }
 
     [Fact]
-    public void CrossingVoidPc_SeparatesLauncherAndGamePublishingActions()
+    public void CrossingVoidGame_OwnsGamePublishingSection()
+    {
+        var paths = CreateCrossingGamePackage();
+        var viewModel = new ToolPageViewModel(
+            GetDescriptor(ManagedToolKey.CrossingVoidGame),
+            paths,
+            new CrossingVoidGameAdapter(Path.Combine(_root, "Scripts")));
+
+        // 日常入口：「只检查」+「发布新版本」；「重整仓库」收进维护折叠区。
+        Assert.Equal(
+            [
+                ManagedToolAction.EditGameReleaseNotes,
+                ManagedToolAction.CheckGamePackage,
+                ManagedToolAction.PublishGameVersion
+            ],
+            viewModel.GamePublishActions.Select(item => item.Action));
+        Assert.Equal(
+            [ManagedToolAction.RebuildGameDownloadRepo],
+            viewModel.GameMaintenanceActions.Select(item => item.Action));
+        Assert.True(viewModel.HasGameMaintenanceActions);
+        Assert.True(viewModel.HasGamePackagePublishing);
+        Assert.Empty(viewModel.LauncherPublishActions);
+    }
+
+    [Fact]
+    public void CrossingVoidPcLauncher_HasNoGamePublishingSection()
     {
         var paths = CreateCrossingProject();
         var viewModel = new ToolPageViewModel(
@@ -236,19 +261,9 @@ public sealed class ToolPageViewModelTests : IDisposable
             paths,
             new CrossingVoidPcAdapter(Path.Combine(_root, "Scripts")));
 
-        Assert.DoesNotContain(
-            viewModel.LauncherPublishActions,
-            item => item.Action is ManagedToolAction.BuildGameChunks or
-                ManagedToolAction.UploadGameChunks or
-                ManagedToolAction.PublishGamePackage);
-        Assert.Equal(
-            [
-                ManagedToolAction.BuildGameChunks,
-                ManagedToolAction.UploadGameChunks,
-                ManagedToolAction.PublishGamePackage
-            ],
-            viewModel.GamePublishActions.Select(item => item.Action));
-        Assert.True(viewModel.HasGamePackagePublishing);
+        Assert.Empty(viewModel.GamePublishActions);
+        Assert.Empty(viewModel.GameMaintenanceActions);
+        Assert.False(viewModel.HasGamePackagePublishing);
     }
 
     [Fact]
@@ -262,71 +277,75 @@ public sealed class ToolPageViewModelTests : IDisposable
 
         Assert.Empty(viewModel.GamePublishActions);
         Assert.False(viewModel.HasGamePackagePublishing);
-        Assert.Equal(viewModel.PublishActions, viewModel.LauncherPublishActions);
+        Assert.Equal(
+            viewModel.PublishActions,
+            viewModel.LauncherPublishActions.Where(
+                item => item.Action != ManagedToolAction.EditLauncherReleaseNotes));
     }
 
     [Fact]
-    public void CrossingVoidPc_CreateRequestUsesIndependentLauncherAndGameState()
+    public void CrossingVoidLauncherAndGameTool_UseIndependentPublishState()
     {
-        var paths = CreateCrossingProject();
-        paths.GamePackageRoot = Path.Combine(_root, "WindowsGamePackage");
-        var viewModel = new ToolPageViewModel(
+        var launcherPaths = CreateCrossingProject();
+        var launcher = new ToolPageViewModel(
             GetDescriptor(ManagedToolKey.CrossingVoidPc),
-            paths,
+            launcherPaths,
             new CrossingVoidPcAdapter(Path.Combine(_root, "Scripts")))
         {
             PublishVersion = "1.0.14",
-            PublishChannel = "stable",
-            GamePublishVersion = "0.5.12",
+            PublishChannel = "stable"
+        };
+        var launcherRequest = launcher.CreateRequest(ManagedToolAction.Publish);
+
+        var game = new ToolPageViewModel(
+            GetDescriptor(ManagedToolKey.CrossingVoidGame),
+            CreateCrossingGamePackage(),
+            new CrossingVoidGameAdapter(Path.Combine(_root, "Scripts")))
+        {
+            GamePublishVersion = "0.5.13",
             GamePublishChannel = "beta",
             GamePublishReleaseNotes = "修复资源下载"
         };
+        var gameRequest = game.CreateRequest(ManagedToolAction.PublishGameVersion);
 
-        var launcher = viewModel.CreateRequest(ManagedToolAction.Publish);
-        var game = viewModel.CreateRequest(ManagedToolAction.PublishGamePackage);
-
-        Assert.Equal("1.0.14", launcher.Version);
-        Assert.Equal("stable", launcher.Channel);
-        Assert.Equal("0.5.12", game.Version);
-        Assert.Equal("beta", game.Channel);
-        Assert.Equal("修复资源下载", game.ReleaseNotes);
-        Assert.Equal("修复资源下载", viewModel.GameReleaseDescription);
+        Assert.Equal("1.0.14", launcherRequest.Version);
+        Assert.Equal("stable", launcherRequest.Channel);
+        Assert.Equal("0.5.13", gameRequest.Version);
+        Assert.Equal("beta", gameRequest.Channel);
+        Assert.Equal("修复资源下载", gameRequest.ReleaseNotes);
+        Assert.Equal("修复资源下载", game.GameReleaseDescription);
     }
 
     [Fact]
-    public void CrossingVoidPc_RefreshesLauncherAndGameAvailabilityIndependently()
+    public void CrossingVoidGame_EnablesActionsOnlyAfterPackageDirectoryAndVersion()
     {
-        var paths = CreateCrossingProject();
-        var state = new CrossingVoidGamePublishState(paths, new ManagedToolPaths());
         var viewModel = new ToolPageViewModel(
-            GetDescriptor(ManagedToolKey.CrossingVoidPc),
-            paths,
-            new CrossingVoidPcAdapter(Path.Combine(_root, "Scripts")),
-            sharedGamePublishState: state)
-        {
-            PublishVersion = "1.0.14"
-        };
+            GetDescriptor(ManagedToolKey.CrossingVoidGame),
+            new ManagedToolPaths(),
+            new CrossingVoidGameAdapter(Path.Combine(_root, "Scripts")));
 
-        Assert.All(viewModel.LauncherPublishActions, action => Assert.True(action.IsEnabled));
-        Assert.All(viewModel.GamePublishActions, action => Assert.False(action.IsEnabled));
-
-        viewModel.GamePackageRoot = Path.Combine(_root, "WindowsGamePackage");
-        Assert.All(viewModel.GamePublishActions, action => Assert.False(action.IsEnabled));
-
-        viewModel.GamePublishVersion = "0.5.12";
-        Assert.True(viewModel.GamePublishActions.Single(
-            action => action.Action == ManagedToolAction.BuildGameChunks).IsEnabled);
-        Assert.False(viewModel.GamePublishActions.Single(
-            action => action.Action == ManagedToolAction.UploadGameChunks).IsEnabled);
-        Assert.False(viewModel.GamePublishActions.Single(
-            action => action.Action == ManagedToolAction.PublishGamePackage).IsEnabled);
-
-        viewModel.PublishVersion = string.Empty;
+        // 没选游戏包目录：连"检查环境"都不给点，因为发布内核拿不到产物。
+        Assert.False(viewModel.IsExecutionAvailable);
         Assert.All(
-            viewModel.LauncherPublishActions.Where(action => action.Definition.RequiresVersion),
+            viewModel.GamePublishActions.Where(action => action.Action != ManagedToolAction.EditGameReleaseNotes),
             action => Assert.False(action.IsEnabled));
+        Assert.All(viewModel.GameMaintenanceActions, action => Assert.False(action.IsEnabled));
+
+        var packageRoot = Path.Combine(_root, "CrossingVoidGamePackage");
+        Directory.CreateDirectory(packageRoot);
+        viewModel.GamePackageRoot = packageRoot;
+        Assert.True(viewModel.IsExecutionAvailable);
+        Assert.All(
+            viewModel.GamePublishActions.Where(action => action.Definition.RequiresVersion),
+            action => Assert.False(action.IsEnabled));
+
+        viewModel.GamePublishVersion = "0.5.13";
         Assert.True(viewModel.GamePublishActions.Single(
-            action => action.Action == ManagedToolAction.BuildGameChunks).IsEnabled);
+            action => action.Action == ManagedToolAction.CheckGamePackage).IsEnabled);
+        Assert.True(viewModel.GamePublishActions.Single(
+            action => action.Action == ManagedToolAction.PublishGameVersion).IsEnabled);
+        Assert.True(viewModel.GameMaintenanceActions.Single(
+            action => action.Action == ManagedToolAction.RebuildGameDownloadRepo).IsEnabled);
     }
 
     [Fact]
@@ -364,15 +383,14 @@ public sealed class ToolPageViewModelTests : IDisposable
     }
 
     [Fact]
-    public void CrossingVoidGame_MisalignedRemoteVersionsBlockUploadButAllowChunkBuild()
+    public void CrossingVoidGame_MisalignedRemoteVersionsBlockPublishButAllowCheck()
     {
-        var paths = CreateCrossingProject();
-        paths.GamePackageRoot = Path.Combine(_root, "WindowsGamePackage");
+        var paths = CreateCrossingGamePackage();
         var state = new CrossingVoidGamePublishState(paths, new ManagedToolPaths());
         var viewModel = new ToolPageViewModel(
-            GetDescriptor(ManagedToolKey.CrossingVoidPc),
+            GetDescriptor(ManagedToolKey.CrossingVoidGame),
             paths,
-            new CrossingVoidPcAdapter(Path.Combine(_root, "Scripts")),
+            new CrossingVoidGameAdapter(Path.Combine(_root, "Scripts")),
             sharedGamePublishState: state);
         viewModel.GamePublishVersion = "0.5.14";
 
@@ -384,11 +402,9 @@ public sealed class ToolPageViewModelTests : IDisposable
             "线上双端版本不一致"));
 
         Assert.True(viewModel.GamePublishActions.Single(
-            action => action.Action == ManagedToolAction.BuildGameChunks).IsEnabled);
+            action => action.Action == ManagedToolAction.CheckGamePackage).IsEnabled);
         Assert.False(viewModel.GamePublishActions.Single(
-            action => action.Action == ManagedToolAction.UploadGameChunks).IsEnabled);
-        Assert.False(viewModel.GamePublishActions.Single(
-            action => action.Action == ManagedToolAction.PublishGamePackage).IsEnabled);
+            action => action.Action == ManagedToolAction.PublishGameVersion).IsEnabled);
         Assert.Contains("PC V0.5.12", viewModel.GamePublishedVersionText);
         Assert.Contains("Android V0.5.13", viewModel.GamePublishedVersionText);
 
@@ -571,6 +587,14 @@ public sealed class ToolPageViewModelTests : IDisposable
         CreateFile(Path.Combine(path, "android", "settings.gradle"));
         CreateFile(Path.Combine(path, "Scripts", "Publish-AndroidLauncher.ps1"));
         return new ManagedToolPaths { SourceRoot = path };
+    }
+
+    /// <summary>零境游戏本体工具的"项目"就是打包产物目录，测试里给一个真实存在的空目录。</summary>
+    private ManagedToolPaths CreateCrossingGamePackage()
+    {
+        var path = Path.Combine(_root, "CrossingVoidGamePackage");
+        Directory.CreateDirectory(path);
+        return new ManagedToolPaths { GamePackageRoot = path };
     }
 
     private ManagedToolPaths CreateCrossingVoidZdProject()

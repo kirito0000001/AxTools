@@ -7,7 +7,7 @@ namespace AxTools.Tests;
 public sealed class ManagedToolCatalogTests
 {
     [Fact]
-    public void All_ReturnsSevenToolsInNavigationOrder()
+    public void All_ReturnsAllToolsInNavigationOrder()
     {
         var tools = ManagedToolCatalog.All;
 
@@ -56,6 +56,33 @@ public sealed class ManagedToolCatalogTests
                 Assert.Equal("CrossingVoidinitiator-Android", tool.StableKey);
                 Assert.Equal("CrossingVoidAndroid", tool.NavigationTag);
                 Assert.Equal("零境启动器 Android", tool.DisplayName);
+            },
+            tool =>
+            {
+                Assert.Equal(ManagedToolKey.FantasyGame, tool.Key);
+                Assert.Equal("FantasyGame", tool.StableKey);
+                Assert.Equal("FantasyGame", tool.NavigationTag);
+                Assert.Equal("幻杀", tool.DisplayName);
+            },
+            tool =>
+            {
+                Assert.Equal(ManagedToolKey.FantasyAndroid, tool.Key);
+                Assert.Equal("FantasyProject-Downloader-Android", tool.StableKey);
+                Assert.Equal("幻杀启动器-安卓", tool.DisplayName);
+            },
+            tool =>
+            {
+                Assert.Equal(ManagedToolKey.CrossingVoidGame, tool.Key);
+                Assert.Equal("CrossingVoid", tool.StableKey);
+                Assert.Equal("CrossingVoidGame", tool.NavigationTag);
+                Assert.Equal("零境交错：空界幻境", tool.DisplayName);
+            },
+            tool =>
+            {
+                Assert.Equal(ManagedToolKey.NarutoGame, tool.Key);
+                Assert.Equal("NarutoGame", tool.StableKey);
+                Assert.Equal("NarutoGame", tool.NavigationTag);
+                Assert.Equal("火影", tool.DisplayName);
             });
     }
 

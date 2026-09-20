@@ -65,6 +65,12 @@ public static class ManagedToolCatalog
             "CrossingVoid",
             "零境交错：空界幻境",
             "CrossingVoidGame",
-            "管理零境交错游戏本体的 PC 与 Android 分片、上传和版本清单。")
+            "管理零境交错游戏本体的 PC 与 Android 分片、上传和版本清单。"),
+        new(
+            ManagedToolKey.NarutoGame,
+            "NarutoGame",
+            "火影",
+            "NarutoGame",
+            "管理火影游戏本体的 PC 与 Android 发布。")
     ];
 }

@@ -18,5 +18,6 @@ public static class ManagedToolAdapterCatalog
         , new FantasyGameAdapter(scriptsRoot)
         , new FantasyAndroidAdapter(scriptsRoot)
         , new CrossingVoidGameAdapter(scriptsRoot)
+        , new NarutoGameAdapter(scriptsRoot)
     ];
 }

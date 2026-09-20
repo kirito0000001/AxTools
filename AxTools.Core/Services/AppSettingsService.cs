@@ -65,7 +65,11 @@ public sealed class AppSettingsService
         {
             settings.ManagedTools.TryAdd(descriptor.StableKey, new ManagedToolPaths());
         }
-        var gamePaths = GetOrAddPaths(settings.ManagedTools, "CrossingVoidGame");
+        // 注意：游戏本体工具的设置键是目录里的 StableKey（零境那个叫 "CrossingVoid"，
+        // 不是枚举名 "CrossingVoidGame"）—— 写错就会多出一个没人用的空条目。
+        var gamePaths = GetOrAddPaths(
+            settings.ManagedTools,
+            ManagedToolCatalog.All.Single(item => item.Key == ManagedToolKey.CrossingVoidGame).StableKey);
         var legacyPcPaths = GetOrAddPaths(settings.ManagedTools, "CrossingVoidinitiator-PC");
         var legacyAndroidPaths = GetOrAddPaths(settings.ManagedTools, "CrossingVoidinitiator-Android");
         if (string.IsNullOrWhiteSpace(gamePaths.GamePublishVersion))

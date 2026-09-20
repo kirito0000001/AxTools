@@ -302,9 +302,9 @@ public sealed partial class MainWindow
         }
 
         var isGamePublishingAction = request.Action is
-            ManagedToolAction.BuildGameChunks or
-            ManagedToolAction.UploadGameChunks or
-            ManagedToolAction.PublishGamePackage;
+            ManagedToolAction.CheckGamePackage or
+            ManagedToolAction.PublishGameVersion or
+            ManagedToolAction.RebuildGameDownloadRepo;
         var content = new StackPanel { Spacing = 8 };
         content.Children.Add(CreateDialogLine("工具", tool.DisplayName));
         content.Children.Add(CreateDialogLine(
@@ -319,10 +319,18 @@ public sealed partial class MainWindow
             content.Children.Add(CreateDialogLine("游戏目录", tool.GamePackageRoot));
         }
         content.Children.Add(CreateDialogLine("发布目标", GetPublishTarget(tool.Descriptor.Key)));
+        var gameIntentText = request.Action switch
+        {
+            ManagedToolAction.CheckGamePackage =>
+                "这一步只在本机扫描产物、算哈希、生成清单，不会提交也不会联网。",
+            ManagedToolAction.RebuildGameDownloadRepo =>
+                "这一步会重建本机暂存仓库、压成单提交（清掉历史对象）；代价是这次必须全量重传一次，耗时最长。只在仓库体积顶不住时用。",
+            _ => "这是实际上传操作：按文件清单把这一版增量推到下载站，没有变化的文件不会重复上传。"
+        };
         content.Children.Add(new TextBlock
         {
             Text = isGamePublishingAction
-                ? "这是实际上传操作。对应版本 Release 的全部旧附件会先被清空，再上传本次分片；请确认版本和目录无误。"
+                ? gameIntentText
                 : "这是实际上传操作，将写入远端发布目标。请确认以上信息无误。",
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 8, 0, 0)

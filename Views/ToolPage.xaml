@@ -323,6 +323,32 @@
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                             </ItemsControl>
+                            <Expander
+                                x:Name="GameMaintenanceArea"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                Visibility="{Binding HasGameMaintenanceActions, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <Expander.Header>
+                                    <TextBlock Text="维护（额外）" Style="{StaticResource SubtleTextStyle}" />
+                                </Expander.Header>
+                                <StackPanel Spacing="8">
+                                    <TextBlock
+                                        Text="平时用不到。只有本机暂存仓库的对象涨得太大、需要重新压一遍时才点。"
+                                        Style="{StaticResource SubtleTextStyle}"
+                                        TextWrapping="Wrap" />
+                                    <ItemsControl
+                                        ItemsSource="{Binding GameMaintenanceActions}"
+                                        Loaded="ActionItemsControl_Loaded"
+                                        SizeChanged="ActionItemsControl_SizeChanged"
+                                        ItemTemplate="{StaticResource ToolActionButtonTemplate}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <ItemsWrapGrid Orientation="Horizontal" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Expander>
                         </StackPanel>
 
                         <TextBlock Text="{Binding ExecutionAvailabilityText}" Style="{StaticResource SubtleTextStyle}" />

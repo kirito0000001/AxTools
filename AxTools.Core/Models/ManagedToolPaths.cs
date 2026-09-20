@@ -16,7 +16,11 @@ public sealed class ManagedToolPaths
 
     public string PublishReleaseNotes { get; set; } = string.Empty;
 
+    /// <summary>游戏包目录（PC）。安卓那份单独记，切平台时自动换。</summary>
     public string GamePackageRoot { get; set; } = string.Empty;
+
+    /// <summary>游戏包目录（安卓）。和 PC 那份分开记，因为两边是两个不同的产物目录。</summary>
+    public string GamePackageRootAndroid { get; set; } = string.Empty;
 
     public string GamePublishVersion { get; set; } = string.Empty;
 

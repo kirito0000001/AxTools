@@ -2,11 +2,11 @@ using AxTools.Core.Models;
 
 namespace AxTools.Core.Adapters;
 
-public sealed class FantasyGameAdapter(string scriptsRoot) : ManagedToolAdapterBase(
+/// <summary>幻杀。dl 目录 `fantasyproject` / `fantasyproject-android`。</summary>
+public sealed class FantasyGameAdapter(string scriptsRoot) : GameUploadAdapter(
     ManagedToolKey.FantasyGame,
     scriptsRoot,
     "FantasyGame",
-    [Action(ManagedToolAction.CheckEnvironment, "检查环境", ManagedToolActionSection.Development, "\uE9D9", false)])
-{
-    protected override string GetDisplayName() => "幻杀";
-}
+    "幻杀",
+    "fantasyproject",
+    "FantasyProject.version.json");

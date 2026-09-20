@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
         FantasyGamePage.DataContext = viewModel.Tools[7];
         FantasyAndroidPage.DataContext = viewModel.Tools[8];
         CrossingVoidGamePage.DataContext = viewModel.Tools[9];
+        NarutoGamePage.DataContext = viewModel.Tools[10];
         ServerAliyunPage.DataContext = viewModel.Server;
         GlobalSettingsPage.DataContext = viewModel.Settings;
         GlobalSettingsPage.PathSelectionRequested += GlobalSettingsPage_PathSelectionRequested;
@@ -54,6 +55,7 @@ public sealed partial class MainWindow : Window
         FantasyGamePage.ToolActionRequested += ToolPage_ToolActionRequested;
         FantasyAndroidPage.ToolActionRequested += ToolPage_ToolActionRequested;
         CrossingVoidGamePage.ToolActionRequested += ToolPage_ToolActionRequested;
+        NarutoGamePage.ToolActionRequested += ToolPage_ToolActionRequested;
         AxToolsPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         FantasyToolsPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         GalExcleToolsPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
@@ -64,6 +66,7 @@ public sealed partial class MainWindow : Window
         FantasyGamePage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         FantasyAndroidPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         CrossingVoidGamePage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
+        NarutoGamePage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         AxToolsPage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
         AxToolsPage.DownloadLinkRequested += ToolPage_DownloadLinkRequested;
         FantasyToolsPage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
@@ -80,13 +83,16 @@ public sealed partial class MainWindow : Window
         FantasyGamePage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
         FantasyAndroidPage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
         CrossingVoidGamePage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
+        NarutoGamePage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
         CrossingVoidAndroidPage.DownloadLinkRequested += ToolPage_DownloadLinkRequested;
         FantasyGamePage.DownloadLinkRequested += ToolPage_DownloadLinkRequested;
         FantasyAndroidPage.DownloadLinkRequested += ToolPage_DownloadLinkRequested;
         CrossingVoidGamePage.DownloadLinkRequested += ToolPage_DownloadLinkRequested;
+        NarutoGamePage.DownloadLinkRequested += ToolPage_DownloadLinkRequested;
         CrossingVoidPcPage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested;
         CrossingVoidAndroidPage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested;
         CrossingVoidGamePage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested;
+        NarutoGamePage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested;
         viewModel.GlobalProgress.PropertyChanged += GlobalProgress_PropertyChanged;
         if (viewModel.TaskRunner is not null)
         {
@@ -164,6 +170,7 @@ public sealed partial class MainWindow : Window
         FantasyGamePage.ToolActionRequested -= ToolPage_ToolActionRequested;
         FantasyAndroidPage.ToolActionRequested -= ToolPage_ToolActionRequested;
         CrossingVoidGamePage.ToolActionRequested -= ToolPage_ToolActionRequested;
+        NarutoGamePage.ToolActionRequested -= ToolPage_ToolActionRequested;
         AxToolsPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         FantasyToolsPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         GalExcleToolsPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
@@ -174,6 +181,7 @@ public sealed partial class MainWindow : Window
         FantasyGamePage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         FantasyAndroidPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         CrossingVoidGamePage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
+        NarutoGamePage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         AxToolsPage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;
         AxToolsPage.DownloadLinkRequested -= ToolPage_DownloadLinkRequested;
         FantasyToolsPage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;
@@ -190,13 +198,16 @@ public sealed partial class MainWindow : Window
         FantasyGamePage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;
         FantasyAndroidPage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;
         CrossingVoidGamePage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;
+        NarutoGamePage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;
         CrossingVoidAndroidPage.DownloadLinkRequested -= ToolPage_DownloadLinkRequested;
         FantasyGamePage.DownloadLinkRequested -= ToolPage_DownloadLinkRequested;
         FantasyAndroidPage.DownloadLinkRequested -= ToolPage_DownloadLinkRequested;
         CrossingVoidGamePage.DownloadLinkRequested -= ToolPage_DownloadLinkRequested;
+        NarutoGamePage.DownloadLinkRequested -= ToolPage_DownloadLinkRequested;
         CrossingVoidPcPage.GamePackageRootSelectionRequested -= ToolPage_GamePackageRootSelectionRequested;
         CrossingVoidAndroidPage.GamePackageRootSelectionRequested -= ToolPage_GamePackageRootSelectionRequested;
         CrossingVoidGamePage.GamePackageRootSelectionRequested -= ToolPage_GamePackageRootSelectionRequested;
+        NarutoGamePage.GamePackageRootSelectionRequested -= ToolPage_GamePackageRootSelectionRequested;
         if (_viewModel.TaskRunner is not null)
         {
             _viewModel.TaskRunner.EventReceived -= TaskRunner_EventReceived;

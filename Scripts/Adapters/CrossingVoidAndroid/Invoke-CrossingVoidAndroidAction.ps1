@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('CheckEnvironment','TestFrontend','BuildFrontend','BuildAndroidDebug','BuildAndroidAndInstall','BuildAndroidRelease','ListAndroidDevices','StopAndroidApp','RunRelease','PublishDryRun','Publish','BuildGameChunks','UploadGameChunks','PublishGamePackage')]
+    [ValidateSet('CheckEnvironment','TestFrontend','BuildFrontend','BuildAndroidDebug','BuildAndroidAndInstall','BuildAndroidRelease','ListAndroidDevices','StopAndroidApp','RunRelease','PublishDryRun','Publish')]
     [string]$Action,
     [Parameter(Mandatory)][string]$ProjectRoot,
     [string]$DevelopmentExecutable = '',
@@ -80,24 +80,6 @@ function Build-AndroidReleaseApk {
     if (!(Test-Path -LiteralPath $apk -PathType Leaf)) { throw "Release APK 构建完成但没有找到产物：$apk" }
     Write-AxTaskEvent -Data ([ordered]@{ type = 'artifact'; kind = 'apk'; path = $apk })
     return $apk
-}
-
-function Invoke-AndroidGamePublishing {
-    param([ValidateSet('Package','Upload','Publish')][string]$Mode)
-    if ([string]::IsNullOrWhiteSpace($GamePackageRoot)) { throw '请先选择 Android 打包目录。' }
-    if ([string]::IsNullOrWhiteSpace($OutputRoot)) { throw '请先配置游戏分片输出目录。' }
-    $publishingScript = Join-Path (Split-Path -Parent $scriptsRoot) 'Scripts\Publishing\CrossingVoid\Publish-CrossingVoidGame.ps1'
-    if (!(Test-Path -LiteralPath $publishingScript -PathType Leaf)) { throw "缺少 AxTools 游戏发布脚本：$publishingScript" }
-    & $publishingScript `
-        -Mode $Mode `
-        -Platform 'Android' `
-        -Channel $(if ($Channel -eq 'beta') { 'Test' } else { 'Stable' }) `
-        -GameDirectory $GamePackageRoot `
-        -OutputRoot $OutputRoot `
-        -ReleaseVersion $Version `
-        -ReleaseTitle "零境交错 Android $Version" `
-        -ReleaseNotes $ReleaseNotes
-    if ($LASTEXITCODE -ne 0) { throw "Android 游戏分包发布失败，退出码 $LASTEXITCODE。" }
 }
 
 function Assert-AndroidPublicVersion {
@@ -197,9 +179,6 @@ try {
                 Assert-AndroidPublicVersion -ExpectedVersion $Version
             }
         }
-        'BuildGameChunks' { Invoke-AndroidGamePublishing -Mode Package }
-        'UploadGameChunks' { Invoke-AndroidGamePublishing -Mode Upload }
-        'PublishGamePackage' { Invoke-AndroidGamePublishing -Mode Publish }
     }
 
     Write-AxTaskProgress -Stage 'completed' -Percent 100 -Message "零境启动器 Android $Action 已完成。"

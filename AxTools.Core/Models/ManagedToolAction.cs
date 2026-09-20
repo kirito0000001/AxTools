@@ -46,9 +46,9 @@ public enum ManagedToolAction
     Upload,
     PublishDryRun,
     Publish,
-    BuildGameChunks,
-    UploadGameChunks,
-    PublishGamePackage
-    ,EditLauncherReleaseNotes
-    ,EditGameReleaseNotes
+    CheckGamePackage,
+    PublishGameVersion,
+    RebuildGameDownloadRepo,
+    EditLauncherReleaseNotes,
+    EditGameReleaseNotes
 }

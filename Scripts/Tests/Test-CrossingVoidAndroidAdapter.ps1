@@ -31,9 +31,10 @@ foreach ($requiredText in @(
         throw "零境启动器 Android 适配器缺少契约文本：$requiredText"
     }
 }
-foreach ($requiredText in @('BuildGameChunks', 'UploadGameChunks', 'PublishGamePackage', 'Publish-CrossingVoidGame.ps1', "'Android'")) {
-    if (!$source.Contains($requiredText, [StringComparison]::Ordinal)) {
-        throw "零境启动器 Android 适配器缺少游戏发布合同：$requiredText"
+# 游戏本体发布已经搬到「零境交错：空界幻境」那个工具里（平台只是参数），启动器这边不该再有游戏分包入口。
+foreach ($forbiddenText in @('BuildGameChunks', 'UploadGameChunks', 'PublishGamePackage', 'Publish-CrossingVoidGame.ps1')) {
+    if ($source.Contains($forbiddenText, [StringComparison]::Ordinal)) {
+        throw "零境启动器 Android 适配器仍残留游戏分包入口：$forbiddenText"
     }
 }
 foreach ($requiredText in @('Assert-AndroidPublicVersion', 'manifests/launcher/android-latest.json', '期望：$ExpectedVersion')) {
@@ -43,13 +44,6 @@ foreach ($requiredText in @('Assert-AndroidPublicVersion', 'manifests/launcher/a
 }
 if ($source.Contains('Write-Output $_.Exception.Message', [StringComparison]::Ordinal)) {
     throw 'Android 适配器不应把最终异常重复写成普通 Info 日志。'
-}
-$gamePublisher = Join-Path $scriptsRoot 'Publishing\CrossingVoid\Publish-CrossingVoidGame.ps1'
-$gamePublisherSource = Get-Content -LiteralPath $gamePublisher -Raw
-foreach ($requiredText in @('Publish-PublicGameManifest', 'windows-latest.json', 'android-latest.json', 'C:\inetpub\wwwroot\manifests\game', 'icacls.exe `$target /reset')) {
-    if (!$gamePublisherSource.Contains($requiredText, [StringComparison]::Ordinal)) {
-        throw "游戏发布脚本缺少官网清单合同：$requiredText"
-    }
 }
 foreach ($forbiddenText in @('Get-AndroidVersionCode', 'VersionCode =')) {
     if ($source.Contains($forbiddenText, [StringComparison]::Ordinal)) {

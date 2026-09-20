@@ -12,7 +12,7 @@ public sealed class ManagedToolAdapterTests : IDisposable
         Guid.NewGuid().ToString("N"));
 
     [Fact]
-    public void Catalog_ReturnsSevenAdaptersInManagedToolOrder()
+    public void Catalog_ReturnsAllAdaptersInManagedToolOrder()
     {
         var catalog = ManagedToolAdapterCatalog.Create(Path.Combine(_root, "Scripts"));
 
@@ -24,7 +24,11 @@ public sealed class ManagedToolAdapterTests : IDisposable
             adapter => Assert.Equal(ManagedToolKey.CrossingVoidZDTool, adapter.Key),
             adapter => Assert.Equal(ManagedToolKey.FantasyProjectPc, adapter.Key),
             adapter => Assert.Equal(ManagedToolKey.CrossingVoidPc, adapter.Key),
-            adapter => Assert.Equal(ManagedToolKey.CrossingVoidAndroid, adapter.Key));
+            adapter => Assert.Equal(ManagedToolKey.CrossingVoidAndroid, adapter.Key),
+            adapter => Assert.Equal(ManagedToolKey.FantasyGame, adapter.Key),
+            adapter => Assert.Equal(ManagedToolKey.FantasyAndroid, adapter.Key),
+            adapter => Assert.Equal(ManagedToolKey.CrossingVoidGame, adapter.Key),
+            adapter => Assert.Equal(ManagedToolKey.NarutoGame, adapter.Key));
         Assert.All(catalog, adapter =>
             Assert.Equal(
                 adapter.Actions.Count,
@@ -76,7 +80,11 @@ public sealed class ManagedToolAdapterTests : IDisposable
                 item.DisplayName == "构建 Debug APK");
 
         Assert.All(
-            adapters,
+            // 三个"游戏本体"工具只负责把产物发到下载站，不跑引擎，自然没有「启动正式版」。
+            adapters.Where(adapter => adapter.Key is not (
+                ManagedToolKey.CrossingVoidGame or
+                ManagedToolKey.FantasyGame or
+                ManagedToolKey.NarutoGame)),
             adapter => Assert.Contains(
                 adapter.Actions,
                 item => item.Action == ManagedToolAction.RunRelease));
@@ -222,10 +230,7 @@ public sealed class ManagedToolAdapterTests : IDisposable
                 ManagedToolAction.StopAndroidApp,
                 ManagedToolAction.RunRelease,
                 ManagedToolAction.PublishDryRun,
-                ManagedToolAction.Publish,
-                ManagedToolAction.BuildGameChunks,
-                ManagedToolAction.UploadGameChunks,
-                ManagedToolAction.PublishGamePackage
+                ManagedToolAction.Publish
             ],
             adapter.Actions.Select(action => action.Action));
         Assert.True(adapter.Actions.Single(action => action.Action == ManagedToolAction.Publish).RequiresConfirmation);
@@ -252,55 +257,106 @@ public sealed class ManagedToolAdapterTests : IDisposable
     }
 
     [Fact]
-    public void CrossingVoidLaunchers_ExposePlatformLockedGamePublishingActions()
+    public void CrossingVoidLaunchers_DoNotOwnGamePublishing()
     {
         var scriptsRoot = Path.Combine(_root, "Scripts");
         var pc = new CrossingVoidPcAdapter(scriptsRoot);
         var android = new CrossingVoidAndroidAdapter(scriptsRoot, new ToolchainSettings());
         var gameActions = new[]
         {
-            ManagedToolAction.BuildGameChunks,
-            ManagedToolAction.UploadGameChunks,
-            ManagedToolAction.PublishGamePackage
+            ManagedToolAction.CheckGamePackage,
+            ManagedToolAction.PublishGameVersion,
+            ManagedToolAction.RebuildGameDownloadRepo
         };
 
+        // 游戏本体发布只属于「零境交错：空界幻境」那个工具；两个启动器不应该再挂这些动作。
+        Assert.DoesNotContain(pc.Actions, action => gameActions.Contains(action.Action));
+        Assert.DoesNotContain(android.Actions, action => gameActions.Contains(action.Action));
+    }
+
+    /// <summary>
+    /// 三个游戏共用同一套「游戏包发布」适配器：动作、校验、参数形状都一样，
+    /// 各自只带自己的产品段名（决定 dl 目录与裸仓库）和版本标记文件名。
+    /// </summary>
+    [Fact]
+    public void GameUploadAdapters_ShareActionsAndCarryOwnProductSegment()
+    {
+        var scriptsRoot = Path.Combine(_root, "Scripts");
+        var windowsRoot = Path.Combine(_root, "WindowsPackage");
+        var androidRoot = Path.Combine(_root, "AndroidPackage");
+        Directory.CreateDirectory(windowsRoot);
+        Directory.CreateDirectory(androidRoot);
+
+        AssertGameUploadAdapter(
+            new CrossingVoidGameAdapter(scriptsRoot), "零境交错：空界幻境",
+            "crossingvoid", "CrossingVoid.version.json", windowsRoot, androidRoot);
+        AssertGameUploadAdapter(
+            new FantasyGameAdapter(scriptsRoot), "幻杀",
+            "fantasyproject", "FantasyProject.version.json", windowsRoot, androidRoot);
+        AssertGameUploadAdapter(
+            new NarutoGameAdapter(scriptsRoot), "火影",
+            "narutobp", "NarutoBP.version.json", windowsRoot, androidRoot);
+    }
+
+    private static void AssertGameUploadAdapter(
+        IManagedToolAdapter adapter,
+        string displayName,
+        string productSegment,
+        string markerName,
+        string windowsRoot,
+        string androidRoot)
+    {
         Assert.Equal(
-            ["制作 PC 游戏分片", "上传 PC 游戏", "制作并上传 PC 游戏"],
-            pc.Actions.Where(action => gameActions.Contains(action.Action)).Select(action => action.DisplayName));
+            [
+                ManagedToolAction.CheckEnvironment,
+                ManagedToolAction.CheckGamePackage,
+                ManagedToolAction.PublishGameVersion,
+                ManagedToolAction.RebuildGameDownloadRepo
+            ],
+            adapter.Actions.Select(action => action.Action));
         Assert.Equal(
-            ["制作 Android 游戏分片", "上传 Android 游戏", "制作并上传 Android 游戏"],
-            android.Actions.Where(action => gameActions.Contains(action.Action)).Select(action => action.DisplayName));
+            ["检查环境", "只检查，不发布", "发布新版本", "重整仓库（压平历史）"],
+            adapter.Actions.Select(action => action.DisplayName));
         Assert.All(
-            pc.Actions.Concat(android.Actions).Where(action => gameActions.Contains(action.Action)),
+            adapter.Actions.Where(action => action.Action != ManagedToolAction.CheckEnvironment),
             action => Assert.True(action.RequiresVersion));
-        Assert.True(pc.Actions.Single(action => action.Action == ManagedToolAction.UploadGameChunks).RequiresConfirmation);
-        Assert.True(android.Actions.Single(action => action.Action == ManagedToolAction.PublishGamePackage).RequiresConfirmation);
+        Assert.True(adapter.Actions.Single(action => action.Action == ManagedToolAction.PublishGameVersion).RequiresConfirmation);
+        Assert.True(adapter.Actions.Single(action => action.Action == ManagedToolAction.RebuildGameDownloadRepo).RequiresConfirmation);
+        Assert.False(adapter.Actions.Single(action => action.Action == ManagedToolAction.CheckGamePackage).RequiresConfirmation);
 
-        var pcPaths = new ManagedToolPaths
-        {
-            SourceRoot = Path.Combine(_root, "CrossingVoidinitiator-PC"),
-            GamePackageRoot = Path.Combine(_root, "WindowsPackage")
-        };
+        // 目录校验是按"当前平台"来的：PC 和安卓各记一个目录，缺哪个哪个不通过。
+        var pcPaths = new ManagedToolPaths { GamePackageRoot = windowsRoot };
         var androidPaths = new ManagedToolPaths
         {
-            SourceRoot = Path.Combine(_root, "CrossingVoidinitiator-Android"),
-            GamePackageRoot = Path.Combine(_root, "AndroidPackage")
+            GamePublishPlatform = "Android",
+            GamePackageRootAndroid = androidRoot
         };
-        var pcTask = pc.CreateTask(
-            new ManagedToolActionRequest(ManagedToolAction.BuildGameChunks, "0.5.12", "stable", "PC 更新"),
-            pcPaths);
-        var androidTask = android.CreateTask(
-            new ManagedToolActionRequest(ManagedToolAction.BuildGameChunks, "0.5.12", "stable", "Android 更新"),
-            androidPaths);
+        Assert.False(adapter.Validate(new ManagedToolPaths()).IsValid);
+        Assert.True(adapter.Validate(pcPaths).IsValid);
+        Assert.True(adapter.Validate(androidPaths).IsValid);
+        Assert.False(adapter.Validate(new ManagedToolPaths
+        {
+            GamePublishPlatform = "Android",
+            GamePackageRoot = windowsRoot
+        }).IsValid);
 
+        var pcTask = adapter.CreateTask(
+            new ManagedToolActionRequest(ManagedToolAction.PublishGameVersion, "1.0.0", "stable", "PC 更新"),
+            pcPaths);
+        Assert.Equal($"{displayName} · 发布新版本", pcTask.Title);
         AssertArgumentPair(pcTask.Arguments, "-Platform", "Windows");
-        AssertArgumentPair(pcTask.Arguments, "-GamePackageRoot", pcPaths.GamePackageRoot);
-        AssertArgumentPair(androidTask.Arguments, "-Platform", "Android");
-        AssertArgumentPair(androidTask.Arguments, "-GamePackageRoot", androidPaths.GamePackageRoot);
+        AssertArgumentPair(pcTask.Arguments, "-GamePackageRoot", windowsRoot);
         AssertArgumentPair(pcTask.Arguments, "-ReleaseNotes", "PC 更新");
-        AssertArgumentPair(androidTask.Arguments, "-ReleaseNotes", "Android 更新");
-        Assert.DoesNotContain("Android", pcTask.Arguments);
-        Assert.DoesNotContain("Windows", androidTask.Arguments);
+        AssertArgumentPair(pcTask.Arguments, "-ProductSegment", productSegment);
+        AssertArgumentPair(pcTask.Arguments, "-VersionMarkerName", markerName);
+
+        var androidTask = adapter.CreateTask(
+            new ManagedToolActionRequest(ManagedToolAction.PublishGameVersion, "1.0.0", "stable", "安卓更新"),
+            androidPaths);
+        AssertArgumentPair(androidTask.Arguments, "-Platform", "Android");
+        AssertArgumentPair(androidTask.Arguments, "-GamePackageRoot", androidRoot);
+        AssertArgumentPair(androidTask.Arguments, "-ProductSegment", $"{productSegment}-android");
+        AssertArgumentPair(androidTask.Arguments, "-VersionMarkerName", markerName);
     }
 
     [Fact]

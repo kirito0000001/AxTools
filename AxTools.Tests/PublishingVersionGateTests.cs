@@ -87,17 +87,24 @@ public sealed class PublishingVersionGateTests : IDisposable
         var pc = new ManagedToolPaths { GamePublishVersion = "0.5.12.1" };
         var android = new ManagedToolPaths { GamePublishVersion = "0.5.12.1" };
         var shared = new CrossingVoidGamePublishState(pc, android);
+        var packageRoot = Path.Combine(_root, "GamePackage");
+        Directory.CreateDirectory(packageRoot);
+        var gamePaths = new ManagedToolPaths
+        {
+            GamePackageRoot = packageRoot,
+            GamePublishVersion = "0.5.12.1"
+        };
         var descriptor = ManagedToolCatalog.All.Single(item =>
-            item.Key == ManagedToolKey.CrossingVoidAndroid);
+            item.Key == ManagedToolKey.CrossingVoidGame);
         var viewModel = new ToolPageViewModel(
             descriptor,
-            android,
-            new CrossingVoidAndroidAdapter(Path.Combine(_root, "Scripts"), new ToolchainSettings()),
+            gamePaths,
+            new CrossingVoidGameAdapter(Path.Combine(_root, "Scripts")),
             publishedVersionService: service,
             sharedGamePublishState: shared);
 
         var result = await viewModel.ValidatePublishingVersionAsync(
-            ManagedToolAction.BuildGameChunks,
+            ManagedToolAction.PublishGameVersion,
             CancellationToken.None);
 
         Assert.False(result.IsAllowed);

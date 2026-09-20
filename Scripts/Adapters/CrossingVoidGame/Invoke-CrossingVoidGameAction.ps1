@@ -1,39 +1,23 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('CheckEnvironment','BuildGameChunks','UploadGameChunks','PublishGamePackage')][string]$Action,
+    [Parameter(Mandatory)]
+    [ValidateSet('CheckEnvironment', 'CheckGamePackage', 'PublishGameVersion', 'RebuildGameDownloadRepo')]
+    [string]$Action,
     [Parameter(Mandatory)][string]$ProjectRoot,
+    [string]$DevelopmentExecutable = '',
+    [string]$ReleaseExecutable = '',
     [string]$GamePackageRoot = '',
     [string]$OutputRoot = '',
     [string]$Version = '',
     [string]$Channel = 'stable',
     [string]$ReleaseNotes = '',
-    [ValidateSet('Windows','Android')][string]$Platform = 'Windows',
+    [ValidateSet('Windows', 'Android')][string]$Platform = 'Windows',
     [switch]$DryRun
 )
+
 $ErrorActionPreference = 'Stop'
-$script = Join-Path $PSScriptRoot '..\..\Publishing\CrossingVoid\Publish-CrossingVoidGame.ps1'
-if ($Action -eq 'CheckEnvironment') {
-    if (-not (Test-Path -LiteralPath $ProjectRoot -PathType Container)) { throw "游戏项目目录不存在：$ProjectRoot" }
-    Write-Host "零境游戏目录检查通过：$ProjectRoot"
-    exit 0
-}
-if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $OutputRoot = Join-Path $ProjectRoot 'Saved\GamePackages' }
-$mode = switch ($Action) {
-    'BuildGameChunks' { 'Package' }
-    'UploadGameChunks' { 'Upload' }
-    'PublishGamePackage' { 'Publish' }
-}
-$channelName = if ($Channel -eq 'beta') { 'Test' } else { 'Stable' }
-$params = @{
-    Mode = $mode
-    Platform = $Platform
-    Channel = $channelName
-    GameDirectory = $GamePackageRoot
-    OutputRoot = $OutputRoot
-    ReleaseVersion = $Version
-    ReleaseTitle = "零境交错 $Version | $Platform"
-    ReleaseNotes = $ReleaseNotes
-}
-if ($DryRun) { $params['DryRun'] = $true }
-& $script @params
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+# 真正的实现在 ..\GameUpload\Invoke-GameUploadAction.ps1（三个游戏共用），
+# 这里只带本游戏在下载站上的产品段名和版本标记文件名。
+$shared = Join-Path (Split-Path -Parent $PSScriptRoot) 'GameUpload\Invoke-GameUploadAction.ps1'
+& $shared @PSBoundParameters -ProductSegment 'crossingvoid' -VersionMarkerName 'CrossingVoid.version.json'
+exit $LASTEXITCODE

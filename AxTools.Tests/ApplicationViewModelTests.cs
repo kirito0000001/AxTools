@@ -32,7 +32,11 @@ public sealed class ApplicationViewModelTests : IDisposable
             tool => Assert.Equal("CrossingVoidZDTool", tool.NavigationTag),
             tool => Assert.Equal("FantasyProjectPc", tool.NavigationTag),
             tool => Assert.Equal("CrossingVoidPc", tool.NavigationTag),
-            tool => Assert.Equal("CrossingVoidAndroid", tool.NavigationTag));
+            tool => Assert.Equal("CrossingVoidAndroid", tool.NavigationTag),
+            tool => Assert.Equal("FantasyGame", tool.NavigationTag),
+            tool => Assert.Equal("FantasyAndroid", tool.NavigationTag),
+            tool => Assert.Equal("CrossingVoidGame", tool.NavigationTag),
+            tool => Assert.Equal("NarutoGame", tool.NavigationTag));
         Assert.Equal("AxTools", viewModel.CurrentPageTag);
     }
 
@@ -53,7 +57,7 @@ public sealed class ApplicationViewModelTests : IDisposable
     }
 
     [Fact]
-    public void Constructor_MigratesRemovedCrossingVoidGamePageToPcLauncher()
+    public void Constructor_KeepsCrossingVoidGamePageAsCurrentTag()
     {
         var settings = new AppSettings
         {
@@ -65,8 +69,9 @@ public sealed class ApplicationViewModelTests : IDisposable
             settings,
             CreateSettingsService(settings.ProjectRootPath));
 
-        Assert.Equal("CrossingVoidPc", viewModel.CurrentPageTag);
-        Assert.Equal("CrossingVoidPc", settings.LastPageTag);
+        // 零境游戏本体有自己的一页（P3 起），不能再被迁到启动器页
+        Assert.Equal("CrossingVoidGame", viewModel.CurrentPageTag);
+        Assert.Equal("CrossingVoidGame", settings.LastPageTag);
     }
 
     [Fact]
@@ -228,6 +233,27 @@ public sealed class ApplicationViewModelTests : IDisposable
         CreateFile(Path.Combine(crossingAndroidRoot, "Scripts", "Publish-AndroidLauncher.ps1"));
         settings.ManagedTools["CrossingVoidinitiator-Android"].SourceRoot = crossingAndroidRoot;
         settings.ManagedTools["CrossingVoidinitiator-Android"].GamePackageRoot = Path.Combine(_root, "AndroidGamePackage");
+
+        // 三个"游戏本体"工具不构建源码：它们的"项目"就是产物目录，PC 和安卓各记一个。
+        // 键就是目录里的 StableKey（零境那个是 "CrossingVoid"）
+        foreach (var gameKey in new[] { "CrossingVoid", "FantasyGame", "NarutoGame" })
+        {
+            var pcPackage = Path.Combine(_root, gameKey, "Windows");
+            var androidPackage = Path.Combine(_root, gameKey, "Android");
+            Directory.CreateDirectory(pcPackage);
+            Directory.CreateDirectory(androidPackage);
+            if (!settings.ManagedTools.TryGetValue(gameKey, out var gamePaths))
+            {
+                gamePaths = new ManagedToolPaths();
+                settings.ManagedTools[gameKey] = gamePaths;
+            }
+            gamePaths.GamePackageRoot = pcPackage;
+            gamePaths.GamePackageRootAndroid = androidPackage;
+        }
+
+        var fantasyAndroidRoot = Path.Combine(_root, "FantasyProject-Downloader-Android");
+        CreateFile(Path.Combine(fantasyAndroidRoot, "package.json"));
+        settings.ManagedTools["FantasyProject-Downloader-Android"].SourceRoot = fantasyAndroidRoot;
         return settings;
     }
 

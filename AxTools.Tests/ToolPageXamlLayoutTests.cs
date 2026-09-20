@@ -200,12 +200,14 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains(
             launcherSection.Descendants(presentation + "ItemsControl"),
             element => (string?)element.Attribute("ItemsSource") == "{Binding LauncherPublishActions}");
-        Assert.Contains(
-            launcherSection.Descendants(presentation + "TextBox"),
-            element => ((string?)element.Attribute("Text"))?.Contains("PublishVersion") == true);
-        var launcherVersion = launcherSection.Descendants(presentation + "TextBox")
-            .Single(element => ((string?)element.Attribute("Text"))?.Contains("PublishVersion") == true);
-        Assert.Equal("例如 1.1.1", (string?)launcherVersion.Attribute("PlaceholderText"));
+        // 启动器版本号也是三段式 NumberBox（主版本 / 功能更新 / BUG修复）。
+        var launcherVersion = launcherSection.Descendants()
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "LauncherVersionField");
+        Assert.Equal(
+            ["PublishVersionMajor", "PublishVersionFeature", "PublishVersionBugFix"],
+            launcherVersion.Descendants(presentation + "NumberBox")
+                .Select(element => (string?)element.Attribute("Value"))
+                .Select(value => value?.Split(',')[0].Replace("{Binding ", string.Empty)));
         Assert.Contains(
             launcherSection.Descendants(presentation + "TextBlock"),
             element => ((string?)element.Attribute("Text"))?.Contains("LauncherVersionStateText") == true);
@@ -219,12 +221,26 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains(
             gameSection.Descendants(presentation + "ItemsControl"),
             element => (string?)element.Attribute("ItemsSource") == "{Binding GamePublishActions}");
-        Assert.Contains(
-            gameSection.Descendants(presentation + "TextBox"),
-            element => ((string?)element.Attribute("Text"))?.Contains("GamePublishVersion") == true);
+        // 版本号是三段式 NumberBox（主版本 / 功能更新 / BUG修复），不再是一个手填 TextBox。
+        var versionField = gameSection.Descendants()
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "GameVersionField");
+        Assert.Equal(
+            ["GameVersionMajor", "GameVersionFeature", "GameVersionBugFix"],
+            versionField.Descendants(presentation + "NumberBox")
+                .Select(element => (string?)element.Attribute("Value"))
+                .Select(value => value?.Split(',')[0].Replace("{Binding ", string.Empty)));
         Assert.Contains(
             gameSection.Descendants(presentation + "ComboBox"),
             element => ((string?)element.Attribute("SelectedValue"))?.Contains("GamePublishChannel") == true);
+        Assert.Contains(
+            gameSection.Descendants(presentation + "ComboBox"),
+            element => ((string?)element.Attribute("SelectedValue"))?.Contains("GamePublishPlatform") == true);
+        // 维护动作收在「维护（额外）」折叠区里。
+        var maintenanceArea = gameSection.Descendants()
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "GameMaintenanceArea");
+        Assert.Contains(
+            maintenanceArea.Descendants(presentation + "ItemsControl"),
+            element => (string?)element.Attribute("ItemsSource") == "{Binding GameMaintenanceActions}");
     }
 
     [Fact]

@@ -12,4 +12,5 @@ public enum ManagedToolKey
     ,FantasyGame
     ,FantasyAndroid
     ,CrossingVoidGame
+    ,NarutoGame
 }

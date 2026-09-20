@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('CheckEnvironment','RunDevelopment','ForceBuildAndRun','BuildFrontend','TestFrontend','TestRust','RunRelease','SetVersion','BuildLauncherPackage','ValidatePackage','UploadDryRun','Upload','PublishDryRun','Publish','BuildGameChunks','UploadGameChunks','PublishGamePackage')]
+    [ValidateSet('CheckEnvironment','RunDevelopment','ForceBuildAndRun','BuildFrontend','TestFrontend','TestRust','RunRelease','SetVersion','BuildLauncherPackage','ValidatePackage','UploadDryRun','Upload','PublishDryRun','Publish')]
     [string]$Action,
     [Parameter(Mandatory)][string]$ProjectRoot,
     [string]$DevelopmentExecutable = '',
@@ -30,10 +30,6 @@ function Get-CrossingOutputRoot {
 
 function Get-CrossingLauncherOutputRoot {
     return Join-Path (Get-CrossingOutputRoot) 'Launcher'
-}
-
-function Get-CrossingGameOutputRoot {
-    return Join-Path (Get-CrossingOutputRoot) 'GamePackages'
 }
 
 function Test-CrossingPackage {
@@ -210,24 +206,6 @@ function Assert-CrossingPublicVersion {
     throw "PC 发布未通过公网版本核验。期望：$ExpectedVersion；$detail"
 }
 
-function Invoke-CrossingGamePublishing {
-    param([ValidateSet('Package','Upload','Publish')][string]$Mode)
-    if ([string]::IsNullOrWhiteSpace($GamePackageRoot)) { throw '请先选择 PC 游戏包目录。' }
-    $output = Get-CrossingGameOutputRoot
-    $publishingScript = Join-Path (Split-Path -Parent $scriptsRoot) 'Scripts\Publishing\CrossingVoid\Publish-CrossingVoidGame.ps1'
-    if (!(Test-Path -LiteralPath $publishingScript -PathType Leaf)) { throw "缺少 AxTools 游戏发布脚本：$publishingScript" }
-    & $publishingScript `
-        -Mode $Mode `
-        -Platform 'Windows' `
-        -Channel $(if ($Channel -eq 'beta') { 'Test' } else { 'Stable' }) `
-        -GameDirectory $GamePackageRoot `
-        -OutputRoot $output `
-        -ReleaseVersion $Version `
-        -ReleaseTitle "零境交错 PC $Version" `
-        -ReleaseNotes $ReleaseNotes
-    if ($LASTEXITCODE -ne 0) { throw "PC 游戏分包发布失败，退出码 $LASTEXITCODE。" }
-}
-
 try {
     Assert-AxPathOutsideRoot -Path $ProjectRoot -ForbiddenRoot $forbiddenRoot -Message '拒绝访问虚幻项目目录。'
     Assert-AxPathOutsideRoot -Path $OutputRoot -ForbiddenRoot $forbiddenRoot -Message '拒绝把虚幻项目作为输出目录。'
@@ -266,9 +244,6 @@ try {
             }
             Assert-CrossingPublicVersion -ExpectedVersion $Version
         }
-        'BuildGameChunks' { Invoke-CrossingGamePublishing -Mode Package }
-        'UploadGameChunks' { Invoke-CrossingGamePublishing -Mode Upload }
-        'PublishGamePackage' { Invoke-CrossingGamePublishing -Mode Publish }
     }
     Write-AxTaskProgress -Stage 'completed' -Percent 100 -Message "零境启动器 PC $Action 已完成。"
     Write-AxTaskResult -Status 'success' -ExitCode 0 -Message "零境启动器 PC $Action 完成。"

@@ -1,5 +1,6 @@
 using AxTools.Core.Services;
 using AxTools.Core.Models;
+using AxTools.Core.Catalog;
 using Xunit;
 
 namespace AxTools.Tests;
@@ -25,14 +26,18 @@ public sealed class AppSettingsServiceTests : IDisposable
 
         Assert.Equal(projectRoot, settings.ProjectRootPath);
         Assert.Equal("AxTools", settings.LastPageTag);
-        Assert.Equal(7, settings.ManagedTools.Count);
+        Assert.Equal(11, settings.ManagedTools.Count);
         Assert.Contains("GalExcleTools", settings.ManagedTools.Keys);
         Assert.Contains("CrossingVoidZDTool", settings.ManagedTools.Keys);
         Assert.Contains("FantasyProject-PC", settings.ManagedTools.Keys);
         Assert.True(File.Exists(Path.Combine(projectRoot, "AxTools.settings.json")));
-        Assert.All(settings.ManagedTools, item => Assert.Equal(
-            Path.Combine(projectRoot, "Artifacts", item.Key),
-            item.Value.OutputRoot));
+        // 目录里的每个工具都应该拿到 <项目>\Artifacts\<稳定键> 这个工作区产物目录
+        //（设置里还可能留着已经不存在的历史键，那些不管）。
+        Assert.All(
+            ManagedToolCatalog.All.Select(descriptor => descriptor.StableKey).Distinct(),
+            key => Assert.Equal(
+                Path.Combine(projectRoot, "Artifacts", key),
+                settings.ManagedTools[key].OutputRoot));
     }
 
     [Fact]
@@ -70,9 +75,11 @@ public sealed class AppSettingsServiceTests : IDisposable
         var settings = await service.LoadAsync(CancellationToken.None);
 
         Assert.Equal(9, settings.SchemaVersion);
-        Assert.All(settings.ManagedTools, item => Assert.Equal(
-            Path.Combine(projectRoot, "Artifacts", item.Key),
-            item.Value.OutputRoot));
+        Assert.All(
+            ManagedToolCatalog.All.Select(descriptor => descriptor.StableKey).Distinct(),
+            key => Assert.Equal(
+                Path.Combine(projectRoot, "Artifacts", key),
+                settings.ManagedTools[key].OutputRoot));
         Assert.Equal(
             Path.Combine(projectRoot, "Artifacts", "CrossingVoidinitiator-PC"),
             settings.CrossingVoidPackage.OutputDirectory);
@@ -111,7 +118,7 @@ public sealed class AppSettingsServiceTests : IDisposable
 
         var settings = await service.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(7, settings.ManagedTools.Count);
+        Assert.Equal(11, settings.ManagedTools.Count);
         Assert.Equal(oldFantasyPath, settings.ManagedTools["FantasyTools"].SourceRoot);
         Assert.Equal(oldCrossingPath, settings.ManagedTools["CrossingVoidinitiator-PC"].SourceRoot);
         Assert.Equal(string.Empty, settings.ManagedTools["FantasyProject-PC"].SourceRoot);
