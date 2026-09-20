@@ -56,12 +56,12 @@ public sealed class PowerShellProcessHost : IAxProcessHost
             }
 
             var standardOutputTask = ReadLinesAsync(
-                process.StandardOutput,
+                process.StandardOutput.BaseStream,
                 AxTaskOutputStream.StandardOutput,
                 onLine,
                 callbackGate);
             var standardErrorTask = ReadLinesAsync(
-                process.StandardError,
+                process.StandardError.BaseStream,
                 AxTaskOutputStream.StandardError,
                 onLine,
                 callbackGate);
@@ -231,23 +231,107 @@ public sealed class PowerShellProcessHost : IAxProcessHost
             Path.PathSeparator,
             new[] { prefix, existing }.Where(value => !string.IsNullOrWhiteSpace(value)));
 
+    /// <summary>
+    /// 按字节读行，再决定用哪种编码解码。任务协议自己写的是 UTF-8，但 PowerShell 在"脚本还没跑起来"
+    /// 时抛的错（参数绑定失败、语法错、脚本文件不存在）用的是系统本地代码页（中文机器上是 GBK），
+    /// 硬按 UTF-8 解就是一串问号 —— 用户看到的就是"发布失败了但日志看不懂"。这里逐行回退。
+    /// </summary>
     private static async Task ReadLinesAsync(
-        StreamReader reader,
-        AxTaskOutputStream stream,
+        Stream stream,
+        AxTaskOutputStream outputStream,
         Func<AxTaskOutputStream, string, ValueTask> onLine,
         SemaphoreSlim callbackGate)
     {
-        while (await reader.ReadLineAsync() is { } line)
+        var buffer = new byte[8192];
+        var line = new List<byte>();
+        while (true)
         {
-            await callbackGate.WaitAsync();
+            int read;
             try
             {
-                await onLine(stream, line);
+                read = await stream.ReadAsync(buffer).ConfigureAwait(false);
             }
-            finally
+            catch (Exception exception) when (exception is ObjectDisposedException or IOException)
             {
-                callbackGate.Release();
+                // 超时后主流程会主动关掉管道，这里安静收尾。
+                break;
             }
+
+            if (read == 0)
+            {
+                break;
+            }
+
+            for (var index = 0; index < read; index++)
+            {
+                var value = buffer[index];
+                if (value == (byte)'\n')
+                {
+                    await EmitLineAsync(line, outputStream, onLine, callbackGate).ConfigureAwait(false);
+                    line.Clear();
+                }
+                else if (value != (byte)'\r')
+                {
+                    line.Add(value);
+                }
+            }
+        }
+
+        if (line.Count > 0)
+        {
+            await EmitLineAsync(line, outputStream, onLine, callbackGate).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task EmitLineAsync(
+        List<byte> bytes,
+        AxTaskOutputStream outputStream,
+        Func<AxTaskOutputStream, string, ValueTask> onLine,
+        SemaphoreSlim callbackGate)
+    {
+        var text = DecodeLine(bytes);
+        await callbackGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await onLine(outputStream, text).ConfigureAwait(false);
+        }
+        finally
+        {
+            callbackGate.Release();
+        }
+    }
+
+    /// <summary>UTF-8 优先；解不出来（宿主自己写的本地代码页文本）就按系统 ANSI 代码页回退。</summary>
+    private static string DecodeLine(List<byte> bytes)
+    {
+        var raw = bytes.ToArray();
+        try
+        {
+            return StrictUtf8.GetString(raw);
+        }
+        catch (DecoderFallbackException)
+        {
+            return LocalAnsi.GetString(raw);
+        }
+    }
+
+    private static readonly UTF8Encoding StrictUtf8 = new(
+        encoderShouldEmitUTF8Identifier: false,
+        throwOnInvalidBytes: true);
+
+    private static readonly Encoding LocalAnsi = ResolveLocalAnsiEncoding();
+
+    private static Encoding ResolveLocalAnsiEncoding()
+    {
+        try
+        {
+            // .NET 默认只带 UTF-8 系；GBK 这类代码页要先注册（Windows App SDK 已经带了实现）。
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            return Encoding.GetEncoding(0);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
+        {
+            return Encoding.UTF8;
         }
     }
 

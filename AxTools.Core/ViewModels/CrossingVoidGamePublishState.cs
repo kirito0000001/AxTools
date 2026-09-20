@@ -3,6 +3,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AxTools.Core.ViewModels;
 
+/// <summary>
+/// 一个游戏（零境 / 幻杀 / 火影）的游戏包发布状态：版本号、Release 介绍、
+/// 以及"线上最新版本"的检查结果。三个游戏各持有一份，PC 与安卓共用同一份。
+/// </summary>
 public sealed class CrossingVoidGamePublishState : ObservableObject
 {
     private readonly ManagedToolPaths _pcPaths;
@@ -15,6 +19,8 @@ public sealed class CrossingVoidGamePublishState : ObservableObject
     private bool _publishedCheckSucceeded;
     private bool _hasNoPublishedVersion;
     private string? _onlineVersion;
+    private string? _pcOnlineVersion;
+    private string? _androidOnlineVersion;
     private string _publishedVersionText = "尚未检查线上双端版本。";
     private string _versionCheckStatus = "进入发布页后将自动检查 PC 与 Android。";
 
@@ -25,7 +31,7 @@ public sealed class CrossingVoidGamePublishState : ObservableObject
         _pcPaths = pcPaths;
         _androidPaths = androidPaths;
         _version = ResolveSharedValue(pcPaths.GamePublishVersion, androidPaths.GamePublishVersion);
-        _channel = ResolveSharedChannel(pcPaths.GamePublishChannel, androidPaths.GamePublishChannel);
+        _channel = "stable";
         _releaseNotes = ResolveSharedValue(
             pcPaths.GamePublishReleaseNotes,
             androidPaths.GamePublishReleaseNotes,
@@ -45,13 +51,16 @@ public sealed class CrossingVoidGamePublishState : ObservableObject
         }
     }
 
+    /// <summary>
+    /// 渠道暂时固定 stable：目前没有余力开测试服，界面上那个下拉也一起撤掉了。
+    /// 等真有测试服时，这里和界面上的下拉一起加回来。
+    /// </summary>
     public string Channel
     {
         get => _channel;
         set
         {
-            var normalized = value is "beta" ? "beta" : "stable";
-            if (SetProperty(ref _channel, normalized))
+            if (SetProperty(ref _channel, "stable"))
             {
                 SynchronizePaths();
             }
@@ -100,6 +109,24 @@ public sealed class CrossingVoidGamePublishState : ObservableObject
         private set => SetProperty(ref _onlineVersion, value);
     }
 
+    public string? PcOnlineVersion
+    {
+        get => _pcOnlineVersion;
+        private set => SetProperty(ref _pcOnlineVersion, value);
+    }
+
+    public string? AndroidOnlineVersion
+    {
+        get => _androidOnlineVersion;
+        private set => SetProperty(ref _androidOnlineVersion, value);
+    }
+
+    /// <summary>
+    /// 当前平台的线上版本。PC 与安卓各发各的，所以版本门禁按平台比，
+    /// 另一个平台落后不影响这个平台。
+    /// </summary>
+    public string? OnlineVersionFor(bool android) => android ? AndroidOnlineVersion : PcOnlineVersion;
+
     internal SemaphoreSlim CheckLock { get; } = new(1, 1);
 
     public string PublishedVersionText
@@ -116,21 +143,35 @@ public sealed class CrossingVoidGamePublishState : ObservableObject
 
     public void ApplyPublishedVersions(CrossingVoidGamePublishedVersionResult result)
     {
+        if (result.CheckFailed)
+        {
+            MarkPublishedCheckFailed(result.Status);
+            return;
+        }
+
         PublishedCheckSucceeded = true;
         HasNoPublishedVersion = result.PcVersion is null && result.AndroidVersion is null;
         OnlineVersion = result.UnifiedVersion;
+        PcOnlineVersion = result.PcVersion;
+        AndroidOnlineVersion = result.AndroidVersion;
         OnlineVersionsAligned = result.IsAligned;
         PublishedVersionText = result.IsAligned
             ? $"线上当前统一版本：{result.UnifiedVersion}"
-            : $"线上版本：PC {result.PcVersion ?? "未发布"}；Android {result.AndroidVersion ?? "未发布"}";
+            : $"线上版本：PC {DescribeVersion(result.PcVersion)}；Android {DescribeVersion(result.AndroidVersion)}";
         VersionCheckStatus = result.Status;
     }
+
+    /// <summary>没读到版本号时不要写成"未发布"——也可能是检查失败，具体原因在下面那行状态里。</summary>
+    private static string DescribeVersion(string? version) =>
+        string.IsNullOrWhiteSpace(version) ? "未读取到" : version;
 
     public void MarkPublishedCheckFailed(string message)
     {
         PublishedCheckSucceeded = false;
         HasNoPublishedVersion = false;
         OnlineVersion = null;
+        PcOnlineVersion = null;
+        AndroidOnlineVersion = null;
         OnlineVersionsAligned = null;
         PublishedVersionText = "线上版本：检查失败";
         VersionCheckStatus = message;
@@ -158,8 +199,4 @@ public sealed class CrossingVoidGamePublishState : ObservableObject
                     ? pc.Trim()
                     : string.Empty;
 
-    private static string ResolveSharedChannel(string pc, string android) =>
-        string.Equals(pc, android, StringComparison.OrdinalIgnoreCase) && pc is "beta"
-            ? "beta"
-            : "stable";
 }

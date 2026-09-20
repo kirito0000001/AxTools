@@ -1,9 +1,10 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
-    [ValidateSet('CheckEnvironment', 'CheckGamePackage', 'PublishGameVersion', 'RebuildGameDownloadRepo')]
-    [string]$Action,
-    [Parameter(Mandatory)][string]$ProjectRoot,
+    # 这些参数一律声明成"可空 + 体内校验"：PowerShell 在参数绑定阶段抛的错会用系统本地代码页
+    # （中文机器上是 GBK）写到 stderr，AxTools 按 UTF-8 读就是一串乱码；放到体内 throw 才走
+    # 任务协议的 UTF-8 通道，日志里能看清原因。
+    [string]$Action = '',
+    [AllowEmptyString()][string]$ProjectRoot = '',
     # 内核不需要这两个路径，但 AxTools 的任务协议统一会传，必须声明（否则 -File 绑定直接报错）。
     [string]$DevelopmentExecutable = '',
     [string]$ReleaseExecutable = '',
@@ -14,7 +15,9 @@ param(
     [string]$ReleaseNotes = '',
     [ValidateSet('Windows', 'Android')][string]$Platform = 'Windows',
     # 本游戏在下载站上的产品段名（PC 侧）。安卓固定用 <这个>-android。
-    [Parameter(Mandatory)][string]$ProductSegment,
+    [string]$ProductSegment = '',
+    # 传输方式：files（默认，逐文件同步）或 git（老路子，兜底/对照）
+    [ValidateSet('files', 'git')][string]$TransferMode = 'files',
     # 跟着产物上线的版本标记文件名（每个游戏一个，格式统一）；留空用内核默认。
     [string]$VersionMarkerName = '',
     [switch]$DryRun
@@ -33,9 +36,18 @@ $kernel = Join-Path $scriptsRoot 'Publishing\Games\Publish-GameDownloadRelease.p
 $segment = if ($Platform -eq 'Android') { "$ProductSegment-android" } else { $ProductSegment }
 
 try {
+    if ($Action -notin @('CheckEnvironment', 'CheckGamePackage', 'PublishGameVersion', 'RebuildGameDownloadRepo')) {
+        throw "未知的游戏包发布动作：'$Action'。"
+    }
+    if ([string]::IsNullOrWhiteSpace($ProductSegment)) {
+        throw '缺少产品段名（ProductSegment），无法定位下载站目录。'
+    }
+
     if ($Action -eq 'CheckEnvironment') {
-        if (-not (Test-Path -LiteralPath $ProjectRoot -PathType Container)) {
-            throw "游戏项目目录不存在：$ProjectRoot"
+        # 游戏工具没有源码目录，ProjectRoot 就是打包产物目录；两者都空时以产物目录为准。
+        $projectRoot = if ([string]::IsNullOrWhiteSpace($ProjectRoot)) { $GamePackageRoot } else { $ProjectRoot }
+        if ([string]::IsNullOrWhiteSpace($projectRoot) -or -not (Test-Path -LiteralPath $projectRoot -PathType Container)) {
+            throw "找不到游戏包目录，无法检查环境：$projectRoot"
         }
         if (-not (Test-Path -LiteralPath $kernel -PathType Leaf)) {
             throw "缺少游戏包发布内核：$kernel"

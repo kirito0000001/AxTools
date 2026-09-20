@@ -43,6 +43,20 @@
 > ⚠️ **没有"latest"指针**。每份清单是**按版本号**放的（`manifests/0.5.13.json`），
 > 所以启动器今天还得靠 www 的 `-latest.json` 才知道"该下哪个版本"。
 > 方案 A 会把这件事挪到 Gitee API（见 2.4）。
+>
+> 🔁 **传输方式变了（2026-09-20，对启动器无影响）**：下载站的内容**不再由 git 推送**，改成"逐文件同步"——
+> 只有和上一版不一样的文件会上传，其余在服务器上硬链接。对外契约一点没变：路径还是
+> `/games/<产品段>/<版本>/<files[].path>`，清单还是同一份 v1 JSON。
+> 另外新增 `GET /games/<产品段>/latest.json` = `{ schemaVersion, productSegment, version, manifestUrl, generatedAt }`：
+> 启动器将来要"该下哪一版"可以直接读它（比 www 的 `-latest.json` 更近，也不吃 raw 的缓存）。
+
+> 📌 **但"线上最新版本"这件事有得查**（2026-09-20 加）：发布内核每次都会清掉更早的清单，
+> 所以 `manifests/` 目录里**只留当前版本那一份**。野草云的 nginx 开了自动索引，于是
+> `GET /games/<产品段>[-android]/manifests/` 的 HTML 里那唯一一个 `<a href="X.json">`
+> 就是最新版本号（404＝这个平台还没发过）。AxTools 的发布面板现在就是这么查的
+> （`PublishedVersionService.CheckGameAsync`，目录里取版本号最高的一份）。
+> 这条路依赖自动索引，**更稳的长期方案是发布内核顺手写一个 `latest.json` 指针**——
+> 到时候 AxTools 和启动器都可以只认这一个文件。
 
 ### 拿一段最小 curl 自测（不用等启动器）
 

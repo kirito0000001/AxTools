@@ -79,14 +79,11 @@ public sealed class PublishingVersionGateTests : IDisposable
     }
 
     [Fact]
-    public async Task ValidatePublishingVersionAsync_RejectsOlderFourPartGameVersion()
+    public async Task ValidatePublishingVersionAsync_RejectsOlderGameVersionThanCurrentPlatform()
     {
-        var handler = new StubHandler(_ => Json(
-            "{\"latest\":{\"version\":\"V0.5.12.2\"}}"));
+        var handler = new StubHandler(_ =>
+            Html("<a href=\"0.5.12.2.json\">0.5.12.2.json</a>"));
         var service = new PublishedVersionService(new HttpClient(handler));
-        var pc = new ManagedToolPaths { GamePublishVersion = "0.5.12.1" };
-        var android = new ManagedToolPaths { GamePublishVersion = "0.5.12.1" };
-        var shared = new CrossingVoidGamePublishState(pc, android);
         var packageRoot = Path.Combine(_root, "GamePackage");
         Directory.CreateDirectory(packageRoot);
         var gamePaths = new ManagedToolPaths
@@ -94,6 +91,7 @@ public sealed class PublishingVersionGateTests : IDisposable
             GamePackageRoot = packageRoot,
             GamePublishVersion = "0.5.12.1"
         };
+        var state = new CrossingVoidGamePublishState(gamePaths, gamePaths);
         var descriptor = ManagedToolCatalog.All.Single(item =>
             item.Key == ManagedToolKey.CrossingVoidGame);
         var viewModel = new ToolPageViewModel(
@@ -101,14 +99,77 @@ public sealed class PublishingVersionGateTests : IDisposable
             gamePaths,
             new CrossingVoidGameAdapter(Path.Combine(_root, "Scripts")),
             publishedVersionService: service,
-            sharedGamePublishState: shared);
+            gamePublishState: state);
 
         var result = await viewModel.ValidatePublishingVersionAsync(
             ManagedToolAction.PublishGameVersion,
             CancellationToken.None);
 
         Assert.False(result.IsAllowed);
-        Assert.Equal("V0.5.12.2", result.OnlineVersion);
+        Assert.Equal("0.5.12.2", result.OnlineVersion);
+    }
+
+    [Fact]
+    public async Task ValidatePublishingVersionAsync_AllowsFirstPcPublishWhenOnlyAndroidIsOnline()
+    {
+        // PC 还没发过、安卓已经有 0.5.13：PC 首次发布不该被"另一个平台的版本"拦住。
+        var handler = new StubHandler(request => request.RequestUri!.AbsoluteUri.Contains("-android")
+            ? Html("<a href=\"0.5.13.json\">0.5.13.json</a>")
+            : new HttpResponseMessage(HttpStatusCode.NotFound));
+        var service = new PublishedVersionService(new HttpClient(handler));
+        var packageRoot = Path.Combine(_root, "GamePackage");
+        Directory.CreateDirectory(packageRoot);
+        var gamePaths = new ManagedToolPaths
+        {
+            GamePackageRoot = packageRoot,
+            GamePublishVersion = "0.5.13"
+        };
+        var state = new CrossingVoidGamePublishState(gamePaths, gamePaths);
+        var descriptor = ManagedToolCatalog.All.Single(item =>
+            item.Key == ManagedToolKey.CrossingVoidGame);
+        var viewModel = new ToolPageViewModel(
+            descriptor,
+            gamePaths,
+            new CrossingVoidGameAdapter(Path.Combine(_root, "Scripts")),
+            publishedVersionService: service,
+            gamePublishState: state);
+
+        var result = await viewModel.ValidatePublishingVersionAsync(
+            ManagedToolAction.PublishGameVersion,
+            CancellationToken.None);
+
+        Assert.True(result.IsAllowed);
+    }
+
+    [Fact]
+    public async Task ValidatePublishingVersionAsync_AllowsGamePublishWhenOnlineCheckFails()
+    {
+        // 网络/代理抖动读不到下载站时不再拦死；发布内核推完还会校验公网清单。
+        var service = new PublishedVersionService(new HttpClient(new StubHandler(
+            _ => throw new HttpRequestException("offline"))));
+        var packageRoot = Path.Combine(_root, "GamePackage");
+        Directory.CreateDirectory(packageRoot);
+        var gamePaths = new ManagedToolPaths
+        {
+            GamePackageRoot = packageRoot,
+            GamePublishVersion = "0.5.14"
+        };
+        var state = new CrossingVoidGamePublishState(gamePaths, gamePaths);
+        var descriptor = ManagedToolCatalog.All.Single(item =>
+            item.Key == ManagedToolKey.CrossingVoidGame);
+        var viewModel = new ToolPageViewModel(
+            descriptor,
+            gamePaths,
+            new CrossingVoidGameAdapter(Path.Combine(_root, "Scripts")),
+            publishedVersionService: service,
+            gamePublishState: state);
+
+        var result = await viewModel.ValidatePublishingVersionAsync(
+            ManagedToolAction.PublishGameVersion,
+            CancellationToken.None);
+
+        Assert.True(result.IsAllowed);
+        Assert.Contains("未能确认线上版本", result.Message);
     }
 
     private ToolPageViewModel CreateAxToolsViewModel(
@@ -131,6 +192,11 @@ public sealed class PublishingVersionGateTests : IDisposable
     private static HttpResponseMessage Json(string value) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(value, Encoding.UTF8, "application/json")
+    };
+
+    private static HttpResponseMessage Html(string value) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(value, Encoding.UTF8, "text/html")
     };
 
     private sealed class StubHandler(

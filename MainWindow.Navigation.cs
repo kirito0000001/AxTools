@@ -22,9 +22,15 @@ public sealed partial class MainWindow
 
     private void ShowPageByTag(string tag, bool playAnimation)
     {
-        var normalizedTag = tag is "FantasyTools" or "GalExcleTools" or "CrossingVoidZDTool" or "CrossingVoidPc" or "CrossingVoidAndroid" or "FantasyGame" or "FantasyAndroid" or "CrossingVoidGame" or "NarutoGame" or "ServerAliyun" or "Settings"
-                ? tag
-                : "AxTools";
+        // 2026-09-20：三个游戏包发布页并进了「服务器」页的游戏页签，旧的导航标识统一回到服务器分区
+        // （设置里存着旧页签时，重开也会落在服务器页，而不是弹回 Ax管理器）。
+        var normalizedTag = tag switch
+        {
+            "CrossingVoidGame" or "FantasyGame" or "NarutoGame" => "ServerAliyun",
+            "FantasyTools" or "GalExcleTools" or "CrossingVoidZDTool" or "CrossingVoidPc" or
+                "CrossingVoidAndroid" or "FantasyAndroid" or "ServerAliyun" or "Settings" => tag,
+            _ => "AxTools"
+        };
         FrameworkElement visiblePage = normalizedTag switch
         {
             "FantasyTools" => FantasyToolsPage,
@@ -32,10 +38,7 @@ public sealed partial class MainWindow
             "CrossingVoidZDTool" => CrossingVoidZDToolPage,
             "CrossingVoidPc" => CrossingVoidPcPage,
             "CrossingVoidAndroid" => CrossingVoidAndroidPage,
-            "FantasyGame" => FantasyGamePage,
             "FantasyAndroid" => FantasyAndroidPage,
-            "CrossingVoidGame" => CrossingVoidGamePage,
-            "NarutoGame" => NarutoGamePage,
             "ServerAliyun" => ServerAliyunPage,
             "Settings" => GlobalSettingsPage,
             _ => AxToolsPage
@@ -47,10 +50,7 @@ public sealed partial class MainWindow
         CrossingVoidZDToolPage.Visibility = visiblePage == CrossingVoidZDToolPage ? Visibility.Visible : Visibility.Collapsed;
         CrossingVoidPcPage.Visibility = visiblePage == CrossingVoidPcPage ? Visibility.Visible : Visibility.Collapsed;
         CrossingVoidAndroidPage.Visibility = visiblePage == CrossingVoidAndroidPage ? Visibility.Visible : Visibility.Collapsed;
-        FantasyGamePage.Visibility = visiblePage == FantasyGamePage ? Visibility.Visible : Visibility.Collapsed;
         FantasyAndroidPage.Visibility = visiblePage == FantasyAndroidPage ? Visibility.Visible : Visibility.Collapsed;
-        CrossingVoidGamePage.Visibility = visiblePage == CrossingVoidGamePage ? Visibility.Visible : Visibility.Collapsed;
-        NarutoGamePage.Visibility = visiblePage == NarutoGamePage ? Visibility.Visible : Visibility.Collapsed;
         ServerAliyunPage.Visibility = visiblePage == ServerAliyunPage ? Visibility.Visible : Visibility.Collapsed;
         GlobalSettingsPage.Visibility = visiblePage == GlobalSettingsPage ? Visibility.Visible : Visibility.Collapsed;
 
@@ -71,10 +71,7 @@ public sealed partial class MainWindow
             "CrossingVoidZDTool" => CrossingVoidZDToolNavItem,
             "CrossingVoidPc" => CrossingVoidPcNavItem,
             "CrossingVoidAndroid" => CrossingVoidAndroidNavItem,
-            "FantasyGame" => FantasyGameNavItem,
             "FantasyAndroid" => FantasyAndroidNavItem,
-            "CrossingVoidGame" => CrossingVoidGameNavItem,
-            "NarutoGame" => NarutoGameNavItem,
             "ServerAliyun" => ServerAliyunNavItem,
             "Settings" => SettingsNavItem,
             _ => AxToolsNavItem

@@ -15,9 +15,6 @@ public sealed class ToolPageXamlLayoutTests
         var expected = new Dictionary<string, (string Title, string Icon)>
         {
             ["AxToolsNavItem"] = ("Ax管理器", "AxTools.png"),
-            ["CrossingVoidGameNavItem"] = ("游戏-零境交错", "CrossingVoidPc.png"),
-            ["FantasyGameNavItem"] = ("游戏-幻杀", "FantasyTools.png"),
-            ["NarutoGameNavItem"] = ("游戏-火影BP", "FantasyTools.png"),
             ["CrossingVoidZDToolNavItem"] = ("工具-零境素材", "CrossingVoidZDTool.png"),
             ["GalExcleToolsNavItem"] = ("工具-剧情填表", "GalExcleTools.png"),
             ["FantasyToolsNavItem"] = ("工具-幻杀卡牌", "FantasyTools.png"),
@@ -38,6 +35,15 @@ public sealed class ToolPageXamlLayoutTests
         }
 
         Assert.Empty(expected);
+
+        // 2026-09-20：三个游戏包发布页并进「服务器」页的游戏页签，左侧不再有这三个导航项。
+        var names = document
+            .Descendants(presentation + "NavigationViewItem")
+            .Select(element => (string?)element.Attribute(xaml + "Name"))
+            .ToArray();
+        Assert.DoesNotContain("CrossingVoidGameNavItem", names);
+        Assert.DoesNotContain("FantasyGameNavItem", names);
+        Assert.DoesNotContain("NarutoGameNavItem", names);
     }
 
     [Fact]
@@ -105,6 +111,55 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains("CrossingVoidZDToolPage.DataContext = viewModel.Tools[4]", windowCode);
         Assert.Contains("CrossingVoidZDToolPage.ToolActionRequested += ToolPage_ToolActionRequested", windowCode);
         Assert.Contains("CrossingVoidZDToolPage.ToolActionRequested -= ToolPage_ToolActionRequested", windowCode);
+    }
+
+    [Fact]
+    public void GamePublishing_LivesInServerPageTabsInsteadOfLeftNavigation()
+    {
+        var windowCode = File.ReadAllText(FindProjectFile("MainWindow.xaml.cs"));
+        Assert.Contains(
+            "ServerAliyunPage.AttachGamePublishPanel(\"crossingvoid\", CrossingVoidGamePage)",
+            windowCode);
+        Assert.Contains(
+            "ServerAliyunPage.AttachGamePublishPanel(\"narutobp\", NarutoGamePage)",
+            windowCode);
+        Assert.Contains(
+            "ServerAliyunPage.AttachGamePublishPanel(\"fantasyproject\", FantasyGamePage)",
+            windowCode);
+        // 幻杀的游戏包目录选择按钮原本没接线，跟着这次搬家一起补上。
+        Assert.Contains(
+            "FantasyGamePage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested",
+            windowCode);
+
+        // 旧页签统一回到服务器分区，避免设置里存着旧值、重开时落不到页面上。
+        var routing = File.ReadAllText(FindProjectFile("MainWindow.Navigation.cs"));
+        Assert.Contains(
+            "\"CrossingVoidGame\" or \"FantasyGame\" or \"NarutoGame\" => \"ServerAliyun\"",
+            routing);
+        Assert.DoesNotContain("CrossingVoidGamePage.Visibility", routing);
+        Assert.DoesNotContain("NarutoGamePage.Visibility", routing);
+
+        // 服务器页按产品键把发布面板挂进对应游戏的页签卡片。
+        var serverPage = File.ReadAllText(FindProjectFile(Path.Combine("Views", "ServerPage.xaml.cs")));
+        Assert.Contains("_gamePublishPanels.TryGetValue(programKey, out var publishPage)", serverPage);
+        Assert.Contains("客户端发布（下载站）", serverPage);
+        // 发布卡片挂在固定宿主上，不跟着 15 秒轮询重建（否则输入焦点每 15 秒被踢一次）。
+        Assert.Contains("UpdateGamePublishPanel();", serverPage);
+        Assert.Contains(
+            "GamePublishPanelHost",
+            File.ReadAllText(FindProjectFile(Path.Combine("Views", "ServerPage.xaml"))));
+
+        // ToolPage 的嵌入形态：藏掉自己的页头、模式选择器和内层边框。
+        var toolPage = File.ReadAllText(FindProjectFile(Path.Combine("Views", "ToolPage.xaml.cs")));
+        Assert.Contains("internal void HostAsGamePublishPanel()", toolPage);
+        Assert.Contains("PageTitleText.Visibility = Visibility.Collapsed", toolPage);
+        Assert.Contains("ModeSelector.Visibility = Visibility.Collapsed", toolPage);
+
+        // 必须按内容网格自己的 Children 摘除：三个页面和别的页共用一个格子，
+        // 用 FrameworkElement.Parent 判断时摘不掉，三张发布页会叠在当前选中页上。
+        Assert.Contains("PageHost.Children.Remove(page)", windowCode);
+        Assert.Contains("x:Name=\"PageHost\"", File.ReadAllText(FindProjectFile("MainWindow.xaml")));
+        Assert.DoesNotContain("page.Parent is Panel", File.ReadAllText(FindProjectFile(Path.Combine("Views", "ServerPage.xaml.cs"))));
     }
 
     [Fact]
@@ -230,9 +285,13 @@ public sealed class ToolPageXamlLayoutTests
             versionField.Descendants(presentation + "NumberBox")
                 .Select(element => (string?)element.Attribute("Value"))
                 .Select(value => value?.Split(',')[0].Replace("{Binding ", string.Empty)));
-        Assert.Contains(
+        // 渠道暂时取消（还没余力开测试服）：界面上没有「游戏通道」，只留平台。
+        Assert.DoesNotContain(
             gameSection.Descendants(presentation + "ComboBox"),
             element => ((string?)element.Attribute("SelectedValue"))?.Contains("GamePublishChannel") == true);
+        Assert.DoesNotContain(
+            gameSection.Descendants(),
+            element => (string?)element.Attribute(xaml + "Name") == "GameChannelField");
         Assert.Contains(
             gameSection.Descendants(presentation + "ComboBox"),
             element => ((string?)element.Attribute("SelectedValue"))?.Contains("GamePublishPlatform") == true);

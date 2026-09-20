@@ -69,6 +69,10 @@
             </SelectorBar>
 
             <StackPanel x:Name="ActionPanelHost" Spacing="14" />
+
+            <!-- 游戏包发布卡片单独挂在这条固定宿主上：它不在 15 秒轮询的重建范围里，
+                 所以正在填版本号 / 选产包目录时不会被刷新打断。 -->
+            <StackPanel x:Name="GamePublishPanelHost" Spacing="14" Visibility="Collapsed" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>

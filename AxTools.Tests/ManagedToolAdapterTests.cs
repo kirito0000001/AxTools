@@ -265,8 +265,7 @@ public sealed class ManagedToolAdapterTests : IDisposable
         var gameActions = new[]
         {
             ManagedToolAction.CheckGamePackage,
-            ManagedToolAction.PublishGameVersion,
-            ManagedToolAction.RebuildGameDownloadRepo
+            ManagedToolAction.PublishGameVersion
         };
 
         // 游戏本体发布只属于「零境交错：空界幻境」那个工具；两个启动器不应该再挂这些动作。
@@ -289,20 +288,43 @@ public sealed class ManagedToolAdapterTests : IDisposable
 
         AssertGameUploadAdapter(
             new CrossingVoidGameAdapter(scriptsRoot), "零境交错：空界幻境",
-            "crossingvoid", "CrossingVoid.version.json", windowsRoot, androidRoot);
+            "crossingvoid", windowsRoot, androidRoot);
         AssertGameUploadAdapter(
             new FantasyGameAdapter(scriptsRoot), "幻杀",
-            "fantasyproject", "FantasyProject.version.json", windowsRoot, androidRoot);
+            "fantasyproject", windowsRoot, androidRoot);
         AssertGameUploadAdapter(
             new NarutoGameAdapter(scriptsRoot), "火影",
-            "narutobp", "NarutoBP.version.json", windowsRoot, androidRoot);
+            "narutobp", windowsRoot, androidRoot);
+    }
+
+    /// <summary>
+    /// 产品段名和版本标记文件名只由包装脚本带给内核（适配器不下发）。两边写岔了会静默发错目录，
+    /// 所以这里把包装脚本里的常量也钉住；段名还要和适配器给"线上版本检查"用的那份一致。
+    /// </summary>
+    [Theory]
+    [InlineData("CrossingVoidGame", "crossingvoid", "CrossingVoid.version.json")]
+    [InlineData("FantasyGame", "fantasyproject", "FantasyProject.version.json")]
+    [InlineData("NarutoGame", "narutobp", "NarutoBP.version.json")]
+    public void GameWrappers_CarryOwnProductSegmentAndVersionMarker(
+        string wrapperDirectory,
+        string productSegment,
+        string versionMarkerName)
+    {
+        var wrapperPath = FindRepositoryFile(Path.Combine(
+            "Scripts",
+            "Adapters",
+            wrapperDirectory,
+            $"Invoke-{wrapperDirectory}Action.ps1"));
+        var source = File.ReadAllText(wrapperPath);
+
+        Assert.Contains($"-ProductSegment '{productSegment}'", source);
+        Assert.Contains($"-VersionMarkerName '{versionMarkerName}'", source);
     }
 
     private static void AssertGameUploadAdapter(
         IManagedToolAdapter adapter,
         string displayName,
         string productSegment,
-        string markerName,
         string windowsRoot,
         string androidRoot)
     {
@@ -310,18 +332,20 @@ public sealed class ManagedToolAdapterTests : IDisposable
             [
                 ManagedToolAction.CheckEnvironment,
                 ManagedToolAction.CheckGamePackage,
-                ManagedToolAction.PublishGameVersion,
-                ManagedToolAction.RebuildGameDownloadRepo
+                ManagedToolAction.PublishGameVersion
             ],
             adapter.Actions.Select(action => action.Action));
         Assert.Equal(
-            ["检查环境", "只检查，不发布", "发布新版本", "重整仓库（压平历史）"],
+            ["检查环境", "只检查，不发布", "发布新版本"],
             adapter.Actions.Select(action => action.DisplayName));
         Assert.All(
             adapter.Actions.Where(action => action.Action != ManagedToolAction.CheckEnvironment),
             action => Assert.True(action.RequiresVersion));
         Assert.True(adapter.Actions.Single(action => action.Action == ManagedToolAction.PublishGameVersion).RequiresConfirmation);
-        Assert.True(adapter.Actions.Single(action => action.Action == ManagedToolAction.RebuildGameDownloadRepo).RequiresConfirmation);
+        // 「重整仓库（压平历史）」已经随着 git 传输一起退场（现在没有本机仓库可压）。
+        Assert.DoesNotContain(adapter.Actions, action => action.Action == ManagedToolAction.RebuildGameDownloadRepo);
+        // 线上版本检查靠这个产品段去找下载站目录；要经接口拿到（默认实现取到过 null）。
+        Assert.Equal(productSegment, adapter.GameProductSegment);
         Assert.False(adapter.Actions.Single(action => action.Action == ManagedToolAction.CheckGamePackage).RequiresConfirmation);
 
         // 目录校验是按"当前平台"来的：PC 和安卓各记一个目录，缺哪个哪个不通过。
@@ -345,18 +369,23 @@ public sealed class ManagedToolAdapterTests : IDisposable
             pcPaths);
         Assert.Equal($"{displayName} · 发布新版本", pcTask.Title);
         AssertArgumentPair(pcTask.Arguments, "-Platform", "Windows");
+        // 游戏工具没有源码目录：-ProjectRoot 要用产物目录。空字符串会让 PowerShell 的
+        // Mandatory 参数在绑定阶段直接失败（任务还没跑就挂，且报错是乱码）。
+        AssertArgumentPair(pcTask.Arguments, "-ProjectRoot", windowsRoot);
         AssertArgumentPair(pcTask.Arguments, "-GamePackageRoot", windowsRoot);
         AssertArgumentPair(pcTask.Arguments, "-ReleaseNotes", "PC 更新");
-        AssertArgumentPair(pcTask.Arguments, "-ProductSegment", productSegment);
-        AssertArgumentPair(pcTask.Arguments, "-VersionMarkerName", markerName);
+        // 产品段名和版本标记名由包装脚本自己带给内核，这里不再重复下发。
+        Assert.DoesNotContain("-ProductSegment", pcTask.Arguments);
+        Assert.DoesNotContain("-VersionMarkerName", pcTask.Arguments);
 
         var androidTask = adapter.CreateTask(
             new ManagedToolActionRequest(ManagedToolAction.PublishGameVersion, "1.0.0", "stable", "安卓更新"),
             androidPaths);
         AssertArgumentPair(androidTask.Arguments, "-Platform", "Android");
+        AssertArgumentPair(androidTask.Arguments, "-ProjectRoot", androidRoot);
         AssertArgumentPair(androidTask.Arguments, "-GamePackageRoot", androidRoot);
-        AssertArgumentPair(androidTask.Arguments, "-ProductSegment", $"{productSegment}-android");
-        AssertArgumentPair(androidTask.Arguments, "-VersionMarkerName", markerName);
+        Assert.DoesNotContain("-ProductSegment", androidTask.Arguments);
+        Assert.DoesNotContain("-VersionMarkerName", androidTask.Arguments);
     }
 
     [Fact]
@@ -602,6 +631,23 @@ public sealed class ManagedToolAdapterTests : IDisposable
         }
         Assert.True(index >= 0 && index + 1 < arguments.Count, $"缺少参数 {name}。");
         Assert.Equal(value, arguments[index + 1]);
+    }
+
+    /// <summary>从测试输出目录往上找仓库根，再取相对路径的文件（用于校验脚本内容）。</summary>
+    private static string FindRepositoryFile(string relativePath)
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
+             directory is not null;
+             directory = directory.Parent)
+        {
+            var candidate = Path.Combine(directory.FullName, relativePath);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new FileNotFoundException($"找不到 {relativePath}。");
     }
 
     [Fact]

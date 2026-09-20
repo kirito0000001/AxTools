@@ -48,6 +48,34 @@ public sealed partial class ServerPage : UserControl
         return timer;
     }
 
+    /// <summary>
+    /// 游戏页签里那块「客户端发布（下载站）」用的页面，由 MainWindow 注入（键 = 产品键，
+    /// 和 ServerProgramCatalog 一致：crossingvoid / narutobp / fantasyproject）。
+    /// 这几个页面本来是左侧导航里的独立工具页，2026-09-20 起搬进服务器页签；
+    /// 执行逻辑一个字节都没改，这里只负责把它们挂到对应的页签卡片里。
+    /// </summary>
+    private readonly Dictionary<string, ToolPage> _gamePublishPanels = new(StringComparer.Ordinal);
+
+    /// <summary>每个产品键已经建好的发布卡片（只建一次，之后只切换显示，不再重挂）。</summary>
+    private readonly Dictionary<string, Border> _gamePublishCards = new(StringComparer.Ordinal);
+
+    /// <summary>当前正挂在发布宿主上的产品键；没换页签就不动宿主，避免打断正在输入的内容。</summary>
+    private string? _visibleGamePublishKey;
+
+    internal void AttachGamePublishPanel(string programKey, ToolPage page)
+    {
+        page.HostAsGamePublishPanel();
+        _gamePublishPanels[programKey] = page;
+
+        // MainWindow 调用前已经用 PageHost.Children.Remove 把它从内容网格里摘出来了
+        // （不能用 FrameworkElement.Parent 判断：WinUI 里它不保证指向那个 Grid）。
+        // 这里再按可视树兜一次，万一以后页面被挂到别的容器里也不会两处同时显示。
+        if (VisualTreeHelper.GetParent(page) is Panel leftoverParent)
+        {
+            leftoverParent.Children.Remove(page);
+        }
+    }
+
     private ServerPageViewModel? ViewModel => DataContext as ServerPageViewModel;
 
     /// <summary>耗时操作期间显示进度并锁住动作区，避免连点造成并发操作。</summary>
@@ -187,6 +215,68 @@ public sealed partial class ServerPage : UserControl
                 ActionPanelHost.Children.Add(CreateServerPanel(viewModel));
                 break;
         }
+
+        UpdateGamePublishPanel();
+    }
+
+    /// <summary>
+    /// 游戏包发布卡片（原来挂在左侧导航那三个游戏页里，2026-09-20 挪进服务器页签）。
+    ///
+    /// 它挂在固定的 GamePublishPanelHost 上，不跟着 15 秒轮询重建：只有真的换了页签才动一次，
+    /// 否则正在填版本号 / 选产物目录时会被刷新打断。卡片本身也只建一次，之后只切显示。
+    /// </summary>
+    private void UpdateGamePublishPanel()
+    {
+        var programKey = CurrentProgramProfile()?.Key;
+        if (string.Equals(programKey, _visibleGamePublishKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _visibleGamePublishKey = programKey;
+        if (programKey is null || !_gamePublishPanels.TryGetValue(programKey, out var publishPage))
+        {
+            GamePublishPanelHost.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (!_gamePublishCards.TryGetValue(programKey, out var card))
+        {
+            card = CreatePanel(
+                "客户端发布（下载站）",
+                "按文件清单增量推到 dl.crossingvoid.top；没变化的文件不会重复上传。",
+                publishPage,
+                "PC 与安卓各记一个产物目录；发布时自动排除 pdb、Saved 日志、符号文件、AFS 调试包等（详见对接文档）。");
+            _gamePublishCards[programKey] = card;
+            GamePublishPanelHost.Children.Add(card);
+        }
+
+        foreach (var entry in _gamePublishCards)
+        {
+            entry.Value.Visibility = string.Equals(entry.Key, programKey, StringComparison.Ordinal)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        GamePublishPanelHost.Visibility = Visibility.Visible;
+
+        if (publishPage.DataContext is ToolPageViewModel gameViewModel)
+        {
+            _ = CheckGameVersionAsync(gameViewModel);
+        }
+    }
+
+    /// <summary>
+    /// 进这个页签就自动查一次线上版本：以前是独立页面时靠模式选择器触发，嵌进来以后没人触发，
+    /// 会一直停在"尚未检查"。三个游戏统一走下载站清单目录（games/&lt;产品段&gt;[-android]/manifests/）。
+    /// 结果同时写进日志，方便回看"发布那一刻线上是多少"。
+    /// </summary>
+    private async Task CheckGameVersionAsync(ToolPageViewModel gameViewModel)
+    {
+        await gameViewModel.CheckGamePublishedVersionAsync(CancellationToken.None);
+        ViewModel?.Log?.Write(
+            LogKind.Info,
+            $"{gameViewModel.DisplayName} · 线上版本：{gameViewModel.GamePublishedVersionText}");
     }
 
     private Border CreateServerPanel(ServerPageViewModel viewModel)

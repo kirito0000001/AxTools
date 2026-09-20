@@ -8,5 +8,4 @@ public sealed class NarutoGameAdapter(string scriptsRoot) : GameUploadAdapter(
     scriptsRoot,
     "NarutoGame",
     "火影",
-    "narutobp",
-    "NarutoBP.version.json");
+    "narutobp");

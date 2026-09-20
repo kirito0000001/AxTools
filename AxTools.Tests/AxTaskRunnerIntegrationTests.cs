@@ -110,6 +110,7 @@ public sealed class AxTaskRunnerIntegrationTests
                 "..",
                 "..",
                 "..",
+                "..",
                 "Scripts",
                 "Diagnostics",
                 "Invoke-RunnerSelfTest.ps1"));

@@ -27,6 +27,16 @@ param(
     # 下载站上的裸仓库（ssh 别名 + 路径）。留空则按产品段推导 yecaoyun-upload:/srv/repos/game-<产品段>.git
     [string]$UploadTarget = '',
 
+    # 传输方式：
+    #   files = 逐文件同步（默认，2026-09-20 起）：只传"和上一版不一样的文件"，
+    #           其余由服务端从上一版硬链接（内容没变 ⇒ 0 字节）。不再需要本机 git 仓库。
+    #   git   = 老路子：提交本机暂存仓库再 push（保留作兜底/对照）。
+    [ValidateSet('files', 'git')]
+    [string]$TransferMode = 'files',
+
+    # files 模式下用来执行服务端脚本/接收文件的 ssh 目标（走 root 别名，和服务器更新那条链路一致）
+    [string]$FileSyncTarget = 'yecaoyun-hk',
+
     # 对外下载基址。清单里的 baseUrl = <这个>/games/<产品段>/<版本>/
     [string]$PublicBaseUrl = 'https://dl.crossingvoid.top',
 
@@ -48,13 +58,21 @@ param(
 #      —— OBB 本体不发，它就是一个不压缩 ZIP，拆开发文件级清单才能给出"只下变化的 chunk"）
 #   2) 生成 v1 文件级清单（schemaVersion=1 + baseUrl + 每个文件的 sha256）
 #   3) 把产物同步进本机暂存仓库（树里只保留这一个版本，更早的版本物理删掉）
-#   4) 提交（amend，保持单提交）→ git push --force 到下载站裸仓库（增量、带百分比）
+#   4) 提交（**在上一次提交之上**；树上仍只保留这一个版本）→ git push --force（只传变化的文件、带百分比）
 #   5) 服务端 post-receive hook 负责：把上一版硬链接归档到 games/<产品段>-archive/<版本>/
 #      → checkout -f main 落到 /srv/downloads → 省内存 gc 回收旧对象 → 回报体积
 #   6) 公网校验：拉一次清单、HEAD 抽样文件，核对版本与字节数
 #
-# 为什么 amend + force：这样服务端仓库对象只涨"这一个版本"的量，工作树也永远只有最新版，
-# 上一版由 hook 硬链接兜底（同盘同 inode，归档那一刻不额外占空间）。
+# 为什么提交必须带父提交（2026-09-20 实测踩出来的）：
+#   曾经为了"仓库里只有一版"用**无父提交**（commit-tree 不带 -p）。结果 git 推送时找不到共同祖先：
+#   客户端只能沿着"这次要推的提交"的历史往上找 haves，孤儿提交没有祖先 ⇒ 服务端一个对象都 ACK 不了
+#   ⇒ 每次都全量重传。实测：0.5.13 → 0.5.14 内容一字未改（86 个文件 sha256 全同，只有清单和版本标记
+#   是新的），2.53 GB 又完整传了一遍。本地最小复现：同样内容只换目录名，无父提交传 20 MB，
+#   带父提交只传 254 字节。
+#   现在的取舍：父提交链会让**变化过的**对象留在两侧仓库里（未变的文件按哈希复用，不额外占空间），
+#   换来的是"没改东西 = 几乎 0 上传"。历史涨得太大了就跑一次「重整仓库（压平历史）」——
+#   那会换来一次全量上传，之后重新开始增量。
+#   服务端工作树仍然永远只有最新版；上一版由 hook 硬链接兜底（同盘同 inode，归档不额外占空间）。
 #
 # 进度走 AxTools 任务协议（stdout 的 ::axtools 行，由 AxTaskProtocol.psm1 直写 Console）：
 # 阶段 scan（扫描+哈希）→ stage（同步+暂存）→ commit → push（百分比）→ verify。
@@ -602,6 +620,9 @@ function Initialize-StagingRepository {
     Invoke-GitChecked -Arguments @('-C', $RepoRoot, 'config', 'user.email', 'axtools@crossingvoid.local')
     Invoke-GitChecked -Arguments @('-C', $RepoRoot, 'config', 'core.autocrlf', 'false')
     Invoke-GitChecked -Arguments @('-C', $RepoRoot, 'config', 'gc.auto', '0')
+    # 不要再打开 push.negotiate：它要求 protocol v2，而 git 的 **推送**（receive-pack）走的是 v1，
+    # 只会打出 "warning: --negotiate-only requires protocol v2" 然后什么也不做（实测 2026-09-20）。
+    Invoke-Git -AllowFailure -Arguments @('-C', $RepoRoot, 'config', '--unset-all', 'push.negotiate') | Out-Null
 
     $remotes = Invoke-Git -Arguments @('-C', $RepoRoot, 'remote')
     $hasOrigin = @($remotes.Lines | Where-Object { $_.Trim() -eq 'origin' }).Count -gt 0
@@ -618,14 +639,43 @@ function Get-HeadCommitMessage {
     return $result.ExitCode -eq 0
 }
 
+# 推送前把"服务端当前那版"取到本地当协商基准（refs/remotes/origin/<分支>）。
+# 为什么必须做：git 推送时的 haves 只从"客户端已有的引用"里出题，服务端能 ACK 的那些对象
+# 才会被打包排除。本地暂存仓库如果连"服务端那条提交"都没有，git 一个对象都排除不掉 ⇒ 全量重传。
+# 代价极小：客户端通常刚推过同一批内容，fetch 实际不下载任何东西（没有的东西才下载）。
+# 只有刚重建过仓库（HEAD 还不存在）时才跳过——那次本来就是全量。
+function Sync-RemoteTipForPush {
+    $head = Invoke-Git -Arguments @('-C', $RepoRoot, 'rev-parse', '--verify', 'HEAD') -AllowFailure
+    if ($head.ExitCode -ne 0) { return }
+
+    $branch = (Invoke-Git -Arguments @('-C', $RepoRoot, 'symbolic-ref', '--short', 'HEAD')).Lines[0].Trim()
+    $fetchArgs = @('-C', $RepoRoot, 'fetch', '--no-tags', 'origin', "+refs/heads/$branch`:refs/remotes/origin/$branch")
+    $fetched = Invoke-Git -Arguments $fetchArgs -AllowFailure
+    if ($fetched.ExitCode -ne 0) {
+        Write-AxTaskProgress `
+            -Stage 'commit' `
+            -Percent 60 `
+            -Message '未能预取服务端基准（不影响发布，只是这次可能全量上传）' `
+            -Detail (($fetched.Lines | Out-String).Trim())
+        return
+    }
+
+    $tip = (Invoke-Git -Arguments @('-C', $RepoRoot, 'rev-parse', '--short', "refs/remotes/origin/$branch")).Lines[0].Trim()
+    Write-AxTaskProgress -Stage 'commit' -Percent 60 -Message "已对齐服务端基准：$tip（推送只发变化的文件）"
+}
+
 function Invoke-CommitVersion {
     param([string]$Message)
 
-    # 注意：这里**不能**用 `git commit --amend`。amend 只是换掉末端提交、保留父提交，
-    # 于是历史会一直累积：老版本的 blob 在服务端仍然"可达"，gc 收不掉，
-    # 实测 2.5 GB 的内容把仓库对象撑到 3.2 GiB（2026-09-20）。
-    # 所以直接写一个**没有父提交**的新提交：仓库永远只有一个提交、只含当前版本。
-    # 增量不受影响——客户端仍然只发"服务端没有的对象"，同内容文件按哈希复用。
+    # 用 `commit-tree` 写提交（不用 `git commit --amend`：amend 会把父提交链保留在历史里，
+    # 而我们要的是"每版一个新提交、父提交就是上一版"）。
+    # **必须带 -p**：无父提交会让 git 推送时找不到共同祖先，导致每次全量重传（详见文件头说明）。
+    $parent = $null
+    $head = Invoke-Git -Arguments @('-C', $RepoRoot, 'rev-parse', '--verify', 'HEAD') -AllowFailure
+    if ($head.ExitCode -eq 0 -and $head.Lines.Count -gt 0) {
+        $parent = $head.Lines[0].Trim()
+    }
+
     $branch = (Invoke-Git -Arguments @('-C', $RepoRoot, 'symbolic-ref', '--short', 'HEAD')).Lines[0].Trim()
     $tree = (Invoke-Git -Arguments @('-C', $RepoRoot, 'write-tree')).Lines[0].Trim()
 
@@ -633,7 +683,10 @@ function Invoke-CommitVersion {
     $messagePath = Join-Path ([IO.Path]::GetTempPath()) ("axtools-game-commit-" + [guid]::NewGuid().ToString('N') + '.txt')
     try {
         [IO.File]::WriteAllText($messagePath, $Message, [Text.UTF8Encoding]::new($false))
-        $commit = (Invoke-Git -Arguments @('-C', $RepoRoot, 'commit-tree', $tree, '-F', $messagePath)).Lines[-1].Trim()
+        $commitArguments = @('-C', $RepoRoot, 'commit-tree', $tree)
+        if ($parent) { $commitArguments += @('-p', $parent) }
+        $commitArguments += @('-F', $messagePath)
+        $commit = (Invoke-Git -Arguments $commitArguments).Lines[-1].Trim()
     }
     finally {
         Remove-Item -LiteralPath $messagePath -Force -ErrorAction SilentlyContinue
@@ -747,6 +800,225 @@ function Invoke-PublicVerify {
     }
 
     return [pscustomobject]@{ ManifestUrl = $manifestUrl; Files = $remoteCount; SampledFiles = $checked }
+}
+
+# ---------------------------------------------------------------------------
+# 逐文件同步（files 模式，2026-09-20 起默认）
+# ---------------------------------------------------------------------------
+# 和 git 那条路的区别：不做对象打包，只把"和上一版不一样的文件"传上去，其余由服务端
+# 从上一版硬链接过来（内容没变 ⇒ 0 字节）。对外契约不变：目录还是 games/<段>/<版本>/…，
+# 清单还是 schemaVersion 1 —— 启动器那边一行都不用改。
+
+function Invoke-FileSyncSsh {
+    param([Parameter(Mandatory)][string]$Command, [string]$Detail = '')
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & ssh $FileSyncTarget $Command 2>&1
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
+
+    $lines = @($output | ForEach-Object { [string]$_ })
+    if ($code -ne 0) {
+        $shown = if ([string]::IsNullOrWhiteSpace($Detail)) { $Command } else { $Detail }
+        throw ("服务端命令失败（退出码 {0}）：{1}`n{2}" -f $code, $shown, (($lines | Out-String).Trim()))
+    }
+    return $lines
+}
+
+function Get-OnlinePublishedVersion {
+    $cacheBuster = [DateTimeOffset]::Now.ToUnixTimeSeconds()
+    try {
+        $response = Invoke-DownloadSiteRequest -Uri "$PublicBaseUrl/games/$ProductSegment/latest.json?t=$cacheBuster"
+        $json = $response.Content | ConvertFrom-Json
+        if (-not [string]::IsNullOrWhiteSpace([string]$json.version)) { return [string]$json.version }
+    }
+    catch {
+        # 还没有 latest.json（迁移期的老数据）⇒ 退回读清单目录索引
+    }
+
+    try {
+        $response = Invoke-DownloadSiteRequest -Uri "$PublicBaseUrl/games/$ProductSegment/manifests/?t=$cacheBuster"
+        $versions = [System.Collections.Generic.List[string]]::new()
+        foreach ($match in [regex]::Matches([string]$response.Content, 'href="(?<name>[^"/]+)\.json"')) {
+            $versions.Add($match.Groups['name'].Value)
+        }
+        if ($versions.Count -eq 0) { return '' }
+        return ($versions |
+            Sort-Object -Property { try { [version]($_ -replace '[^0-9.].*$', '') } catch { [version]'0.0' } } -Descending |
+            Select-Object -First 1)
+    }
+    catch {
+        return ''
+    }
+}
+
+function Get-OnlineManifest {
+    param([Parameter(Mandatory)][string]$Version)
+
+    try {
+        $uri = "$PublicBaseUrl/games/$ProductSegment/manifests/$Version.json?t=$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
+        $response = Invoke-DownloadSiteRequest -Uri $uri
+        return ($response.Content | ConvertFrom-Json)
+    }
+    catch {
+        return $null
+    }
+}
+
+function Invoke-FileSyncPublish {
+    param([Parameter(Mandatory)][object]$ManifestFiles)
+
+    $previousVersion = Get-OnlinePublishedVersion
+    $previousManifest = if ([string]::IsNullOrWhiteSpace($previousVersion)) { $null } else { Get-OnlineManifest -Version $previousVersion }
+    $previousHashes = @{}
+    if ($null -ne $previousManifest -and $null -ne $previousManifest.files) {
+        foreach ($file in $previousManifest.files) {
+            $previousHashes[[string]$file.path] = ([string]$file.sha256).ToLowerInvariant()
+        }
+    }
+
+    $changed = [System.Collections.Generic.List[object]]::new()
+    $changedBytes = [int64]0
+    foreach ($file in $ManifestFiles) {
+        $path = [string]$file.path
+        $hash = ([string]$file.sha256).ToLowerInvariant()
+        if ($previousHashes.ContainsKey($path) -and $previousHashes[$path] -eq $hash) { continue }
+        $changed.Add($file)
+        $changedBytes += [int64]$file.sizeBytes
+    }
+
+    $previousLabel = if ([string]::IsNullOrWhiteSpace($previousVersion)) { '线上还没有上一版' } else { "上一版：$previousVersion" }
+    Write-AxTaskProgress `
+        -Stage 'stage' `
+        -Percent 56 `
+        -Message ("逐文件比对：要上传 {0} 个 / {1}；和上一版相同的 {2} 个由服务端硬链接（0 字节）" -f `
+            $changed.Count, (Format-Size -Bytes $changedBytes), ($ManifestFiles.Count - $changed.Count)) `
+        -Detail $previousLabel
+
+    if ($DryRun) {
+        Write-AxTaskStage `
+            -Stage 'push' `
+            -Message '演练模式：跳过上传与落位' `
+            -Detail ("sftp → {0}:/srv/downloads/games/{1}/{2}/" -f $FileSyncTarget, $ProductSegment, $ReleaseVersion)
+        return $false
+    }
+
+    # 1) 服务端先把这一版的目录准备好：从上一版硬链接（内容相同的文件一个字节都不用传）
+    Write-AxTaskProgress -Stage 'stage' -Percent 57 -Message '正在让服务端准备版本目录（从上一版硬链接）'
+    $prepareResult = Invoke-FileSyncSsh `
+        -Command ("/srv/scripts/game-file-sync.sh prepare {0} {1} {2}" -f $ProductSegment, $ReleaseVersion, $previousVersion) `
+        -Detail 'game-file-sync.sh prepare'
+    foreach ($line in $prepareResult) {
+        if (-not [string]::IsNullOrWhiteSpace($line)) {
+            Write-AxTaskProgress -Stage 'stage' -Percent 57 -Message $line.Trim()
+        }
+    }
+
+    # 2) 传变化的文件 + 清单：先传临时名，再原子改名（启动器不会读到半截文件）
+    $versionRoot = "/srv/downloads/games/$ProductSegment/$ReleaseVersion"
+    $manifestRemote = "/srv/downloads/games/$ProductSegment/manifests/$ReleaseVersion.json"
+    $batch = [System.Collections.Generic.List[string]]::new()
+    $pairs = [System.Collections.Generic.List[object]]::new()
+    $madeDirs = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+
+    # 前缀 - 表示"失败也继续"（目录已存在是正常情况）
+    $batch.Add("-mkdir $versionRoot")
+    $batch.Add("-mkdir /srv/downloads/games/$ProductSegment/manifests")
+    # sftp 的 mkdir 只建一层（不像 mkdir -p），所以中间层要按层级补齐
+    $pendingDirs = [System.Collections.Generic.List[string]]::new()
+    foreach ($file in $changed) {
+        $directory = Split-Path -Parent ([string]$file.path)
+        while (-not [string]::IsNullOrWhiteSpace($directory)) {
+            $candidate = "$versionRoot/$($directory -replace '\\', '/')"
+            if (-not $madeDirs.Contains($candidate)) {
+                $madeDirs.Add($candidate)
+                $pendingDirs.Add($candidate)
+            }
+            $directory = Split-Path -Parent $directory
+        }
+    }
+    foreach ($remoteDir in ($pendingDirs | Sort-Object Length)) {
+        $batch.Add("-mkdir `"$remoteDir`"")
+    }
+    foreach ($file in $changed) {
+        $relativePath = ([string]$file.path) -replace '/', '\'
+        $localPath = Join-Path $VersionDirectory $relativePath
+        if (-not (Test-Path -LiteralPath $localPath -PathType Leaf)) {
+            throw "清单里有文件但暂存目录里没有：$localPath"
+        }
+        $remotePath = "$versionRoot/$([string]$file.path)"
+        $tempPath = "$remotePath.axtmp"
+        $batch.Add(("put `"{0}`" `"{1}`"" -f $localPath, $tempPath))
+        $batch.Add(("rename `"{0}`" `"{1}`"" -f $tempPath, $remotePath))
+        $pairs.Add([pscustomobject]@{
+            Relative = [string]$file.path
+            Sha256   = ([string]$file.sha256).ToLowerInvariant()
+        })
+    }
+    $manifestTemp = "$manifestRemote.axtmp"
+    $batch.Add(("put `"{0}`" `"{1}`"" -f $ManifestPath, $manifestTemp))
+    $batch.Add(("rename `"{0}`" `"{1}`"" -f $manifestTemp, $manifestRemote))
+
+    $batchFile = Join-Path ([IO.Path]::GetTempPath()) ("axtools-sftp-" + [guid]::NewGuid().ToString('N') + ".txt")
+    [IO.File]::WriteAllText($batchFile, ($batch -join "`n"), [Text.UTF8Encoding]::new($false))
+    try {
+        Write-AxTaskProgress `
+            -Stage 'push' `
+            -Percent 60 `
+            -Message ("正在上传 {0} 个文件 / {1}（清单最后写）" -f $changed.Count, (Format-Size -Bytes $changedBytes)) `
+            -Detail ("sftp → {0}" -f $FileSyncTarget)
+        $previous = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $sftpOutput = & sftp -q -b $batchFile $FileSyncTarget 2>&1
+            $sftpCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previous
+        }
+        if ($sftpCode -ne 0) {
+            throw ("sftp 上传失败（退出码 {0}）：`n{1}" -f $sftpCode, (($sftpOutput | ForEach-Object { [string]$_ } | Out-String).Trim()))
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $batchFile -Force -ErrorAction SilentlyContinue
+    }
+
+    # 3) 服务端收尾：归档上一版 → 树里只留当前版 → 写 latest.json
+    $finalizeResult = Invoke-FileSyncSsh `
+        -Command ("/srv/scripts/game-file-sync.sh finalize {0} {1} {2}" -f $ProductSegment, $ReleaseVersion, $previousVersion) `
+        -Detail 'game-file-sync.sh finalize'
+    foreach ($line in $finalizeResult) {
+        if (-not [string]::IsNullOrWhiteSpace($line)) {
+            Write-AxTaskProgress -Stage 'push' -Percent 94 -Message $line.Trim()
+        }
+    }
+
+    # 4) 上传后核对 sha256（只查这次传过的文件，服务端算）
+    if ($pairs.Count -gt 0) {
+        $checkList = ($pairs | ForEach-Object { "'$versionRoot/$($_.Relative)'" }) -join ' '
+        $actual = @{}
+        foreach ($line in (Invoke-FileSyncSsh -Command "cd /srv/downloads && sha256sum $checkList" -Detail 'sha256sum 抽查')) {
+            $parts = ([string]$line).Trim() -split '\s+', 2
+            if ($parts.Count -eq 2) { $actual[$parts[1]] = $parts[0].ToLowerInvariant() }
+        }
+        $bad = [System.Collections.Generic.List[string]]::new()
+        foreach ($pair in $pairs) {
+            $key = "$versionRoot/$($pair.Relative)"
+            if (-not $actual.ContainsKey($key) -or $actual[$key] -ne $pair.Sha256) { $bad.Add($pair.Relative) }
+        }
+        if ($bad.Count -gt 0) {
+            throw ("上传后校验失败，这些文件和服务端不一致：`n  " + ($bad -join "`n  "))
+        }
+        Write-AxTaskProgress -Stage 'push' -Percent 95 -Message ("上传后校验通过：{0} 个文件的 sha256 与服务端一致" -f $pairs.Count)
+    }
+
+    return $true
 }
 
 # 本机仓库只留"当前这一版"的对象。发布成功后上一版的 blob 就不可达了，这里把它清掉，
@@ -995,6 +1267,12 @@ try {
         exit 0
     }
 
+    $pushed = $false
+    if ($TransferMode -eq 'files') {
+        # 逐文件同步：不碰 git，只传变化的文件 + 清单（内容没变就是 0 字节）
+        $pushed = Invoke-FileSyncPublish -ManifestFiles $manifestFiles
+    }
+    else {
     Initialize-StagingRepository -Reinitialize:($Mode -eq 'RebuildRepo')
     $commitMessage = '{0} {1} {2}：{3} 个文件 / {4}' -f `
         $ProductSegment, $ReleaseVersion, $PlatformLabel, $manifestFiles.Count, (Format-Size -Bytes $summary.TotalBytes)
@@ -1021,10 +1299,25 @@ try {
         exit 0
     }
     else {
-        Write-AxTaskStage -Stage 'commit' -Message '正在提交本机暂存仓库（保持单提交）' -Detail $commitMessage
+        Write-AxTaskStage -Stage 'commit' -Message '正在提交本机暂存仓库（在上一版之上增量）' -Detail $commitMessage
+        # 先对齐"服务端当前那版"，否则 git 没有可排除的共同对象，会整包重传。
+        Sync-RemoteTipForPush
         Invoke-CommitVersion -Message $commitMessage | Out-Null
         $headShort = (Invoke-Git -Arguments @('-C', $RepoRoot, 'rev-parse', '--short', 'HEAD')).Lines[0].Trim()
         Write-AxTaskProgress -Stage 'commit' -Percent 61 -Message "已提交：$headShort"
+
+        # 推之前先算一遍"理论上该传多少对象"：排除服务端那一版之后剩下的就是变化的文件。
+        # 正常情况下应该是几十个（清单 + 版本标记 + 路径上的 tree）；如果等于整棵树，
+        # 说明协商没生效、这次会整包重传 —— 日志里能直接看出来。
+        $pending = Invoke-Git -AllowFailure -Arguments @(
+            '-C', $RepoRoot, 'rev-list', '--objects', 'HEAD', '--not', 'refs/remotes/origin/main')
+        if ($pending.ExitCode -eq 0) {
+            Write-AxTaskProgress `
+                -Stage 'push' `
+                -Percent 62 `
+                -Message "本次需要上传 $($pending.Lines.Count) 个对象（只含变化的文件）" `
+                -Detail "git rev-list --objects HEAD --not refs/remotes/origin/main"
+        }
 
         Write-AxTaskProgress `
             -Stage 'push' `
@@ -1050,7 +1343,9 @@ try {
         }
     }
 
-    if ($pushed) {
+    }
+
+    if ($pushed -and $TransferMode -eq 'git') {
         $hook = Get-HookSummary -Lines $script:GitOutput
         $hookDetail = @()
         if (-not [string]::IsNullOrWhiteSpace($hook.Repository)) { $hookDetail += "仓库对象 $($hook.Repository)" }
@@ -1069,10 +1364,14 @@ try {
     $treeSize = Get-DirectorySize -Path (Join-Path $RepoRoot 'games')
     $gitDirectorySize = Get-DirectorySize -Path (Join-Path $RepoRoot '.git')
     $repoSizeThreshold = [int64]($treeSize * 1.4) + 100MB
-    if ($pushed) {
+    if ($TransferMode -eq 'files') {
+        # files 模式不用本机 git 仓库（清单/暂存树在用，.git 不再参与），这里不回收也不告警
+        $gitDirectorySize = [int64]0
+    }
+    elseif ($pushed) {
         $gitDirectorySize = Invoke-LocalRepoMaintenance -Reason '发布成功'
     }
-    elseif ($treeSize -gt 0 -and $gitDirectorySize -gt $repoSizeThreshold) {
+    elseif ($TransferMode -eq 'git' -and $treeSize -gt 0 -and $gitDirectorySize -gt $repoSizeThreshold) {
         $gitDirectorySize = Invoke-LocalRepoMaintenance -Reason '本机仓库里堆着历史对象'
     }
 
@@ -1087,7 +1386,7 @@ try {
             -Detail $verify.ManifestUrl
     }
 
-    if ($treeSize -gt 0 -and $gitDirectorySize -gt $repoSizeThreshold) {
+    if ($TransferMode -eq 'git' -and $treeSize -gt 0 -and $gitDirectorySize -gt $repoSizeThreshold) {
         Write-AxTaskEvent -Data ([ordered]@{
             type    = 'warning'
             code    = 'staging-repo-bloated'
@@ -1098,6 +1397,7 @@ try {
 
     $summary['Committed'] = $pushed
     $summary['Pushed'] = $pushed
+    $summary['TransferMode'] = $TransferMode
     $summary['StagingRepoBytes'] = $gitDirectorySize
     $summary['TreeBytes'] = $treeSize
     if ($null -ne $verify) { $summary['Verify'] = $verify }

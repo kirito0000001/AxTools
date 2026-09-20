@@ -24,6 +24,7 @@
     </UserControl.Resources>
 
     <ScrollViewer
+        x:Name="PageScrollViewer"
         HorizontalScrollBarVisibility="Disabled"
         Padding="0,0,20,0"
         VerticalScrollBarVisibility="Auto">
@@ -36,8 +37,8 @@
             </Grid.RowDefinitions>
 
             <StackPanel Spacing="4" Margin="0,0,0,2">
-                <TextBlock Text="{Binding DisplayName}" Style="{StaticResource PageTitleStyle}" />
-                <TextBlock Text="{Binding Description}" Style="{StaticResource SubtleTextStyle}" />
+                <TextBlock x:Name="PageTitleText" Text="{Binding DisplayName}" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock x:Name="PageDescriptionText" Text="{Binding Description}" Style="{StaticResource SubtleTextStyle}" />
                 <Button
                     x:Name="ActionHelpButton"
                     Margin="0,8,0,0"
@@ -213,13 +214,12 @@
                             x:Name="GamePublishingSection"
                             Spacing="14"
                             Visibility="{Binding HasGamePackagePublishing, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <StackPanel Spacing="4">
+                            <StackPanel x:Name="GamePublishingHeader" Spacing="4">
                                 <TextBlock Text="{Binding GamePublishingTitle}" Style="{StaticResource SectionTitleStyle}" />
                                 <TextBlock Text="{Binding GamePublishingDescription}" Style="{StaticResource SubtleTextStyle}" />
                             </StackPanel>
                             <Grid x:Name="GamePublishingFields" ColumnSpacing="12">
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
@@ -228,17 +228,7 @@
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <ComboBox
-                                    x:Name="GameChannelField"
-                                    Header="游戏通道"
-                                    HorizontalAlignment="Stretch"
-                                    SelectedValue="{Binding GamePublishChannel, Mode=TwoWay}"
-                                    SelectedValuePath="Tag">
-                                    <ComboBoxItem Content="正式服" Tag="stable" />
-                                    <ComboBoxItem Content="测试服" Tag="beta" />
-                                </ComboBox>
-                                <ComboBox
                                     x:Name="GamePlatformField"
-                                    Grid.Row="1"
                                     Grid.Column="0"
                                     Header="游戏平台"
                                     HorizontalAlignment="Stretch"
@@ -249,7 +239,7 @@
                                 </ComboBox>
                                 <Grid
                                     x:Name="GameVersionField"
-                                    Grid.Row="2"
+                                    Grid.Row="1"
                                     Grid.ColumnSpan="2"
                                     ColumnSpacing="8">
                                     <Grid.ColumnDefinitions>

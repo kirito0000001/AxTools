@@ -71,34 +71,35 @@ function Invoke-CrossingCommand {
 function Invoke-CrossingDevelopment {
     param([switch]$Force)
 
-    $executable = if (![string]::IsNullOrWhiteSpace($DevelopmentExecutable)) {
-        [IO.Path]::GetFullPath($DevelopmentExecutable)
-    }
-    else {
-        Join-Path $root 'src-tauri\target\debug\tauri-vue-launcher.exe'
-    }
-    $stateParameters = @{
-        ToolKey = 'CrossingVoidPc'
-        ProjectRoot = $root
-        Profile = 'Tauri'
-        Configuration = 'DebugX64'
-        ExecutablePath = $executable
-    }
-    if (!$Force -and (Test-AxDevelopmentBuildCurrent @stateParameters)) {
-        Write-AxTaskProgress -Stage 'launch-development' -Percent 90 -Message '源码未变化，开发产物有效，正在直接启动。' -Detail $executable
-        Start-AxExecutable $executable
-        return
+    # 启动器是 Tauri 项目，开发版必须由 Tauri CLI 拉起：它会先启动 Vite 开发服务器，
+    # 再让应用加载该地址，此时前端处于 DEV 模式，设置里的“开发者”页签才会出现。
+    # 直接运行 src-tauri\target\debug\tauri-vue-launcher.exe 会加载已构建的前端，
+    # 页面处于生产模式，开发页签不会出现（这也是它不适合当作开发启动方式的原因）。
+
+    if (!(Test-Path -LiteralPath (Join-Path $root 'node_modules\.bin\tauri.cmd'))) {
+        throw "前端依赖未安装：缺少 $root\node_modules\.bin\tauri.cmd。请先在项目目录执行 npm install。"
     }
 
     $nativeEnvironment = Initialize-AxMsvcEnvironment
     Write-AxTaskProgress -Stage 'msvc-environment' -Percent 5 -Message '已加载 MSVC 与 Windows SDK。' -Detail "MSVC=$($nativeEnvironment.MsvcVersion); SDK=$($nativeEnvironment.WindowsSdkVersion); linker=$($nativeEnvironment.LinkerPath)"
-    $buildMessage = if ($Force) { '已选择强制重新编译。' } else { '检测到源码或配置变化，正在增量编译。' }
-    Write-AxTaskProgress -Stage 'build-development' -Percent 10 -Message $buildMessage
+
+    if ($Force) {
+        # 强制重编译只清理零境启动器自身 crate 的产物，依赖缓存保留，避免几十分钟的全量重编。
+        $cargo = Resolve-AxCommand -Name 'cargo'
+        Write-AxTaskProgress -Stage 'clean-development' -Percent 10 -Message '已选择强制重编译，正在清理零境启动器自身的编译产物（依赖缓存保留）。'
+        Invoke-CrossingCommand $cargo @('clean','-p','tauri-vue-launcher','--manifest-path',(Join-Path $root 'src-tauri\Cargo.toml')) '清理零境启动器编译产物'
+    }
+
     $npm = Resolve-AxCommand -Name 'npm.cmd'
-    Invoke-CrossingCommand $npm @('run','tauri','--','build','--debug','--no-bundle') 'Tauri Debug 开发版构建'
-    Write-AxDevelopmentBuildState @stateParameters
-    Write-AxTaskProgress -Stage 'launch-development' -Percent 90 -Message '编译完成，正在启动 Tauri Debug 开发版...' -Detail $executable
-    Start-AxExecutable $executable
+    $forceMessage = if ($Force) { '（已清理应用产物）' } else { '' }
+    Write-AxTaskProgress -Stage 'launch-development' -Percent 20 -Message "正在新窗口启动 Tauri 开发版$forceMessage：Vite 开发服务器 + 应用。"
+
+    # 用独立控制台承载开发会话：AxTools 不占任务位，输出与热更新日志都在那个窗口里，
+    # 关闭该窗口即结束开发会话。
+    $developmentCommand = "`"$npm`" run tauri -- dev"
+    Start-Process -FilePath 'cmd.exe' -ArgumentList @('/k', $developmentCommand) -WorkingDirectory $root
+
+    Write-AxTaskProgress -Stage 'completed' -Percent 100 -Message 'Tauri 开发版已在新窗口启动；关闭该窗口即结束开发会话。'
 }
 
 function Get-CrossingVersionPath {

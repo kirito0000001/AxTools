@@ -64,24 +64,61 @@ public sealed class PublishedVersionServiceTests
     }
 
     [Fact]
-    public async Task CheckCrossingVoidGameAsync_RequiresMatchingPcAndAndroidVersions()
+    public async Task CheckGameAsync_ReadsHighestVersionFromEachPlatformDirectoryIndex()
     {
-        var handler = new StubHandler(request => request.RequestUri!.AbsoluteUri.Contains("windows")
-            ? Json("{\"latest\":{\"version\":\"V0.5.12\"}}")
-            : Json("{\"latest\":{\"version\":\"V0.5.13\"}}"));
+        // 下载站上每份清单按版本号命名，发布内核只留当前版本；取目录索引里版本号最高的那一份。
+        var handler = new StubHandler(request => request.RequestUri!.AbsoluteUri.Contains("-android")
+            ? Html("<a href=\"0.1.1.json\">0.1.1.json</a>")
+            : Html("<a href=\"../\">../</a><a href=\"0.5.12.json\">0.5.12.json</a><a href=\"0.5.13.json\">0.5.13.json</a>"));
         var service = new PublishedVersionService(new HttpClient(handler));
 
-        var result = await service.CheckCrossingVoidGameAsync(
-            "stable",
-            CancellationToken.None);
+        var result = await service.CheckGameAsync("crossingvoid", CancellationToken.None);
 
+        Assert.Equal("0.5.13", result.PcVersion);
+        Assert.Equal("0.1.1", result.AndroidVersion);
         Assert.False(result.IsAligned);
-        Assert.Equal("V0.5.12", result.PcVersion);
-        Assert.Equal("V0.5.13", result.AndroidVersion);
         Assert.Null(result.UnifiedVersion);
         Assert.Equal(2, handler.Requests.Count);
-        Assert.All(handler.Requests, request =>
-            Assert.StartsWith("https://www.crossingvoid.top/manifests/game/", request.AbsoluteUri));
+        Assert.Contains(
+            handler.Requests,
+            request => request.AbsoluteUri.StartsWith(
+                "https://dl.crossingvoid.top/games/crossingvoid/manifests/",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            handler.Requests,
+            request => request.AbsoluteUri.StartsWith(
+                "https://dl.crossingvoid.top/games/crossingvoid-android/manifests/",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task CheckGameAsync_TreatsMissingPlatformDirectoryAsUnpublished()
+    {
+        var handler = new StubHandler(request => request.RequestUri!.AbsoluteUri.Contains("-android")
+            ? Html("<a href=\"0.1.1.json\">0.1.1.json</a>")
+            : new HttpResponseMessage(HttpStatusCode.NotFound));
+        var service = new PublishedVersionService(new HttpClient(handler));
+
+        var result = await service.CheckGameAsync("fantasyproject", CancellationToken.None);
+
+        Assert.Null(result.PcVersion);
+        Assert.Equal("0.1.1", result.AndroidVersion);
+        Assert.False(result.IsAligned);
+        Assert.Contains("还没发过", result.Status);
+    }
+
+    [Fact]
+    public async Task CheckGameAsync_AlignsWhenBothPlatformsPublishSameVersion()
+    {
+        var handler = new StubHandler(_ =>
+            Html("<a href=\"0.5.13.json\">0.5.13.json</a>"));
+        var service = new PublishedVersionService(new HttpClient(handler));
+
+        var result = await service.CheckGameAsync("crossingvoid", CancellationToken.None);
+
+        Assert.True(result.IsAligned);
+        Assert.Equal("0.5.13", result.UnifiedVersion);
+        Assert.Contains("下载站双端版本一致", result.Status);
     }
 
     [Fact]
@@ -101,24 +138,14 @@ public sealed class PublishedVersionServiceTests
             handler.Requests.Single().AbsoluteUri);
     }
 
-    [Fact]
-    public async Task CheckCrossingVoidGameAsync_ReturnsUnifiedVersionWhenBothMatch()
-    {
-        var handler = new StubHandler(_ => Json(
-            "{\"latest\":{\"version\":\"V0.5.12\"}}"));
-        var service = new PublishedVersionService(new HttpClient(handler));
-
-        var result = await service.CheckCrossingVoidGameAsync(
-            "stable",
-            CancellationToken.None);
-
-        Assert.True(result.IsAligned);
-        Assert.Equal("V0.5.12", result.UnifiedVersion);
-    }
-
     private static HttpResponseMessage Json(string value) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(value, Encoding.UTF8, "application/json")
+    };
+
+    private static HttpResponseMessage Html(string value) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(value, Encoding.UTF8, "text/html")
     };
 
     private sealed class StubHandler(

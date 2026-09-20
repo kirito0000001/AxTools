@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using AxTools.Core.Models;
 
 namespace AxTools.Core.Services;
@@ -9,6 +10,7 @@ public sealed class PublishedVersionService
     private const string GitHubBase = "https://api.github.com/repos";
     private const string GiteeRawBase = "https://gitee.com";
     private const string OfficialSiteBase = "https://www.crossingvoid.top";
+    private const string DownloadSiteBase = "https://dl.crossingvoid.top";
     private readonly HttpClient _client;
 
     public PublishedVersionService(HttpClient client)
@@ -128,22 +130,24 @@ public sealed class PublishedVersionService
             : new PublishedVersionResult(true, selected.ToString(), sourceName, $"线上当前版本：{selected}");
     }
 
-    public async Task<CrossingVoidGamePublishedVersionResult> CheckCrossingVoidGameAsync(
-        string channel,
+    /// <summary>
+    /// 读某个游戏在**下载站**上的最新版本：PC 段在 <c>games/&lt;产品段&gt;/manifests/</c>，
+    /// 安卓段在 <c>games/&lt;产品段&gt;-android/manifests/</c>。
+    ///
+    /// 发布内核每次都会清掉更早的清单，目录里只留当前版本，所以"目录索引里版本号最高的那一份"
+    /// 就是线上最新版；目录不存在（404）＝这个平台还没发过。
+    /// </summary>
+    public async Task<CrossingVoidGamePublishedVersionResult> CheckGameAsync(
+        string productSegment,
         CancellationToken cancellationToken)
     {
-        var suffix = string.Equals(channel, "beta", StringComparison.OrdinalIgnoreCase)
-            ? "-test-latest.json"
-            : "-latest.json";
-        var pcTask = TryReadManifestAsync(
-            $"{OfficialSiteBase}/manifests/game/windows{suffix}",
-            "官网 PC 游戏清单",
-            ["latest", "version"],
+        var pcTask = TryReadLatestPublishedVersionAsync(
+            $"{DownloadSiteBase}/games/{productSegment}/manifests/",
+            "下载站 PC 清单目录",
             cancellationToken);
-        var androidTask = TryReadManifestAsync(
-            $"{OfficialSiteBase}/manifests/game/android{suffix}",
-            "官网 Android 游戏清单",
-            ["latest", "version"],
+        var androidTask = TryReadLatestPublishedVersionAsync(
+            $"{DownloadSiteBase}/games/{productSegment}-android/manifests/",
+            "下载站 Android 清单目录",
             cancellationToken);
         await Task.WhenAll(pcTask, androidTask);
         var pc = await pcTask;
@@ -152,31 +156,82 @@ public sealed class PublishedVersionService
             android.IsAvailable &&
             string.Equals(pc.Version, android.Version, StringComparison.OrdinalIgnoreCase);
         var status = aligned
-            ? $"双端线上版本一致：{pc.Version}"
-            : $"双端线上版本未能确认一致：PC {FormatPlatformResult(pc)}；Android {FormatPlatformResult(android)}。";
+            ? $"下载站双端版本一致：{pc.Version}"
+            : $"下载站版本：PC {FormatPlatformResult(pc)}；Android {FormatPlatformResult(android)}。";
         return new CrossingVoidGamePublishedVersionResult(
             pc.Version,
             android.Version,
             aligned,
             aligned ? pc.Version : null,
-            status);
+            status,
+            // 两端都读不到（网络/代理问题）才算"检查失败"；某端没发过只是"还没发布"。
+            pc.CheckFailed && android.CheckFailed);
     }
 
-    private async Task<PublishedVersionResult> TryReadManifestAsync(
-        string url,
+    private async Task<PublishedVersionResult> TryReadLatestPublishedVersionAsync(
+        string directoryUrl,
         string sourceName,
-        IReadOnlyList<string> versionPath,
         CancellationToken cancellationToken)
     {
         try
         {
-            return await ReadManifestAsync(url, sourceName, versionPath, cancellationToken);
+            // 目录索引也可能被缓存，带时间戳强制拿新的（和发布内核校验公网清单时同一招）。
+            var cacheBuster = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            using var response = await _client
+                .GetAsync($"{directoryUrl}?t={cacheBuster}", cancellationToken)
+                .ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return new PublishedVersionResult(false, null, sourceName, "还没发过这个平台的版本。");
+            }
+
+            response.EnsureSuccessStatusCode();
+            var index = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            var latest = ParseLatestVersionFromDirectoryIndex(index);
+            return latest is null
+                ? new PublishedVersionResult(false, null, sourceName, "清单目录里还没有版本。")
+                : new PublishedVersionResult(true, latest, sourceName, $"线上当前版本：{latest}");
         }
         catch (Exception exception) when (
-            exception is HttpRequestException or TaskCanceledException or JsonException or InvalidDataException)
+            exception is HttpRequestException or TaskCanceledException or InvalidDataException)
         {
-            return new PublishedVersionResult(false, null, sourceName, $"检查失败：{exception.Message}");
+            return new PublishedVersionResult(
+                false,
+                null,
+                sourceName,
+                $"检查失败：{exception.Message}",
+                null,
+                true);
         }
+    }
+
+    /// <summary>
+    /// 从目录索引里挑版本号最高的那份清单（nginx 生成的索引形如 <c>&lt;a href="0.5.13.json"&gt;</c>）。
+    /// 版本比较统一用 <see cref="PublishVersionComparer"/>：它支持三段、四段和 -beta 这类预发布号，
+    /// 和发布门禁用的是同一套规则。
+    /// </summary>
+    private static string? ParseLatestVersionFromDirectoryIndex(string index)
+    {
+        var candidates = new List<string>();
+        foreach (Match match in Regex.Matches(index, "href=\"(?<name>[^\"/]+\\.json)\"", RegexOptions.IgnoreCase))
+        {
+            var version = Path.GetFileNameWithoutExtension(match.Groups["name"].Value);
+            try
+            {
+                // 解析不了（例如 latest.json 这类名字）就跳过；能解析才参与比较。
+                PublishVersionComparer.Compare(version, version);
+                candidates.Add(version);
+            }
+            catch (FormatException)
+            {
+            }
+        }
+
+        return candidates
+            .OrderByDescending(
+                version => version,
+                Comparer<string>.Create(PublishVersionComparer.Compare))
+            .FirstOrDefault();
     }
 
     private static string FormatPlatformResult(PublishedVersionResult result) =>

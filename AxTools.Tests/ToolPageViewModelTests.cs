@@ -236,7 +236,7 @@ public sealed class ToolPageViewModelTests : IDisposable
             paths,
             new CrossingVoidGameAdapter(Path.Combine(_root, "Scripts")));
 
-        // 日常入口：「只检查」+「发布新版本」；「重整仓库」收进维护折叠区。
+        // 日常入口：「只检查」+「发布新版本」；维护折叠区已随 git 传输退场，不再有动作。
         Assert.Equal(
             [
                 ManagedToolAction.EditGameReleaseNotes,
@@ -244,10 +244,8 @@ public sealed class ToolPageViewModelTests : IDisposable
                 ManagedToolAction.PublishGameVersion
             ],
             viewModel.GamePublishActions.Select(item => item.Action));
-        Assert.Equal(
-            [ManagedToolAction.RebuildGameDownloadRepo],
-            viewModel.GameMaintenanceActions.Select(item => item.Action));
-        Assert.True(viewModel.HasGameMaintenanceActions);
+        Assert.Empty(viewModel.GameMaintenanceActions);
+        Assert.False(viewModel.HasGameMaintenanceActions);
         Assert.True(viewModel.HasGamePackagePublishing);
         Assert.Empty(viewModel.LauncherPublishActions);
     }
@@ -344,12 +342,11 @@ public sealed class ToolPageViewModelTests : IDisposable
             action => action.Action == ManagedToolAction.CheckGamePackage).IsEnabled);
         Assert.True(viewModel.GamePublishActions.Single(
             action => action.Action == ManagedToolAction.PublishGameVersion).IsEnabled);
-        Assert.True(viewModel.GameMaintenanceActions.Single(
-            action => action.Action == ManagedToolAction.RebuildGameDownloadRepo).IsEnabled);
+        Assert.Empty(viewModel.GameMaintenanceActions);
     }
 
     [Fact]
-    public void CrossingVoidPcAndAndroid_ShareNextGameVersionAndChannel()
+    public void CrossingVoidPcAndAndroid_ShareNextGameVersionAndReleaseNotes()
     {
         var pcPaths = CreateCrossingProject();
         var androidPaths = CreateCrossingAndroidProject();
@@ -358,14 +355,14 @@ public sealed class ToolPageViewModelTests : IDisposable
             GetDescriptor(ManagedToolKey.CrossingVoidPc),
             pcPaths,
             new CrossingVoidPcAdapter(Path.Combine(_root, "Scripts")),
-            sharedGamePublishState: state);
+            gamePublishState: state);
         var android = new ToolPageViewModel(
             GetDescriptor(ManagedToolKey.CrossingVoidAndroid),
             androidPaths,
             new CrossingVoidAndroidAdapter(
                 Path.Combine(_root, "Scripts"),
                 new ToolchainSettings()),
-            sharedGamePublishState: state);
+            gamePublishState: state);
 
         pc.GamePublishVersion = "0.5.14";
         android.GamePublishChannel = "beta";
@@ -374,16 +371,17 @@ public sealed class ToolPageViewModelTests : IDisposable
         Assert.Equal("0.5.14", android.GamePublishVersion);
         Assert.Equal("0.5.14", pcPaths.GamePublishVersion);
         Assert.Equal("0.5.14", androidPaths.GamePublishVersion);
-        Assert.Equal("beta", pc.GamePublishChannel);
-        Assert.Equal("beta", pcPaths.GamePublishChannel);
-        Assert.Equal("beta", androidPaths.GamePublishChannel);
+        // 渠道暂时取消：就算写进 beta，也一律按 stable 发（等有测试服了再加回来）。
+        Assert.Equal("stable", pc.GamePublishChannel);
+        Assert.Equal("stable", pcPaths.GamePublishChannel);
+        Assert.Equal("stable", androidPaths.GamePublishChannel);
         Assert.Equal("双端同步更新", android.GamePublishReleaseNotes);
         Assert.Equal("双端同步更新", pcPaths.GamePublishReleaseNotes);
         Assert.Equal("双端同步更新", androidPaths.GamePublishReleaseNotes);
     }
 
     [Fact]
-    public void CrossingVoidGame_MisalignedRemoteVersionsBlockPublishButAllowCheck()
+    public void CrossingVoidGame_GatesPublishByCurrentPlatformOnly()
     {
         var paths = CreateCrossingGamePackage();
         var state = new CrossingVoidGamePublishState(paths, new ManagedToolPaths());
@@ -391,31 +389,37 @@ public sealed class ToolPageViewModelTests : IDisposable
             GetDescriptor(ManagedToolKey.CrossingVoidGame),
             paths,
             new CrossingVoidGameAdapter(Path.Combine(_root, "Scripts")),
-            sharedGamePublishState: state);
+            gamePublishState: state);
         viewModel.GamePublishVersion = "0.5.14";
 
+        // 安卓落后 PC 一个版本：PC 侧照发，不该被另一个平台拖住。
         state.ApplyPublishedVersions(new CrossingVoidGamePublishedVersionResult(
-            "V0.5.12",
-            "V0.5.13",
+            "0.5.14",
+            "0.5.13",
             false,
             null,
-            "线上双端版本不一致"));
+            "下载站版本：PC 0.5.14；Android 0.5.13。"));
 
         Assert.True(viewModel.GamePublishActions.Single(
             action => action.Action == ManagedToolAction.CheckGamePackage).IsEnabled);
+        Assert.True(viewModel.GamePublishActions.Single(
+            action => action.Action == ManagedToolAction.PublishGameVersion).IsEnabled);
+        Assert.Contains("PC 0.5.14", viewModel.GamePublishedVersionText);
+        Assert.Contains("Android 0.5.13", viewModel.GamePublishedVersionText);
+
+        // 目标版本低于这个平台的线上版本：按钮先灰掉（倒序发布）。
+        viewModel.GamePublishVersion = "0.5.1";
         Assert.False(viewModel.GamePublishActions.Single(
             action => action.Action == ManagedToolAction.PublishGameVersion).IsEnabled);
-        Assert.Contains("PC V0.5.12", viewModel.GamePublishedVersionText);
-        Assert.Contains("Android V0.5.13", viewModel.GamePublishedVersionText);
 
-        state.ApplyPublishedVersions(new CrossingVoidGamePublishedVersionResult(
-            "V0.5.13",
-            "V0.5.13",
-            true,
-            "V0.5.13",
-            "双端线上版本一致"));
-
-        Assert.All(viewModel.GamePublishActions, action => Assert.True(action.IsEnabled));
+        // 切到安卓：它自己的线上版本是 0.5.13，同一个目标版本照样能发（各平台独立）。
+        var androidRoot = Path.Combine(_root, "CrossingVoidGamePackageAndroid");
+        Directory.CreateDirectory(androidRoot);
+        paths.GamePackageRootAndroid = androidRoot;
+        viewModel.GamePublishPlatform = "Android";
+        viewModel.GamePublishVersion = "0.5.14";
+        Assert.True(viewModel.GamePublishActions.Single(
+            action => action.Action == ManagedToolAction.PublishGameVersion).IsEnabled);
     }
 
     [Fact]

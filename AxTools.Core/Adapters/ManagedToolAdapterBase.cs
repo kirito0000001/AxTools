@@ -28,6 +28,9 @@ public abstract class ManagedToolAdapterBase : IManagedToolAdapter
 
     public IReadOnlyList<ManagedToolActionDefinition> Actions { get; }
 
+    /// <summary>游戏包发布工具才有的产品段（下载站目录名）；默认没有。</summary>
+    public virtual string? GameProductSegment => null;
+
     public virtual ManagedToolValidationResult Validate(ManagedToolPaths paths)
     {
         if (string.IsNullOrWhiteSpace(paths.SourceRoot))
@@ -67,7 +70,7 @@ public abstract class ManagedToolAdapterBase : IManagedToolAdapter
             "-Action",
             request.Action.ToString(),
             "-ProjectRoot",
-            paths.SourceRoot,
+            ResolveProjectRootArgument(paths),
             "-DevelopmentExecutable",
             paths.DevelopmentExecutable,
             "-ReleaseExecutable",
@@ -94,6 +97,12 @@ public abstract class ManagedToolAdapterBase : IManagedToolAdapter
     }
 
     protected abstract string GetDisplayName();
+
+    /// <summary>
+    /// 协议里这个参数叫 ProjectRoot，但游戏包发布工具没有源码目录——它们的"项目"就是打包产物目录。
+    /// （踩过的坑：空字符串会让 PowerShell 的 Mandatory 参数直接绑定失败，任务还没跑就挂了。）
+    /// </summary>
+    protected virtual string ResolveProjectRootArgument(ManagedToolPaths paths) => paths.SourceRoot;
 
     protected static ManagedToolActionDefinition Action(
         ManagedToolAction action,

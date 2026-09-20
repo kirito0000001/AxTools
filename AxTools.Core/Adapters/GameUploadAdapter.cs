@@ -6,12 +6,13 @@ namespace AxTools.Core.Adapters;
 /// 三个游戏（零境 / 幻杀 / 火影）共用的一套「游戏包发布」适配器。
 ///
 /// 动作集合、校验（必须先选产物目录）和命令行拼装完全一样；
-/// 子类只提供自己的**产品段名**（决定 dl 上的目录 `games/&lt;产品段&gt;/…`
-/// 和裸仓库 `game-&lt;产品段&gt;.git`）与**版本标记文件名**。
-/// 安卓那一份的产品段固定是 `&lt;产品段&gt;-android`（零境已经这么上线了，保持一致）。
+/// 子类只提供自己的**产品段名**（决定 dl 上的目录 `games/&lt;产品段&gt;/…`、
+/// 裸仓库 `game-&lt;产品段&gt;.git`，以及"线上版本"要查哪个清单目录）。
 ///
 /// 真正的发布逻辑在通用内核 `Scripts\Publishing\Games\Publish-GameDownloadRelease.ps1`，
-/// 这里只负责把动作翻译成参数。
+/// 这里只负责把动作翻译成参数。**产品段名和版本标记文件名不从这里下发**：
+/// 每个游戏的包装脚本自己带给内核（`Scripts\Adapters\&lt;游戏&gt;\Invoke-&lt;游戏&gt;Action.ps1`），
+/// 两边都发会打架（踩过：包装脚本不认识 -ProductSegment，绑参直接失败）。
 /// </summary>
 public abstract class GameUploadAdapter : ManagedToolAdapterBase
 {
@@ -20,21 +21,20 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
         string scriptsRoot,
         string wrapperDirectory,
         string displayName,
-        string productSegment,
-        string versionMarkerName)
+        string productSegment)
         : base(key, scriptsRoot, wrapperDirectory, ActionsList)
     {
         DisplayName = displayName;
         ProductSegment = productSegment;
-        VersionMarkerName = versionMarkerName;
     }
 
     private static readonly IReadOnlyList<ManagedToolActionDefinition> ActionsList =
     [
         Action(ManagedToolAction.CheckEnvironment, "检查环境", ManagedToolActionSection.Development, "\uE9D9", false),
         Action(ManagedToolAction.CheckGamePackage, "只检查，不发布", ManagedToolActionSection.Publish, "\uE9D5", false, true),
-        Action(ManagedToolAction.PublishGameVersion, "发布新版本", ManagedToolActionSection.Publish, "\uE72D", true, true, true),
-        Action(ManagedToolAction.RebuildGameDownloadRepo, "重整仓库（压平历史）", ManagedToolActionSection.Publish, "\uE896", true, true, true)
+        Action(ManagedToolAction.PublishGameVersion, "发布新版本", ManagedToolActionSection.Publish, "\uE72D", true, true, true)
+        // 「重整仓库（压平历史）」已移除：那是 git 时代用来压平本机暂存仓库历史的，
+        // 2026-09-20 传输改成逐文件同步后本机不再有仓库，这个动作没有意义了。
     ];
 
     protected string DisplayName { get; }
@@ -42,8 +42,17 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
     /// <summary>PC 侧的产品段名；安卓侧自动加 `-android` 后缀。</summary>
     protected string ProductSegment { get; }
 
-    /// <summary>跟着产物上线的版本标记文件名（每个游戏一个，格式和零境一样）。</summary>
-    protected string VersionMarkerName { get; }
+    /// <summary>给通用逻辑（线上版本检查）用的产品段。</summary>
+    public override string? GameProductSegment => ProductSegment;
+
+    /// <summary>
+    /// 游戏工具没有源码目录，任务的 -ProjectRoot 就是当前平台的打包产物目录
+    /// （内核只在"检查环境"里用它，真正的发布参数是 -GamePackageRoot）。
+    /// </summary>
+    protected override string ResolveProjectRootArgument(ManagedToolPaths paths) =>
+        paths.GamePublishPlatform is "Android"
+            ? paths.GamePackageRootAndroid
+            : paths.GamePackageRoot;
 
     protected override string GetDisplayName() => DisplayName;
 
@@ -98,16 +107,16 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
                 : "请先选择 PC 游戏包目录。");
         }
 
-        var segment = platform is "Android" ? $"{ProductSegment}-android" : ProductSegment;
+        // 产品段名和版本标记文件名**不从这里下发**：每个游戏的包装脚本自己带
+        // （Scripts\Adapters\<游戏>\Invoke-<游戏>Action.ps1），内核再从包装脚本接手。
+        // 同一份信息下发两次会打架——踩过的坑：包装脚本不认识 -ProductSegment，直接绑参失败。
         return task with
         {
             Arguments = task.Arguments.Concat(
             [
                 "-Platform", platform,
                 "-GamePackageRoot", packageRoot,
-                "-ReleaseNotes", request.ReleaseNotes,
-                "-ProductSegment", segment,
-                "-VersionMarkerName", VersionMarkerName
+                "-ReleaseNotes", request.ReleaseNotes
             ]).ToArray()
         };
     }

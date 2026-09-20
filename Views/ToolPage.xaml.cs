@@ -191,8 +191,9 @@ public sealed partial class ToolPage : UserControl
     {
         fields.ColumnSpacing = useWideFields ? 12 : 0;
         Grid.SetColumn(secondField, useWideFields ? 1 : 0);
+        // 宽屏时版本号跟平台并排（游戏通道已经撤掉，两个字段排一行）；窄屏时各自占一行。
         Grid.SetRow(secondField, string.Equals(secondField.Name, "GameVersionField", StringComparison.Ordinal)
-            ? (useWideFields ? 1 : 2)
+            ? (useWideFields ? 0 : 1)
             : (useWideFields ? 0 : 1));
         secondField.Margin = useWideFields
             ? new Thickness(0)
@@ -298,6 +299,38 @@ public sealed partial class ToolPage : UserControl
         ManagedToolActionSection.Publish => "打包与发布",
         _ => section.ToString()
     };
+
+    /// <summary>
+    /// 把整页当成"游戏包发布"面板嵌进「服务器」页的游戏页签（零境交错 / 火影BP / 幻杀）。
+    ///
+    /// 这三个游戏工具本来就只有发布动作（检查环境 + 发布新版本 + 重整仓库），所以嵌进去以后
+    /// 不需要模式选择器；标题 / 描述由服务器那边的卡片提供，这里去掉自己的一层页头和一层
+    /// 卡片边框，只留状态、字段和按钮。动作、进度、日志、确认弹窗全部照旧 —— 事件仍然接在
+    /// MainWindow 上，没有第二份执行逻辑。
+    /// </summary>
+    internal void HostAsGamePublishPanel()
+    {
+        PageTitleText.Visibility = Visibility.Collapsed;
+        PageDescriptionText.Visibility = Visibility.Collapsed;
+        GamePublishingHeader.Visibility = Visibility.Collapsed;
+
+        ModeSelector.Visibility = Visibility.Collapsed;
+        DevelopmentPanel.Visibility = Visibility.Collapsed;
+        ReleasePanel.Visibility = Visibility.Collapsed;
+        StoragePanel.Visibility = Visibility.Collapsed;
+
+        // 外面已经套了一层卡片（服务器页的 CreatePanel），这里不要再叠一层边框和底色。
+        PageScrollViewer.Padding = new Thickness(0);
+        PublishPanel.Style = null;
+        PublishPanel.Padding = new Thickness(0);
+        PublishPanel.BorderThickness = new Thickness(0);
+        PublishPanel.Background = null;
+        PublishPanel.Visibility = DataContext is ToolPageViewModel { HasPublishActions: true }
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        Visibility = Visibility.Visible;
+    }
 
     private async void ModeSelector_SelectionChanged(
         SelectorBar sender,

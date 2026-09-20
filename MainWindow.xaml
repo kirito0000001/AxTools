@@ -61,15 +61,6 @@
                 <NavigationViewItem x:Name="AxToolsNavItem" Content="Ax管理器" Tag="AxTools">
                     <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/AxTools.png" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Name="CrossingVoidGameNavItem" Content="游戏-零境交错" Tag="CrossingVoidGame">
-                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidPc.png" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="FantasyGameNavItem" Content="游戏-幻杀" Tag="FantasyGame">
-                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/FantasyTools.png" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="NarutoGameNavItem" Content="游戏-火影BP" Tag="NarutoGame">
-                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/FantasyTools.png" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
                 <NavigationViewItem x:Name="ServerAliyunNavItem" Content="服务器" Tag="ServerAliyun">
                     <NavigationViewItem.Icon><SymbolIcon Symbol="World" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
@@ -103,15 +94,17 @@
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Grid>
+                <Grid x:Name="PageHost">
                     <views:ToolPage x:Name="AxToolsPage" />
                     <views:ToolPage x:Name="FantasyToolsPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="GalExcleToolsPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="CrossingVoidZDToolPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="CrossingVoidPcPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="CrossingVoidAndroidPage" Visibility="Collapsed" />
-                    <views:ToolPage x:Name="FantasyGamePage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="FantasyAndroidPage" Visibility="Collapsed" />
+                    <!-- 三个游戏包发布页只在启动时实例化一次，随后由 MainWindow 交给服务器页
+                         （ServerAliyunPage.AttachGamePublishPanel）挂到对应游戏的页签卡片里。 -->
+                    <views:ToolPage x:Name="FantasyGamePage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="CrossingVoidGamePage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="NarutoGamePage" Visibility="Collapsed" />
                     <views:ServerPage x:Name="ServerAliyunPage" Visibility="Collapsed" />

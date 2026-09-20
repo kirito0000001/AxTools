@@ -48,11 +48,17 @@ public sealed class ApplicationViewModel : ObservableObject
         }
         var publishedVersionService = new PublishedVersionService(
             new HttpClient { Timeout = TimeSpan.FromSeconds(20) });
-        var gamePaths = settings.ManagedTools.TryGetValue("CrossingVoidGame", out var configuredGamePaths)
-            ? configuredGamePaths
-            : new ManagedToolPaths();
-        settings.ManagedTools["CrossingVoidGame"] = gamePaths;
-        var sharedGamePublishState = new CrossingVoidGamePublishState(gamePaths, gamePaths);
+        // 三个游戏（零境 / 幻杀 / 火影）各一份游戏发布状态：版本号、Release 介绍、
+        // 以及"线上最新版本"的检查结果；每个游戏内部 PC 与安卓共用这一份。
+        var gamePublishStates = ManagedToolCatalog.All
+            .Where(item => IsGamePublishTool(item.Key))
+            .ToDictionary(
+                item => item.Key,
+                item =>
+                {
+                    var gamePaths = settings.ManagedTools[item.StableKey];
+                    return new CrossingVoidGamePublishState(gamePaths, gamePaths);
+                });
         Tools = ManagedToolCatalog.All
             .Select(descriptor => new ToolPageViewModel(
                 descriptor,
@@ -64,9 +70,7 @@ public sealed class ApplicationViewModel : ObservableObject
                         : null),
                 isRunnerAvailable: TaskRunner is not null,
                 publishedVersionService: publishedVersionService,
-                sharedGamePublishState: descriptor.Key is ManagedToolKey.CrossingVoidGame
-                        ? sharedGamePublishState
-                        : null))
+                gamePublishState: gamePublishStates.GetValueOrDefault(descriptor.Key)))
             .ToArray();
         CrossingVoidPackage = new CrossingVoidPackageViewModel(
             settings.CrossingVoidPackage,
@@ -151,5 +155,9 @@ public sealed class ApplicationViewModel : ObservableObject
 
         return "AxTools";
     }
+
+    /// <summary>游戏包发布工具：三个游戏本体（它们才有「发布新版本」这类动作）。</summary>
+    private static bool IsGamePublishTool(ManagedToolKey key) =>
+        key is ManagedToolKey.CrossingVoidGame or ManagedToolKey.FantasyGame or ManagedToolKey.NarutoGame;
 
 }

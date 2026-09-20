@@ -13,7 +13,7 @@ public sealed class ToolPageViewModel : ObservableObject
     private readonly bool _isRunnerAvailable;
     private readonly Func<bool> _pendingPackageAvailable;
     private readonly PublishedVersionService _publishedVersionService;
-    private readonly CrossingVoidGamePublishState? _sharedGamePublishState;
+    private readonly CrossingVoidGamePublishState? _gamePublishState;
     private bool _isRunning;
     private string _lastResultText = "尚未执行任务。";
     private string _launcherPublishedVersionText = "尚未检查线上发布版本。";
@@ -32,7 +32,7 @@ public sealed class ToolPageViewModel : ObservableObject
         bool isRunnerAvailable = true,
         Func<bool>? pendingPackageAvailable = null,
         PublishedVersionService? publishedVersionService = null,
-        CrossingVoidGamePublishState? sharedGamePublishState = null)
+        CrossingVoidGamePublishState? gamePublishState = null)
     {
         Descriptor = descriptor;
         _paths = paths;
@@ -40,7 +40,7 @@ public sealed class ToolPageViewModel : ObservableObject
         _isRunnerAvailable = isRunnerAvailable;
         _publishedVersionService = publishedVersionService ?? new PublishedVersionService(
             new HttpClient { Timeout = TimeSpan.FromSeconds(20) });
-        _sharedGamePublishState = sharedGamePublishState;
+        _gamePublishState = gamePublishState;
         _pendingPackageAvailable = pendingPackageAvailable ?? (() =>
             Descriptor.Key == ManagedToolKey.CrossingVoidZDTool &&
             new PendingPackageService().IsValid(
@@ -111,9 +111,9 @@ public sealed class ToolPageViewModel : ObservableObject
             ? []
             : [GameReleaseNotesAction, .. gamePrimaryActions];
         GameMaintenanceActions = gameMaintenanceActions;
-        if (_sharedGamePublishState is not null)
+        if (_gamePublishState is not null)
         {
-            _sharedGamePublishState.PropertyChanged += SharedGamePublishState_PropertyChanged;
+            _gamePublishState.PropertyChanged += SharedGamePublishState_PropertyChanged;
         }
         if (!string.IsNullOrWhiteSpace(PublishVersion))
         {
@@ -205,10 +205,26 @@ public sealed class ToolPageViewModel : ObservableObject
                 : GamePublishVersion.StartsWith("V", StringComparison.OrdinalIgnoreCase)
                     ? GamePublishVersion
                     : $"V{GamePublishVersion}";
-            return $"## 零境交错 {version}\n\n平台：PC / Android\n\n" +
-                "本版本包含完整游戏资源分片，可由零境启动器自动下载、校验和合并。";
+            return $"## {GameProductName} {version}\n\n平台：PC / Android\n\n" +
+                "本版本包含完整游戏资源分片，可由启动器自动下载、校验和合并。";
         }
         set => GamePublishReleaseNotes = value;
+    }
+
+    /// <summary>
+    /// 这个游戏在 Release 介绍里用的名字（零境交错 / 幻杀 / 火影BP）。
+    /// 目录里的显示名带「游戏-」前缀，那是导航分类用的，写进更新日志里太啰嗦。
+    /// </summary>
+    private string GameProductName
+    {
+        get
+        {
+            const string prefix = "游戏-";
+            var name = Descriptor.DisplayName ?? string.Empty;
+            return name.StartsWith(prefix, StringComparison.Ordinal)
+                ? name[prefix.Length..]
+                : name;
+        }
     }
 
     public bool IsStorageAvailable => false;
@@ -314,12 +330,12 @@ public sealed class ToolPageViewModel : ObservableObject
 
     public string GamePublishVersion
     {
-        get => _sharedGamePublishState?.Version ?? _paths.GamePublishVersion;
+        get => _gamePublishState?.Version ?? _paths.GamePublishVersion;
         set
         {
-            if (_sharedGamePublishState is not null)
+            if (_gamePublishState is not null)
             {
-                _sharedGamePublishState.Version = value;
+                _gamePublishState.Version = value;
                 return;
             }
             if (SetProperty(
@@ -357,12 +373,12 @@ public sealed class ToolPageViewModel : ObservableObject
 
     public string GamePublishChannel
     {
-        get => _sharedGamePublishState?.Channel ?? _paths.GamePublishChannel;
+        get => _gamePublishState?.Channel ?? _paths.GamePublishChannel;
         set
         {
-            if (_sharedGamePublishState is not null)
+            if (_gamePublishState is not null)
             {
-                _sharedGamePublishState.Channel = value;
+                _gamePublishState.Channel = value;
                 return;
             }
             SetProperty(
@@ -375,7 +391,7 @@ public sealed class ToolPageViewModel : ObservableObject
 
     public string GamePublishPlatform
     {
-        get => _sharedGamePublishState is null ? _paths.GamePublishPlatform : _paths.GamePublishPlatform;
+        get => _gamePublishState is null ? _paths.GamePublishPlatform : _paths.GamePublishPlatform;
         set
         {
             if (SetProperty(_paths.GamePublishPlatform, value is "Android" ? "Android" : "Windows", _paths,
@@ -393,12 +409,12 @@ public sealed class ToolPageViewModel : ObservableObject
 
     public string GamePublishReleaseNotes
     {
-        get => _sharedGamePublishState?.ReleaseNotes ?? _paths.GamePublishReleaseNotes;
+        get => _gamePublishState?.ReleaseNotes ?? _paths.GamePublishReleaseNotes;
         set
         {
-            if (_sharedGamePublishState is not null)
+            if (_gamePublishState is not null)
             {
-                _sharedGamePublishState.ReleaseNotes = value;
+                _gamePublishState.ReleaseNotes = value;
                 return;
             }
             SetProperty(
@@ -410,13 +426,13 @@ public sealed class ToolPageViewModel : ObservableObject
     }
 
     public string GamePublishedVersionText =>
-        _sharedGamePublishState?.PublishedVersionText ?? "线上版本检查：这个游戏还没接（发布时会做公网校验）。";
+        _gamePublishState?.PublishedVersionText ?? "线上版本检查：这个游戏还没接（发布时会做公网校验）。";
 
     public string GameVersionCheckStatus =>
-        _sharedGamePublishState?.VersionCheckStatus ??
+        _gamePublishState?.VersionCheckStatus ??
             "下载站上没有历史版本记录；同一个版本号重发会直接覆盖。";
 
-    public bool IsGameVersionChecking => _sharedGamePublishState?.IsChecking == true;
+    public bool IsGameVersionChecking => _gamePublishState?.IsChecking == true;
 
     public string LastResultText
     {
@@ -521,6 +537,8 @@ public sealed class ToolPageViewModel : ObservableObject
     }
 
     internal bool IsAndroidPlatform => _paths.GamePublishPlatform is "Android";
+
+    internal string PlatformLabel => IsAndroidPlatform ? "安卓" : "PC";
 
     public bool HasValidSourceRoot =>
         !string.IsNullOrWhiteSpace(SourceRoot) && Directory.Exists(SourceRoot);
@@ -634,28 +652,28 @@ public sealed class ToolPageViewModel : ObservableObject
         string? onlineVersion;
         if (IsGamePublishingAction(action))
         {
-            // 只有接了线上版本检查的游戏（零境，读 www 清单）才做版本门禁。
-            // 幻杀/火影还没上过任何清单，硬套"必须比线上高"只会把它们锁死。
-            if (_sharedGamePublishState is null)
+            if (_gamePublishState is null)
             {
                 return PublishingVersionValidationResult.Allowed(
-                    "这个游戏还没接线上版本检查；发布时会做下载站公网校验。");
+                    "这个工具没有游戏发布状态；发布时会做下载站公网校验。");
             }
 
             await CheckGamePublishedVersionAsync(cancellationToken);
-            if (!_sharedGamePublishState.PublishedCheckSucceeded)
+            if (!_gamePublishState.PublishedCheckSucceeded)
             {
-                return PublishingVersionValidationResult.Blocked("无法确认线上最新游戏版本，已停止打包或发布。");
+                // 读不到下载站清单时不再拦死：代理/网络抖动太常见，拦死反而挡住正常发布。
+                // 真正的兜底是发布内核推完之后对公网清单做的那次校验。
+                return PublishingVersionValidationResult.Allowed(
+                    "未能确认线上版本，先放行；发布时会做下载站公网校验。");
             }
-            if (_sharedGamePublishState.HasNoPublishedVersion)
+
+            // PC 与安卓各发各的，所以门禁只看当前选中的平台；另一个平台落后不影响这个平台。
+            onlineVersion = _gamePublishState.OnlineVersionFor(IsAndroidPlatform);
+            if (string.IsNullOrWhiteSpace(onlineVersion))
             {
-                return PublishingVersionValidationResult.Allowed("线上尚无游戏版本，可以首次发布。");
+                return PublishingVersionValidationResult.Allowed(
+                    $"下载站上还没有{PlatformLabel}版本，可以首次发布。");
             }
-            if (_sharedGamePublishState.OnlineVersionsAligned != true)
-            {
-                return PublishingVersionValidationResult.Blocked("线上 PC 与 Android 游戏版本不一致，已停止打包或发布。");
-            }
-            onlineVersion = _sharedGamePublishState.OnlineVersion;
         }
         else
         {
@@ -747,32 +765,31 @@ public sealed class ToolPageViewModel : ObservableObject
 
     public async Task CheckGamePublishedVersionAsync(CancellationToken cancellationToken)
     {
-        if (_sharedGamePublishState is null)
+        // 只有游戏包发布工具（三个游戏）才有产品段；其它工具没有这个检查。
+        if (_gamePublishState is null || _adapter.GameProductSegment is not { } productSegment)
         {
             return;
         }
-        await _sharedGamePublishState.CheckLock.WaitAsync(cancellationToken);
+        await _gamePublishState.CheckLock.WaitAsync(cancellationToken);
         try
         {
-            _sharedGamePublishState.IsChecking = true;
-            _sharedGamePublishState.VersionCheckStatus = "正在同时读取 PC 与 Android 发布清单...";
-            var result = await _publishedVersionService.CheckCrossingVoidGameAsync(
-                GamePublishChannel,
-                cancellationToken);
-            _sharedGamePublishState.ApplyPublishedVersions(result);
+            _gamePublishState.IsChecking = true;
+            _gamePublishState.VersionCheckStatus = "正在读取下载站上的 PC 与 Android 清单...";
+            var result = await _publishedVersionService.CheckGameAsync(productSegment, cancellationToken);
+            _gamePublishState.ApplyPublishedVersions(result);
         }
         catch (Exception exception) when (
             exception is HttpRequestException or TaskCanceledException or JsonException or InvalidDataException or FormatException)
         {
             var message = exception is TaskCanceledException
-                ? "双端版本检查超时，请稍后重试。"
-                : $"双端版本检查失败：{exception.Message}";
-            _sharedGamePublishState.MarkPublishedCheckFailed(message);
+                ? "线上版本检查超时，请稍后重试。"
+                : $"线上版本检查失败：{exception.Message}";
+            _gamePublishState.MarkPublishedCheckFailed(message);
         }
         finally
         {
-            _sharedGamePublishState.IsChecking = false;
-            _sharedGamePublishState.CheckLock.Release();
+            _gamePublishState.IsChecking = false;
+            _gamePublishState.CheckLock.Release();
         }
     }
 
@@ -818,7 +835,7 @@ public sealed class ToolPageViewModel : ObservableObject
                  !string.IsNullOrWhiteSpace(PublishVersion)) &&
                 (action.Action != ManagedToolAction.ReplaceRelease ||
                  _pendingPackageAvailable()) &&
-                !IsBlockedByGameVersionMismatch(action.Action);
+                !IsBlockedByOlderGameVersion(action.Action);
         }
         SourceDownloadAction.IsEnabled = _isRunnerAvailable && !IsRunning;
         ReleaseDownloadAction.IsEnabled = _isRunnerAvailable && !IsRunning;
@@ -827,10 +844,34 @@ public sealed class ToolPageViewModel : ObservableObject
         GameReleaseNotesAction.IsEnabled = !IsRunning;
     }
 
-    private bool IsBlockedByGameVersionMismatch(ManagedToolAction action) =>
-        _sharedGamePublishState is not null &&
-        _sharedGamePublishState.OnlineVersionsAligned != true &&
-        action is ManagedToolAction.PublishGameVersion;
+    /// <summary>
+    /// 倒序发布（目标版本低于这个平台线上版本）时先把按钮灰掉，省得点下去才被拦。
+    /// 只比当前平台：PC 与安卓各发各的，另一个平台落后不影响这个平台。
+    /// </summary>
+    private bool IsBlockedByOlderGameVersion(ManagedToolAction action)
+    {
+        if (_gamePublishState is null ||
+            action is not ManagedToolAction.PublishGameVersion ||
+            string.IsNullOrWhiteSpace(GamePublishVersion))
+        {
+            return false;
+        }
+
+        var online = _gamePublishState.OnlineVersionFor(IsAndroidPlatform);
+        if (string.IsNullOrWhiteSpace(online))
+        {
+            return false;
+        }
+
+        try
+        {
+            return PublishVersionComparer.Compare(GamePublishVersion, online) < 0;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
 
     private static bool IsGamePublishingAction(ManagedToolAction action) => action is
         ManagedToolAction.CheckGamePackage or
