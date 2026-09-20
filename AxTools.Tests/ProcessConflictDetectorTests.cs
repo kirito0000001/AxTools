@@ -7,6 +7,34 @@ namespace AxTools.Tests;
 public sealed class ProcessConflictDetectorTests
 {
     [Fact]
+    public void ForceClose_ReportsOnlyProcessesThatSurvived()
+    {
+        var conflicts = new[]
+        {
+            new ProcessSnapshot(10, "Stuck", @"D:\Apps\Stuck\Stuck.exe"),
+            new ProcessSnapshot(11, "Running", @"D:\Apps\Running\Running.exe")
+        };
+
+        // 10 被杀掉，11 没杀掉（例如权限不足）⇒ 只报告 11
+        var survivors = ProcessConflictDetector.ForceClose(
+            conflicts,
+            snapshot => snapshot.ProcessId == 11);
+
+        var survivor = Assert.Single(survivors);
+        Assert.Equal(11, survivor.ProcessId);
+    }
+
+    [Fact]
+    public void ForceClose_IgnoresProcessesThatAreAlreadyGone()
+    {
+        // 真实实现：进程已经不存在时 GetProcessById 抛 ArgumentException，算作"已结束"。
+        // 用一个不可能存在的 PID，避免真去动机器上别的进程。
+        var gone = new[] { new ProcessSnapshot(999_999, "NotRunning", @"D:\Apps\NotRunning\NotRunning.exe") };
+
+        Assert.Empty(ProcessConflictDetector.ForceClose(gone));
+    }
+
+    [Fact]
     public void FindConflicts_MatchesNormalizedPathIgnoringCase()
     {
         var snapshots = new[]

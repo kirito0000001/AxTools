@@ -485,7 +485,40 @@ games/<产品段>-archive/<版本>.manifest.json       ← 上一版清单副本
 | 文件名 | `chunks[].fileName` / `githubFileName`（中文碎片名） | `files[].path`（相对路径，和打包产物一致） |
 | 校验 | `assets[].sha256`（整包）+ `chunks[].sha256` | `files[].sha256`（逐文件） |
 | 解压 | 需要（切片 → zip → 解压） | 不需要 |
-| Release 标签 | `downloadReleaseTag`（GitHub Release 名） | 没有这个概念（不再依赖 GitHub Release 分发） |
+| Release 标签 | `downloadReleaseTag`（GitHub Release 名） | 官方源（dl）用不到；**备用渠道**的 tag 直接从版本号推，清单里不用带（见附录 E） |
+
+## 附录 E：GitHub 备用渠道（Release 附件 = 文件清单原样）
+
+2026-09-20 起，分发侧在同一次「发布新版本」里会把**同一份文件清单原样**再传一份到 GitHub，
+给启动器的「Github 源」用。两边逐文件一致（同一套 sha256），**没有 zip、没有 500 MB 切片**。
+
+| 项 | 值 |
+| --- | --- |
+| 仓库 | `kirito0000001/CrossingVoid` |
+| tag（PC） | `PC-V<版本>`，例：`PC-V0.5.14` |
+| tag（安卓） | `Android-V<版本>`，例：`Android-V0.5.14` |
+| Release 标题 | `V<版本> \| PC` / `V<版本> \| Android` |
+| 附件名 | `files[].path` 里的 `/` 换成 `__`：`CrossingVoid/Content/Paks/pakchunk0-Windows.ucas` → `CrossingVoid__Content__Paks__pakchunk0-Windows.ucas` |
+| 清单附件 | `manifest.json`（和 dl 上同一份 v1 清单，**最后**上传，避免消费方先看到清单、附件还没到） |
+| 单个附件地址 | `https://github.com/<仓库>/releases/download/<tag>/<附件名>` |
+
+启动器侧只要四步，落位逻辑和 dl 那条**完全一样**：
+
+1. 按 tag 前缀找最新 Release（`PC-V` / `Android-V`），或先下 `manifest.json`；
+2. 解析 v1 清单：`version` / `baseUrl` / `files[]`（`path`、`sizeBytes`、`sha256`）；
+3. 每个 `files[].path` 把 `/` 换成 `__` 得到附件名，拼成上面的下载地址；
+4. 下载 + `sha256` 校验 + 按 `path` 落位。
+
+三条注意：
+
+- 附件名里没有目录层级（GitHub 附件名不允许 `/`），**只能靠 `__` 反推 path**，不要拿附件名去猜目录；
+- GitHub 单文件上限 2 GiB：最大单个文件是 PC 的 `pakchunk0-Windows.ucas`（916 MB）；安卓 OBB 已拆成条目，都在限内；
+- **GitHub 的每个版本都是全量**（和 dl 的"只传变化"不同）：新版本 = 新 tag = 空 Release ⇒ 清单里的每个文件都会传上去
+  （PC 86 个 / 2.53 GB，安卓 65 个 / 2.06 GB）。玩家打开任意一个版本 tag，看到的都是那一版的完整包，不存在"只有新 chunk"的情况。
+  分发侧只传变化的文件**只发生在两个场合**：dl 相对上一版、以及同一版本断点重传（按 sha256 补漏）。
+- 传完后分发侧会**对账**：再读一次 Release 的附件集合，必须和这一版的清单**完全一致**；少一个就报错
+  （提示"玩家会下到残缺包"），**多出来的自动删掉**（同一版本重传、清单变小才会出现，删完再读一次确认）。
+  所以断在半路可以放心重点一次「发布新版本」——缺的补上、已有的跳过、多的清掉，结果一定是"这个 tag = 这一版的完整包"。
 
 ## 附录 B：清单里"有"和"没有"的东西
 

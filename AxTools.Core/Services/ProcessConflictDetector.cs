@@ -78,6 +78,48 @@ public sealed class ProcessConflictDetector
         return FindConflicts(targetPaths);
     }
 
+    /// <summary>
+    /// 强制结束这些进程（连同它们的子进程），返回**没能结束掉**的那些。
+    /// 用于「目标程序正在运行」对话框里的"强制关闭并继续"——有时候开发版进程卡住了，
+    /// 不关掉就没法重新编译启动。
+    /// </summary>
+    public static IReadOnlyList<ProcessSnapshot> ForceClose(
+        IReadOnlyList<ProcessSnapshot> conflicts) =>
+        ForceClose(
+            conflicts,
+            snapshot =>
+            {
+                try
+                {
+                    using var process = Process.GetProcessById(snapshot.ProcessId);
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(5000);
+                    return !process.HasExited;
+                }
+                catch (ArgumentException)
+                {
+                    return false; // 已经不在了
+                }
+                catch (InvalidOperationException)
+                {
+                    return false; // 查的时候刚好退出了
+                }
+                catch (Win32Exception)
+                {
+                    return true; // 权限不足之类：算没杀掉，交给调用方报告
+                }
+                catch (NotSupportedException)
+                {
+                    return true;
+                }
+            });
+
+    /// <summary>测试用重载：survivedProcess 返回 true 表示"没杀掉"。</summary>
+    public static IReadOnlyList<ProcessSnapshot> ForceClose(
+        IReadOnlyList<ProcessSnapshot> conflicts,
+        Func<ProcessSnapshot, bool> survivedProcess) =>
+        conflicts.Where(survivedProcess).ToArray();
+
     public static IReadOnlyList<ProcessSnapshot> CaptureRunningProcesses()
     {
         var snapshots = new List<ProcessSnapshot>();

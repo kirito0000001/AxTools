@@ -20,6 +20,8 @@ param(
     [ValidateSet('files', 'git')][string]$TransferMode = 'files',
     # 跟着产物上线的版本标记文件名（每个游戏一个，格式统一）；留空用内核默认。
     [string]$VersionMarkerName = '',
+    # GitHub 备用渠道的仓库（owner/repo）；留空 = 这个游戏暂时不往 GitHub 发。
+    [string]$GitHubRepo = '',
     [switch]$DryRun
 )
 
@@ -54,13 +56,18 @@ try {
         }
         $git = Get-Command git -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($null -eq $git) { throw '找不到 git，无法向下载站做增量推送。' }
+        if (-not [string]::IsNullOrWhiteSpace($GitHubRepo)) {
+            if ($null -eq (Get-Command gh -CommandType Application -ErrorAction SilentlyContinue)) {
+                throw "配置了 GitHub 渠道（$GitHubRepo），但找不到 GitHub CLI（gh）。"
+            }
+        }
 
         Write-AxTaskStage -Stage 'environment' -Message '正在检查游戏包发布环境…'
         Write-AxTaskProgress `
             -Stage 'environment' `
             -Percent 100 `
             -Message '游戏包发布环境检查通过。' `
-            -Detail "git=$($git.Source)；内核=$kernel；产品段=$segment"
+            -Detail ("git={0}；内核={1}；产品段={2}；GitHub={3}" -f $git.Source, $kernel, $segment, $(if ([string]::IsNullOrWhiteSpace($GitHubRepo)) { '未配置（跳过）' } else { $GitHubRepo }))
         Write-AxTaskResult -Status 'success' -ExitCode 0 -Message '游戏包环境检查完成。'
         exit 0
     }
@@ -84,6 +91,9 @@ try {
     }
     if (-not [string]::IsNullOrWhiteSpace($VersionMarkerName)) {
         $parameters['VersionMarkerName'] = $VersionMarkerName
+    }
+    if (-not [string]::IsNullOrWhiteSpace($GitHubRepo)) {
+        $parameters['GitHubRepo'] = $GitHubRepo
     }
     if ($DryRun) { $parameters['DryRun'] = $true }
 

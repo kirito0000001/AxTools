@@ -47,6 +47,11 @@ param(
     # 给外部工具读版本用。零境沿用旧名字，别的游戏传自己工程名即可。
     [string]$VersionMarkerName = 'CrossingVoid.version.json',
 
+    # GitHub 备用渠道：把这一版按文件清单**原样**再发一份到 GitHub Release（留空 = 跳过）。
+    # 附件名 = 相对路径里的 `/` 换成 `__`（GitHub 附件名不允许带斜杠）；tag 沿用既有习惯
+    # PC → PC-V<版本>、安卓 → Android-V<版本>。和 dl 那条互不依赖：dl 是主线，GitHub 是备用源。
+    [string]$GitHubRepo = '',
+
     [switch]$SkipVerify,
     [switch]$DryRun
 )
@@ -62,6 +67,9 @@ param(
 #   5) 服务端 post-receive hook 负责：把上一版硬链接归档到 games/<产品段>-archive/<版本>/
 #      → checkout -f main 落到 /srv/downloads → 省内存 gc 回收旧对象 → 回报体积
 #   6) 公网校验：拉一次清单、HEAD 抽样文件，核对版本与字节数
+#   7) GitHub 备用渠道（-GitHubRepo 非空时）：把同一份文件清单**原样**再发一份到
+#      GitHub Release（PC → PC-V<版本>，安卓 → Android-V<版本>，附件名 = 相对路径的 / 换成 __），
+#      传完最后传清单 manifest.json。和 dl 那条互不依赖，也不看"这次有没有真传字节"。
 #
 # 为什么提交必须带父提交（2026-09-20 实测踩出来的）：
 #   曾经为了"仓库里只有一版"用**无父提交**（commit-tree 不带 -p）。结果 git 推送时找不到共同祖先：
@@ -121,6 +129,11 @@ $ObbSidecarName = if ($VersionMarkerName -like '*.version.json') {
 else {
     "$ProductSegment.obb.json"
 }
+
+# GitHub 渠道的派生值（只有在 -GitHubRepo 非空时才用得上）
+$GitHubTagPrefix = if ($Platform -eq 'Android') { 'Android' } else { 'PC' }
+$GitHubTag = "$GitHubTagPrefix-V$ReleaseVersion"
+$GitHubAssetRoot = Join-Path $StagingRoot ("_github-" + $ProductSegment)
 
 $script:GitOutput = [System.Collections.Generic.List[string]]::new()
 $script:RebuildBackup = ''
@@ -270,14 +283,23 @@ function Expand-AndroidObb {
         [Parameter(Mandatory)][string]$UnpackRoot
     )
 
-    if (Test-Path -LiteralPath $UnpackRoot) { Remove-Item -LiteralPath $UnpackRoot -Recurse -Force }
+    # 这一段以前是"静默"的：2 GB 的 OBB 展开要跑一两分钟，界面上却一直停在 0%，
+    # 看起来像卡死（2026-09-20 用户报过一次）。现在把展开进度也上报（2% → 6%）。
+    if (Test-Path -LiteralPath $UnpackRoot) {
+        Write-AxTaskProgress -Stage 'scan' -Percent 1 -Message '正在清理上一次展开的 OBB 临时目录' -Detail $UnpackRoot
+        Remove-Item -LiteralPath $UnpackRoot -Recurse -Force
+    }
     New-Item -ItemType Directory -Path $UnpackRoot -Force | Out-Null
 
     $entries = [System.Collections.Generic.List[object]]::new()
     $zip = [IO.Compression.ZipFile]::OpenRead($ObbPath)
     try {
+        $totalEntries = @($zip.Entries | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Name) }).Count
+        $doneEntries = 0
+        $lastPercent = -1
         foreach ($entry in $zip.Entries) {
             if ([string]::IsNullOrWhiteSpace($entry.Name)) { continue }   # 目录条目
+            if (($doneEntries % 5) -eq 0) { Test-TaskCancelled }
             $relative = $entry.FullName.Replace('\', '/')
             if ($relative.StartsWith('/') -or $relative -match '^[A-Za-z]:' -or ($relative -split '/') -contains '..') {
                 throw "OBB 里的路径不合法，拒绝解包：$relative"
@@ -293,6 +315,16 @@ function Expand-AndroidObb {
                 FullName = $target
                 Length   = [int64](Get-Item -LiteralPath $target -Force).Length
             })
+            $doneEntries++
+            $percent = if ($totalEntries -gt 0) { [int](2 + 4.0 * $doneEntries / $totalEntries) } else { 2 }
+            if ($percent -ne $lastPercent) {
+                $lastPercent = $percent
+                Write-AxTaskProgress `
+                    -Stage 'scan' `
+                    -Percent $percent `
+                    -Message "正在展开 OBB 条目 $doneEntries/$totalEntries" `
+                    -Detail $relative
+            }
         }
     }
     finally {
@@ -1093,6 +1125,266 @@ function Get-HookSummary {
 }
 
 # ---------------------------------------------------------------------------
+# GitHub 备用渠道（把这一版的文件清单原样发一份到 GitHub Release）
+# ---------------------------------------------------------------------------
+# GitHub 附件名不能带 `/`：相对路径里的斜杠统一换成 `__`（可逆，也躲开文件名里
+# 本来就有的字符）。玩家端"Github 源"按同一规则把 path 翻成附件名即可。
+function Get-GitHubAssetName {
+    param([Parameter(Mandatory)][string]$RelativePath)
+
+    return $RelativePath.Replace('\', '/').Replace('/', '__')
+}
+
+function Invoke-Gh {
+    param([Parameter(Mandatory)][string[]]$Arguments)
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & gh @Arguments 2>&1
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
+    return [pscustomobject]@{ ExitCode = $code; Lines = @($output | ForEach-Object { [string]$_ }) }
+}
+
+# 一次发布里的 GitHub 收尾。三条要点：
+#   1) 只传"本地有、GitHub 上没有（或 sha256 不同）"的附件 —— 同一版重跑 = 0 字节，
+#      和 dl 那条的幂等语义一致（0.5.14 这种"dl 已是最新、GitHub 还没发"的局面靠这条兜住）。
+#   2) gh 没有"另行指定附件名"的开关，附件名只能取文件名，所以先把文件**硬链接**成
+#      `<相对路径换 __ 后>.名字` 再上传；同盘硬链接不额外占空间，跨盘才退回复制。
+#   3) 清单 manifest.json **最后**上传：消费方拿到清单就会按 path 去找附件，晚一步才不会扑空。
+function Invoke-GitHubGameRelease {
+    param(
+        [Parameter(Mandatory)][object[]]$Files,
+        [Parameter(Mandatory)][string]$Repository,
+        [Parameter(Mandatory)][string]$Tag,
+        [Parameter(Mandatory)][string]$Title,
+        [string]$Notes = '',
+        [string]$ManifestPath = '',
+        [Parameter(Mandatory)][string]$AssetRoot
+    )
+
+    if ($null -eq (Get-Command gh -CommandType Application -ErrorAction SilentlyContinue)) {
+        throw '没有找到 GitHub CLI（gh），无法上传 GitHub 备用渠道。'
+    }
+
+    $release = Invoke-Gh -Arguments @('release', 'view', $Tag, '--repo', $Repository, '--json', 'assets')
+    if ($release.ExitCode -ne 0) {
+        Write-AxTaskStage -Stage 'github' -Message "GitHub 上还没有 $Tag，正在创建 Release" -Detail $Repository
+        $notes = if ([string]::IsNullOrWhiteSpace($Notes)) { $Title } else { $Notes.Trim() }
+        $created = Invoke-Gh -Arguments @('release', 'create', $Tag, '--repo', $Repository, '--title', $Title, '--notes', $notes)
+        if ($created.ExitCode -ne 0) {
+            throw ("GitHub Release 创建失败：" + (($created.Lines | Out-String).Trim()))
+        }
+        $release = Invoke-Gh -Arguments @('release', 'view', $Tag, '--repo', $Repository, '--json', 'assets')
+    }
+    if ($release.ExitCode -ne 0) {
+        throw "GitHub 读取 Release 失败：$Tag（$Repository）"
+    }
+
+    $existing = @{}
+    try {
+        $parsed = (($release.Lines -join [Environment]::NewLine) | ConvertFrom-Json)
+        foreach ($asset in @($parsed.assets)) {
+            if ($null -ne $asset) { $existing[[string]$asset.name] = $asset }
+        }
+    }
+    catch {
+        throw ("GitHub 附件列表解析失败：" + $_.Exception.Message)
+    }
+
+    $pending = [System.Collections.Generic.List[object]]::new()
+    $seenNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $skipped = 0
+    foreach ($file in $Files) {
+        $relative = [string]$file.path
+        $assetName = Get-GitHubAssetName -RelativePath $relative
+        if (-not $seenNames.Add($assetName)) {
+            throw "两个文件会落到同一个 GitHub 附件名，先改命名规则：$relative"
+        }
+        if ($existing.ContainsKey($assetName)) {
+            $asset = $existing[$assetName]
+            $digest = if ($null -eq $asset.digest) { '' } else { ([string]$asset.digest).ToLowerInvariant() }
+            $expected = ([string]$file.sha256).ToLowerInvariant()
+            $same = ($digest -eq "sha256:$expected")
+            if (-not $same -and [string]::IsNullOrWhiteSpace($digest)) {
+                $same = ([int64]$asset.size -eq [int64]$file.sizeBytes)
+            }
+            if ($same) { $skipped++; continue }
+        }
+        $pending.Add([pscustomobject]@{
+            Name   = $assetName
+            Source = [string]$file.FullName
+            Size   = [int64]$file.sizeBytes
+        })
+    }
+
+    if (Test-Path -LiteralPath $AssetRoot) { Remove-Item -LiteralPath $AssetRoot -Recurse -Force }
+    New-Item -ItemType Directory -Path $AssetRoot -Force | Out-Null
+
+    $totalBytes = [int64]0
+    foreach ($item in $pending) { $totalBytes += $item.Size }
+    $doneBytes = [int64]0
+    $index = 0
+    $uploaded = [System.Collections.Generic.List[string]]::new()
+    $removedAssets = [System.Collections.Generic.List[string]]::new()
+    try {
+        Write-AxTaskStage `
+            -Stage 'github' `
+            -Message ("GitHub 渠道：要上传 {0} 个 / {1}，已是最新跳过 {2} 个" -f `
+                $pending.Count, (Format-Size -Bytes $totalBytes), $skipped) `
+            -Detail "$Repository · $Tag"
+
+        foreach ($item in $pending) {
+            Test-TaskCancelled
+            $index++
+
+            $staged = Join-Path $AssetRoot $item.Name
+            if (Test-Path -LiteralPath $staged) { Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue }
+            try {
+                New-Item -ItemType HardLink -Path $staged -Target $item.Source -ErrorAction Stop | Out-Null
+            }
+            catch {
+                Copy-Item -LiteralPath $item.Source -Destination $staged -Force
+            }
+
+            $percent = [int](94 + 4.0 * $doneBytes / [Math]::Max($totalBytes, 1))
+            Write-AxTaskProgress `
+                -Stage 'github' `
+                -Percent $percent `
+                -Message ("正在上传到 GitHub：{0}/{1} {2}（{3}）" -f $index, $pending.Count, $item.Name, (Format-Size -Bytes $item.Size)) `
+                -Detail $Repository
+
+            $result = Invoke-Gh -Arguments @('release', 'upload', $Tag, $staged, '--repo', $Repository, '--clobber')
+            if ($result.ExitCode -ne 0) {
+                throw ("GitHub 附件上传失败：{0}`n{1}" -f $item.Name, (($result.Lines | Out-String).Trim()))
+            }
+            $uploaded.Add($item.Name)
+            $doneBytes += $item.Size
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($ManifestPath)) {
+            if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
+                throw "GitHub 渠道要发的清单不存在：$ManifestPath"
+            }
+            # 清单也要走同一套"内容没变就跳过"的判断，否则同一版重跑总会白传一次清单
+            # （内容没变时内核会沿用上次的 generatedAt，所以清单字节不变 ⇒ sha256 相同）。
+            $manifestItem = Get-Item -LiteralPath $ManifestPath -Force
+            $manifestHash = (Get-FileHash -LiteralPath $ManifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $manifestSame = $false
+            if ($existing.ContainsKey('manifest.json')) {
+                $knownManifest = $existing['manifest.json']
+                $digest = if ($null -eq $knownManifest.digest) { '' } else { ([string]$knownManifest.digest).ToLowerInvariant() }
+                $manifestSame = ($digest -eq "sha256:$manifestHash")
+                if (-not $manifestSame -and [string]::IsNullOrWhiteSpace($digest)) {
+                    $manifestSame = ([int64]$knownManifest.size -eq [int64]$manifestItem.Length)
+                }
+            }
+            if ($manifestSame) {
+                $skipped++
+            }
+            else {
+                $stagedManifest = Join-Path $AssetRoot 'manifest.json'
+                if (Test-Path -LiteralPath $stagedManifest) { Remove-Item -LiteralPath $stagedManifest -Force -ErrorAction SilentlyContinue }
+                Copy-Item -LiteralPath $ManifestPath -Destination $stagedManifest -Force
+                $result = Invoke-Gh -Arguments @('release', 'upload', $Tag, $stagedManifest, '--repo', $Repository, '--clobber')
+                if ($result.ExitCode -ne 0) {
+                    throw ("GitHub 清单上传失败：`n" + (($result.Lines | Out-String).Trim()))
+                }
+                $uploaded.Add('manifest.json')
+            }
+        }
+
+        # 对账（用户 2026-09-20 提出）：GitHub 是"玩家直接下载整包"的渠道，**每个版本必须是全量的**，
+        # 不能只放这一版变的那几个文件。所以这里不信"我们传过什么"，传完再读一次 Release 现场，
+        # 附件集合必须和这一版的清单**完全一致**：少一个 → 失败（玩家会拿到残缺包）；多出来 → 只警告。
+        $expectedNames = [System.Collections.Generic.List[string]]::new()
+        foreach ($file in $Files) { $expectedNames.Add((Get-GitHubAssetName -RelativePath ([string]$file.path))) }
+        if (-not [string]::IsNullOrWhiteSpace($ManifestPath)) { $expectedNames.Add('manifest.json') }
+
+        $final = Invoke-Gh -Arguments @('release', 'view', $Tag, '--repo', $Repository, '--json', 'assets')
+        if ($final.ExitCode -ne 0) { throw "GitHub 渠道对账失败：读不到 $Tag 的附件列表。" }
+        $finalNames = @()
+        try {
+            $finalNames = @(
+                ((($final.Lines -join [Environment]::NewLine) | ConvertFrom-Json).assets) |
+                    ForEach-Object { [string]$_.name }
+            )
+        }
+        catch {
+            throw ("GitHub 渠道对账失败：附件列表解析不出来 " + $_.Exception.Message)
+        }
+
+        $missing = @($expectedNames | Where-Object { $finalNames -notcontains $_ } | Sort-Object)
+        $extra = @($finalNames | Where-Object { $expectedNames -notcontains $_ } | Sort-Object)
+        if ($missing.Count -gt 0) {
+            throw ("GitHub Release 少了附件（玩家会下到残缺包）：`n  " + ($missing -join "`n  "))
+        }
+        if ($extra.Count -gt 0) {
+            # 多余附件 = 同一版本重传、清单变小留下的（旧的 lua/pak 之类）。用户 2026-09-20 要求直接清掉，
+            # 免得玩家在那个 Release 里看到这一版根本不该有的文件。
+            # 保险：清单本身为空时**拒绝清理**（真出现这种异常，宁可不动 GitHub）。
+            if ($expectedNames.Count -eq 0) { throw '这一版的清单为空，拒绝清理 GitHub 上的附件。' }
+            Write-AxTaskStage `
+                -Stage 'github' `
+                -Message ("GitHub 上有 {0} 个附件不在这一版的清单里，正在清理" -f $extra.Count) `
+                -Detail ($extra -join '、')
+            foreach ($extraName in $extra) {
+                Test-TaskCancelled
+                $removeResult = Invoke-Gh -Arguments @('release', 'delete-asset', $Tag, $extraName, '--repo', $Repository, '--yes')
+                if ($removeResult.ExitCode -ne 0) {
+                    throw ("删除多余附件失败：{0}`n{1}" -f $extraName, (($removeResult.Lines | Out-String).Trim()))
+                }
+                $removedAssets.Add($extraName)
+                Write-AxTaskProgress -Stage 'github' -Percent 98 -Message "已清理多余附件：$extraName" -Detail $Tag
+            }
+
+            # 删完再读一次现场：确认剩下的就是清单里的那些（删除本身也可能静默失败）。
+            $after = Invoke-Gh -Arguments @('release', 'view', $Tag, '--repo', $Repository, '--json', 'assets')
+            if ($after.ExitCode -ne 0) { throw "GitHub 清理后对账失败：读不到 $Tag 的附件列表。" }
+            $afterNames = @(
+                ((($after.Lines -join [Environment]::NewLine) | ConvertFrom-Json).assets) |
+                    ForEach-Object { [string]$_.name }
+            )
+            $stillExtra = @($afterNames | Where-Object { $expectedNames -notcontains $_ } | Sort-Object)
+            if ($stillExtra.Count -gt 0) {
+                throw ("清理后仍有多余附件：`n  " + ($stillExtra -join "`n  "))
+            }
+            $finalNames = $afterNames
+        }
+        $reconcileMessage = if ($removedAssets.Count -gt 0) {
+            "GitHub Release 已对账：{0} 个附件与清单完全一致（该版本是全量），并清理了 {1} 个多余附件" -f $finalNames.Count, $removedAssets.Count
+        }
+        else {
+            "GitHub Release 已对账：{0} 个附件与清单完全一致（该版本是全量）" -f $finalNames.Count
+        }
+        Write-AxTaskProgress `
+            -Stage 'github' `
+            -Percent 98 `
+            -Message $reconcileMessage `
+            -Detail "https://github.com/$Repository/releases/tag/$Tag"
+    }
+    finally {
+        if (Test-Path -LiteralPath $AssetRoot) {
+            Remove-Item -LiteralPath $AssetRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    return [pscustomobject]@{
+        Repository = $Repository
+        Tag        = $Tag
+        Uploaded   = $uploaded.Count
+        Skipped    = $skipped
+        Bytes      = $totalBytes
+        ReleaseAssets = $finalNames.Count
+        Removed    = $removedAssets.Count
+    }
+}
+
+# ---------------------------------------------------------------------------
 # 主流程
 # ---------------------------------------------------------------------------
 try {
@@ -1375,6 +1667,69 @@ try {
         $gitDirectorySize = Invoke-LocalRepoMaintenance -Reason '本机仓库里堆着历史对象'
     }
 
+    # GitHub 备用渠道：dl 落位之后，把这一版按文件清单**原样**再发一份到 GitHub。
+    # 和 dl 那条完全独立（dl 是主线即启动器的官方源，GitHub 是备用源），所以这里**不看 $pushed**：
+    # 同一版重跑时 dl 是幂等 0 字节，但 GitHub 可能还一次都没发过（0.5.14 就是这种局面）。
+    # 顺序：先传文件、最后传清单 —— 消费方拿到清单就会按 path 去找附件。
+    $gitHubSummary = $null
+    if (-not [string]::IsNullOrWhiteSpace($GitHubRepo) -and -not $DryRun) {
+        $gitHubFiles = [System.Collections.Generic.List[object]]::new()
+        # 注意：这里必须从**版本目录**取文件，不能沿用扫描时的路径。
+        # 安卓的清单条目来自 OBB 解包临时目录（_obb-<段>），那个目录在写清单之前就被清掉了
+        # （踩过：gh 报"找不到路径 …\_obb-crossingvoid-android\…\interlude_V1_Low.mp4"）。
+        # 版本目录里每个文件的字节和清单里的 sha256 一致（同步那一步就是按 sha256 硬链接/复制的）。
+        foreach ($file in $hashedFiles) {
+            $stagedPath = Join-Path $VersionDirectory ([string]$file.path -replace '/', '\')
+            if (-not (Test-Path -LiteralPath $stagedPath -PathType Leaf)) {
+                throw "版本目录里缺少清单里的文件，无法发 GitHub：$stagedPath"
+            }
+            $gitHubFiles.Add([pscustomobject]@{
+                path      = $file.path
+                sizeBytes = $file.sizeBytes
+                sha256    = $file.sha256
+                FullName  = $stagedPath
+            })
+        }
+        $gitHubFiles.Add([pscustomobject]@{
+            path      = $VersionMarkerName
+            sizeBytes = [int64]$markerFile.Length
+            sha256    = (Get-FileHash -LiteralPath $markerFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            FullName  = $markerFile.FullName
+        })
+        if ($null -ne $obbSidecarFile) {
+            $gitHubFiles.Add([pscustomobject]@{
+                path      = $ObbSidecarName
+                sizeBytes = [int64](Get-Item -LiteralPath $obbSidecarFile -Force).Length
+                sha256    = (Get-FileHash -LiteralPath $obbSidecarFile -Algorithm SHA256).Hash.ToLowerInvariant()
+                FullName  = $obbSidecarFile
+            })
+        }
+
+        $gitHubReleaseUrl = "https://github.com/$GitHubRepo/releases/tag/$GitHubTag"
+        Write-AxTaskStage `
+            -Stage 'github' `
+            -Message ("正在把这一版同步到 GitHub 备用渠道（{0} 个文件 / {1}）" -f `
+                $gitHubFiles.Count, (Format-Size -Bytes $summary.TotalBytes)) `
+            -Detail "$GitHubRepo · $GitHubTag"
+        $gitHubSummary = Invoke-GitHubGameRelease `
+            -Files @($gitHubFiles) `
+            -Repository $GitHubRepo `
+            -Tag $GitHubTag `
+            -Title ("V{0} | {1}" -f $ReleaseVersion, $GitHubTagPrefix) `
+            -Notes $ReleaseNotes `
+            -ManifestPath $ManifestPath `
+            -AssetRoot $GitHubAssetRoot
+        Write-AxTaskProgress `
+            -Stage 'github' `
+            -Percent 98 `
+            -Message ("GitHub 渠道完成：上传 {0} 个 / {1}，已是最新跳过 {2} 个" -f `
+                $gitHubSummary.Uploaded, (Format-Size -Bytes $gitHubSummary.Bytes), $gitHubSummary.Skipped) `
+            -Detail $gitHubReleaseUrl
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($GitHubRepo)) {
+        Write-AxTaskStage -Stage 'github' -Message '演练模式：跳过 GitHub 渠道上传' -Detail "$GitHubRepo · $GitHubTag"
+    }
+
     $verify = $null
     if (-not $SkipVerify) {
         Write-AxTaskStage -Stage 'verify' -Message '正在做公网校验（清单 + 抽样文件）' -Detail $BaseUrl
@@ -1401,6 +1756,13 @@ try {
     $summary['StagingRepoBytes'] = $gitDirectorySize
     $summary['TreeBytes'] = $treeSize
     if ($null -ne $verify) { $summary['Verify'] = $verify }
+    if ($null -ne $gitHubSummary) {
+        $summary['GitHubRepository'] = $gitHubSummary.Repository
+        $summary['GitHubTag'] = $gitHubSummary.Tag
+        $summary['GitHubUploaded'] = $gitHubSummary.Uploaded
+        $summary['GitHubSkipped'] = $gitHubSummary.Skipped
+        $summary['GitHubRemoved'] = $gitHubSummary.Removed
+    }
 
     $completedMessage = if ($pushed) {
         '发布完成：{0} {1}（{2} 个文件 / {3}）' -f $PlatformLabel, $ReleaseVersion, $summary.FileCount, (Format-Size -Bytes $summary.TotalBytes)
@@ -1408,7 +1770,18 @@ try {
     else {
         '无需发布：{0} {1} 与下载站上已提交的内容一致（未上传任何字节）' -f $PlatformLabel, $ReleaseVersion
     }
-    Write-AxTaskProgress -Stage 'completed' -Percent 100 -Message $completedMessage -Detail $BaseUrl
+    if ($null -ne $gitHubSummary) {
+        $completedMessage += '；GitHub 备用渠道：上传 {0} 个（{1}），已是最新跳过 {2} 个' -f `
+            $gitHubSummary.Uploaded, (Format-Size -Bytes $gitHubSummary.Bytes), $gitHubSummary.Skipped
+        if ($gitHubSummary.Removed -gt 0) {
+            $completedMessage += '，清理多余附件 {0} 个' -f $gitHubSummary.Removed
+        }
+        $completedDetail = "https://github.com/$($gitHubSummary.Repository)/releases/tag/$($gitHubSummary.Tag)"
+    }
+    else {
+        $completedDetail = $BaseUrl
+    }
+    Write-AxTaskProgress -Stage 'completed' -Percent 100 -Message $completedMessage -Detail $completedDetail
     $summary | ConvertTo-Json -Depth 6
     exit 0
 }

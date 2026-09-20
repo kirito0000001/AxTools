@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text.Json;
 using AxTools.Core.Models;
 using AxTools.Core.Services;
 using AxTools.Core.ViewModels;
@@ -68,17 +70,20 @@ public sealed partial class MainWindow
                 return;
             }
 
-            var conflicts = args.ViewModel.Descriptor.Key == ManagedToolKey.AxTools
-                ? _processConflictDetector.FindConflicts(
-                    AxToolsBuildProtectionPolicy.GetConflictExecutablePaths(
-                    args.Action.Action,
-                    args.ViewModel.SourceRoot,
-                    args.ViewModel.DevelopmentExecutable,
-                    Environment.ProcessPath))
-                : _processConflictDetector.FindConflictsForAction(
-                    args.Action.Action,
-                    args.ViewModel.DevelopmentExecutable,
-                    args.ViewModel.ReleaseExecutable);
+            IReadOnlyList<ProcessSnapshot> DetectConflicts() =>
+                args.ViewModel.Descriptor.Key == ManagedToolKey.AxTools
+                    ? _processConflictDetector.FindConflicts(
+                        AxToolsBuildProtectionPolicy.GetConflictExecutablePaths(
+                            args.Action.Action,
+                            args.ViewModel.SourceRoot,
+                            args.ViewModel.DevelopmentExecutable,
+                            Environment.ProcessPath))
+                    : _processConflictDetector.FindConflictsForAction(
+                        args.Action.Action,
+                        args.ViewModel.DevelopmentExecutable,
+                        args.ViewModel.ReleaseExecutable);
+
+            var conflicts = DetectConflicts();
             if (conflicts.Count > 0)
             {
                 if (CanUseExternalSelfRebuild(
@@ -90,11 +95,54 @@ public sealed partial class MainWindow
                     return;
                 }
 
-                await ShowProcessConflictDialogAsync(args.ViewModel, conflicts);
+                if (!await ShowProcessConflictDialogAsync(args.ViewModel, conflicts))
+                {
+                    _viewModel.LogService.Write(
+                        LogKind.Warning,
+                        $"检测到正在运行的目标 EXE，已阻止 {args.ViewModel.DisplayName} · {args.Action.DisplayName}。");
+                    return;
+                }
+
+                // 用户选了"强制关闭并继续"：结束这些进程**以及它们所在的开发会话**，然后重新检查一遍。
+                var survivors = await ForceCloseTargetsAsync(conflicts, _windowTaskCancellation.Token);
+                var closedCount = conflicts.Count - survivors.Count;
+                foreach (var conflict in conflicts)
+                {
+                    var killed = !survivors.Any(item => item.ProcessId == conflict.ProcessId);
+                    _viewModel.LogService.Write(
+                        killed ? LogKind.User : LogKind.Warning,
+                        killed
+                            ? $"已强制结束：{conflict.ProcessName} (PID {conflict.ProcessId})"
+                            : $"强制结束失败：{conflict.ProcessName} (PID {conflict.ProcessId})");
+                }
+
+                if (survivors.Count > 0)
+                {
+                    await ShowMessageDialogAsync(
+                        "强制关闭失败",
+                        $"有 {survivors.Count} 个进程没能结束（通常是权限问题），已取消本次操作：{Environment.NewLine}{Environment.NewLine}" +
+                        string.Join(
+                            Environment.NewLine,
+                            survivors.Select(item => $"{item.ProcessName} (PID {item.ProcessId})")));
+                    return;
+                }
+
+                // 有些程序会立刻自我重启，所以再查一次。
+                conflicts = DetectConflicts();
+                if (conflicts.Count > 0)
+                {
+                    await ShowMessageDialogAsync(
+                        "仍有目标程序在运行",
+                        $"刚结束的进程又重新起来了，已取消本次操作：{Environment.NewLine}{Environment.NewLine}" +
+                        string.Join(
+                            Environment.NewLine,
+                            conflicts.Select(item => $"{item.ProcessName} (PID {item.ProcessId})")));
+                    return;
+                }
+
                 _viewModel.LogService.Write(
-                    LogKind.Warning,
-                    $"检测到正在运行的目标 EXE，已阻止 {args.ViewModel.DisplayName} · {args.Action.DisplayName}。");
-                return;
+                    LogKind.User,
+                    $"已强制关闭 {closedCount} 个目标进程（含子进程），继续执行 {args.ViewModel.DisplayName} · {args.Action.DisplayName}。");
             }
 
             AxTaskDefinition definition;
@@ -348,7 +396,122 @@ public sealed partial class MainWindow
         return await TryShowDialogAsync(dialog) == ContentDialogResult.Primary;
     }
 
-    private async Task ShowProcessConflictDialogAsync(
+    /// <summary>
+    /// 强制结束目标进程**以及它们所在的开发会话**。
+    ///
+    /// 为什么不能只杀目标：Tauri dev / Vite 的 watcher 会在应用被杀掉后立刻把它重新拉起来
+    /// （2026-09-20 实测：杀完 1 秒，同样的可执行文件又出现），所以必须沿父进程链找到会话根
+    /// （cmd → node → cargo → 应用），再 taskkill /T 结束整棵树。
+    /// 真正干活的是 Scripts\Common\Stop-TargetProcessTree.ps1 —— C# 看不到父进程，PowerShell 能。
+    ///
+    /// 返回结束后仍然活着的进程（空 = 干净）。
+    /// </summary>
+    private async Task<IReadOnlyList<ProcessSnapshot>> ForceCloseTargetsAsync(
+        IReadOnlyList<ProcessSnapshot> conflicts,
+        CancellationToken cancellationToken)
+    {
+        var scriptPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "Scripts",
+            "Common",
+            "Stop-TargetProcessTree.ps1");
+        if (!File.Exists(scriptPath))
+        {
+            _viewModel.LogService.Write(
+                LogKind.Warning,
+                $"找不到 {scriptPath}，这次只能结束目标进程本身（可能被 watcher 重新拉起）。");
+            return ProcessConflictDetector.ForceClose(conflicts);
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = new PowerShellLocator().FindPowerShell(),
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        startInfo.ArgumentList.Add("-NoLogo");
+        startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-NonInteractive");
+        startInfo.ArgumentList.Add("-ExecutionPolicy");
+        startInfo.ArgumentList.Add("Bypass");
+        startInfo.ArgumentList.Add("-File");
+        startInfo.ArgumentList.Add(scriptPath);
+        startInfo.ArgumentList.Add("-TargetProcessId");
+        startInfo.ArgumentList.Add(string.Join(',', conflicts.Select(item => item.ProcessId)));
+
+        var survivors = new List<ProcessSnapshot>();
+        try
+        {
+            using var process = Process.Start(startInfo);
+            if (process is null)
+            {
+                return ProcessConflictDetector.ForceClose(conflicts);
+            }
+
+            var standardOutput = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var standardError = await process.StandardError.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
+
+            foreach (var line in standardOutput.Split('\n'))
+            {
+                var text = line.Trim();
+                if (!text.StartsWith('{'))
+                {
+                    continue;
+                }
+
+                using var document = JsonDocument.Parse(text);
+                var root = document.RootElement;
+                if (root.TryGetProperty("Chains", out var chains) && chains.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var chain in chains.EnumerateArray())
+                    {
+                        var parts = chain.TryGetProperty("Chain", out var chainValue) && chainValue.ValueKind == JsonValueKind.Array
+                            ? string.Join(" ← ", chainValue.EnumerateArray().Select(item => item.GetString()))
+                            : string.Empty;
+                        _viewModel.LogService.Write(LogKind.Info, $"目标进程来源链：{parts}");
+                    }
+                }
+
+                if (root.TryGetProperty("Killed", out var killed) && killed.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in killed.EnumerateArray())
+                    {
+                        _viewModel.LogService.Write(
+                            LogKind.User,
+                            $"已强制结束：{item.GetProperty("Name").GetString()} (PID {item.GetProperty("Id").GetInt32()})　{item.GetProperty("Result").GetString()}");
+                    }
+                }
+
+                if (root.TryGetProperty("Survivors", out var survivorNodes) && survivorNodes.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in survivorNodes.EnumerateArray())
+                    {
+                        survivors.Add(new ProcessSnapshot(
+                            item.GetProperty("Id").GetInt32(),
+                            item.TryGetProperty("Name", out var name) ? name.GetString() ?? string.Empty : string.Empty,
+                            item.TryGetProperty("Path", out var path) ? path.GetString() ?? string.Empty : string.Empty));
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(standardError))
+            {
+                _viewModel.LogService.Write(LogKind.Warning, $"强制结束脚本输出：{standardError.Trim()}");
+            }
+        }
+        catch (Exception exception)
+        {
+            _viewModel.LogService.Write(LogKind.Warning, "强制结束目标进程时出错，已退回只结束目标本身。", exception);
+            return ProcessConflictDetector.ForceClose(conflicts);
+        }
+
+        return survivors;
+    }
+
+    private async Task<bool> ShowProcessConflictDialogAsync(
         ToolPageViewModel tool,
         IReadOnlyList<ProcessSnapshot> conflicts)
     {
@@ -356,9 +519,31 @@ public sealed partial class MainWindow
             Environment.NewLine,
             conflicts.Select(conflict =>
                 $"{conflict.ProcessName} (PID {conflict.ProcessId}){Environment.NewLine}{conflict.ExecutablePath}"));
-        await ShowMessageDialogAsync(
-            "目标程序正在运行",
-            $"{tool.DisplayName} 的开发版或正式版 EXE 正在运行。为避免覆盖运行中的程序，本次操作已取消；AxTools 不会关闭或结束这些进程。{Environment.NewLine}{Environment.NewLine}{details}");
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = RootGrid.XamlRoot,
+                Title = "目标程序正在运行",
+                Content = new TextBlock
+                {
+                    Text =
+                        $"{tool.DisplayName} 的开发版或正式版 EXE 正在运行。为避免覆盖运行中的程序，默认会取消本次操作。" +
+                        $"{Environment.NewLine}{Environment.NewLine}" +
+                        "要强制关闭它们并继续吗？（进程会被结束，未保存的进度会丢失）" +
+                        $"{Environment.NewLine}{Environment.NewLine}{details}",
+                    TextWrapping = TextWrapping.Wrap
+                },
+                PrimaryButtonText = "强制关闭并继续",
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Close
+            };
+            return await TryShowDialogAsync(dialog) == ContentDialogResult.Primary;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private async Task ShowMessageDialogAsync(string title, string message)
