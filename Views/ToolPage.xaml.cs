@@ -23,6 +23,12 @@ public sealed partial class ToolPage : UserControl
 
     public event EventHandler? GamePackageRootSelectionRequested;
 
+    /// <summary>点《碎片生成》。（零境的 PC 页和安卓页各有一个入口，走同一套事件。）</summary>
+    public event EventHandler? FragmentGenerationRequested;
+
+    /// <summary>点碎片区里那两个"选择文件夹"（游戏包目录 / 碎片输出目录）。</summary>
+    public event EventHandler<FragmentPathRequestedEventArgs>? FragmentPathSelectionRequested;
+
     public ToolPage()
     {
         InitializeComponent();
@@ -30,6 +36,17 @@ public sealed partial class ToolPage : UserControl
 
     private void GamePackageRootBrowse_Click(object sender, RoutedEventArgs e) =>
         GamePackageRootSelectionRequested?.Invoke(this, EventArgs.Empty);
+
+    private void GenerateFragments_Click(object sender, RoutedEventArgs e) =>
+        FragmentGenerationRequested?.Invoke(this, EventArgs.Empty);
+
+    private void FragmentPathBrowse_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string pathKind })
+        {
+            FragmentPathSelectionRequested?.Invoke(this, new FragmentPathRequestedEventArgs(pathKind));
+        }
+    }
 
     private async void RefreshLauncherVersion_Click(object sender, RoutedEventArgs e)
     {
@@ -354,6 +371,8 @@ public sealed partial class ToolPage : UserControl
         if (selectedItem == PublishSelectorItem &&
             DataContext is ToolPageViewModel publishViewModel)
         {
+            // 碎片区的"源文件"是复用服务器页那份游戏包目录，隔了一页，进来时重算一次。
+            publishViewModel.RefreshFragmentBindings();
             await publishViewModel.CheckLauncherPublishedVersionAsync(CancellationToken.None);
             await publishViewModel.CheckGamePublishedVersionAsync(CancellationToken.None);
         }
@@ -376,4 +395,10 @@ public sealed class ToolActionRequestedEventArgs(
     public ToolPageViewModel ViewModel { get; } = viewModel;
 
     public ToolActionItemViewModel Action { get; } = action;
+}
+
+/// <summary>碎片区里点了哪个"选择文件夹"：<c>GameDirectory</c> 或 <c>OutputDirectory</c>。</summary>
+public sealed class FragmentPathRequestedEventArgs(string pathKind) : EventArgs
+{
+    public string PathKind { get; } = pathKind;
 }

@@ -114,6 +114,9 @@ public sealed partial class MainWindow : Window
         CrossingVoidGamePage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested;
         NarutoGamePage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested;
         FantasyGamePage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested;
+        // 《生成碎片》只在零境的两个工具页里出现（TFAC平台页 / 平台-零境-安卓）。
+        // 接线、确认弹窗、执行和进度全在 MainWindow.Fragments.cs 里，这里只留这一行。
+        AttachFragmentGenerationHandlers();
         viewModel.GlobalProgress.PropertyChanged += GlobalProgress_PropertyChanged;
         if (viewModel.TaskRunner is not null)
         {

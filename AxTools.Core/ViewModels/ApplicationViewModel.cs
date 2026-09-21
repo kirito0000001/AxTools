@@ -59,6 +59,10 @@ public sealed class ApplicationViewModel : ObservableObject
                     var gamePaths = settings.ManagedTools[item.StableKey];
                     return new CrossingVoidGamePublishState(gamePaths, gamePaths);
                 });
+        // 零境的 PC 页和安卓页上都有《生成碎片》，它的"源文件"就直接用「服务器 → 零境交错」
+        // 那份游戏包目录（PC / 安卓各记一个）—— 用户已经在那儿选过一次，不在碎片区再填一遍。
+        var gamePublishPaths = settings.ManagedTools[ManagedToolCatalog.All
+            .Single(item => item.Key == ManagedToolKey.CrossingVoidGame).StableKey];
         Tools = ManagedToolCatalog.All
             .Select(descriptor => new ToolPageViewModel(
                 descriptor,
@@ -70,7 +74,11 @@ public sealed class ApplicationViewModel : ObservableObject
                         : null),
                 isRunnerAvailable: TaskRunner is not null,
                 publishedVersionService: publishedVersionService,
-                gamePublishState: gamePublishStates.GetValueOrDefault(descriptor.Key)))
+                gamePublishState: gamePublishStates.GetValueOrDefault(descriptor.Key),
+                gamePublishPaths: descriptor.Key is
+                    ManagedToolKey.CrossingVoidPc or ManagedToolKey.CrossingVoidAndroid
+                        ? gamePublishPaths
+                        : null))
             .ToArray();
         CrossingVoidPackage = new CrossingVoidPackageViewModel(
             settings.CrossingVoidPackage,

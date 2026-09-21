@@ -192,7 +192,8 @@ public sealed partial class MainWindow
                 HostedTaskKind.ProjectRootMigration or
                 HostedTaskKind.StorageScan or
                 HostedTaskKind.StorageCleanup or
-                HostedTaskKind.EnvironmentScan))
+                HostedTaskKind.EnvironmentScan or
+                HostedTaskKind.GameFragments))
         {
             _activeOperationCancellation.Cancel();
             _viewModel.GlobalProgress.MarkStopRequested();
@@ -328,5 +329,6 @@ public sealed partial class MainWindow
         ,Update
         ,Release
         ,ProjectClone
+        ,GameFragments
     }
 }
