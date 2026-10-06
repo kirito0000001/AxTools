@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
@@ -9,7 +9,7 @@ if (!$source.Contains('Invoke-AxDotNetIncrementalBuild', [StringComparison]::Ord
     throw 'AxTools 构建没有使用统一的 .NET 增量构建策略。'
 }
 
-$lines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $entry `
+$lines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $entry `
     -Action CheckEnvironment -ProjectRoot (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 2>&1 |
     ForEach-Object { $_.ToString() })
 if ($LASTEXITCODE -ne 0) { throw "AxTools 环境检查失败：$($lines -join [Environment]::NewLine)" }
@@ -20,7 +20,7 @@ if (!($lines | Where-Object { $_ -match '^::axtools .*"type":"result".*"status":
 $dryRunOutputRoot = Join-Path ([IO.Path]::GetTempPath()) (
     'AxTools-Adapter-PackageDryRun-' + [Guid]::NewGuid().ToString('N'))
 try {
-    $packageLines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $entry `
+    $packageLines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $entry `
         -Action PackageStable `
         -ProjectRoot (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) `
         -OutputRoot $dryRunOutputRoot `

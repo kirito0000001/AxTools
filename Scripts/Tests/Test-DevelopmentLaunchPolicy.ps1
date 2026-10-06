@@ -1,9 +1,9 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
 $scriptsRoot = Split-Path -Parent $PSScriptRoot
-$pwsh = Join-Path $PSHOME 'pwsh.exe'
+$pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
 
 function Assert-ActionRejected {
     param([string]$RelativeEntry,[string]$Action)

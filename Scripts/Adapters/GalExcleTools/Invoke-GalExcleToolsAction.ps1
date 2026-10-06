@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)]
     [ValidateSet('CheckEnvironment','BuildAndRun','ForceBuildAndRun','Build','SourceHealthCheck','RunRelease','PackageX64','ValidatePackage')]

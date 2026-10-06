@@ -50,8 +50,10 @@ public sealed class PublishedVersionService
                 "kirito0000001/TFACStorybox",
                 channel,
                 cancellationToken),
-            ManagedToolKey.CrossingVoidZDTool => await ReadGitHubReleasesAsync(
-                "kirito0000001/CrossingVoidZDTool",
+            // 零境素材（ZD工具箱）只发 Gitee 一个源，Release 挂在 xiaojie578/CrossingVoidZDTool，
+            // tag 形如 v1.0.1 / v1.0.2-Beta（见 ZD 工程 Docs\热更新-发布侧需求.md §1 / §3.1）。
+            // 这里以前读的是 GitHub 上的另一个仓库，那边一个 Release 都没有。
+            ManagedToolKey.CrossingVoidZDTool => await CheckCrossingVoidZDToolAsync(
                 channel,
                 cancellationToken),
             ManagedToolKey.AxTools => await ReadGitHubReleasesAsync(
@@ -89,6 +91,117 @@ public sealed class PublishedVersionService
         }
     }
 
+    /// <summary>
+    /// 零境素材（ZD工具箱）的线上版本。
+    ///
+    /// ★ 首选**不走 Gitee API**：<c>releases/download/latest/toolbox-update.json</c> 就是一条普通文件下载
+    /// （302 → CDN），没有匿名配额这回事。而 Gitee 匿名 API 是 60 次/小时、**按 IP** 计，开发机上很容易
+    /// 被发布动作与客户端探针一起打光 —— 2026-10-06 实测：403 Rate Limit Exceeded 让这一格永远显示
+    /// "检查失败"。这与安卓启动器"官网清单优先、Gitee 兜底"是同一条思路：能读清单就不问 API。
+    ///
+    /// <c>latest</c> 指向的是"最新那条 Release"，所以还要核对清单里的 <c>channel</c>：
+    /// 与本次要查的通道不一致（例如最新发的是 beta、这次查 stable）才回落 API，由 API 按 prerelease 精确筛。
+    /// </summary>
+    private async Task<PublishedVersionResult> CheckCrossingVoidZDToolAsync(
+        string channel,
+        CancellationToken cancellationToken)
+    {
+        const string sourceName = "Gitee ZD工具箱最新版清单";
+        try
+        {
+            var cacheBuster = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var manifest = await ReadManifestIdentityAsync(
+                $"{GiteeRawBase}/xiaojie578/CrossingVoidZDTool/releases/download/latest/toolbox-update.json?t={cacheBuster}",
+                sourceName,
+                cancellationToken).ConfigureAwait(false);
+            var matchesChannel = string.IsNullOrWhiteSpace(manifest.Channel) ||
+                string.Equals(manifest.Channel, channel, StringComparison.OrdinalIgnoreCase);
+            var matchesProduct = string.IsNullOrWhiteSpace(manifest.StableKey) ||
+                string.Equals(manifest.StableKey, "CrossingVoidZDTool", StringComparison.OrdinalIgnoreCase);
+            if (matchesChannel && matchesProduct)
+            {
+                return new PublishedVersionResult(
+                    true,
+                    manifest.Version,
+                    sourceName,
+                    $"线上当前版本：{manifest.Version}（通道 {manifest.Channel ?? channel}）",
+                    manifest.PublishedAt);
+            }
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException or TaskCanceledException or JsonException or InvalidDataException)
+        {
+            // 清单还没发过（404）或取不回来 → 回落 API 再试一次，主源/兜底的关系与安卓一致。
+        }
+
+        return await ReadPrefixedReleasesAsync(
+            $"{GiteeRawBase}/api/v5/repos/xiaojie578/CrossingVoidZDTool/releases?per_page=100",
+            "v",
+            "Gitee ZD工具箱发布页（最新版清单不可用时兜底）",
+            channel,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private readonly record struct ManifestIdentity(
+        string? Version,
+        string? Channel,
+        string? StableKey,
+        DateTimeOffset? PublishedAt);
+
+    private async Task<ManifestIdentity> ReadManifestIdentityAsync(
+        string url,
+        string sourceName,
+        CancellationToken cancellationToken)
+    {
+        using var response = await _client.GetAsync(url, cancellationToken).ConfigureAwait(false);
+        await ThrowForFailureAsync(response, cancellationToken).ConfigureAwait(false);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var version = ReadString(document.RootElement, "version")?.Trim();
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            throw new InvalidDataException($"{sourceName}缺少版本字段：version");
+        }
+
+        return new ManifestIdentity(
+            version,
+            ReadString(document.RootElement, "channel"),
+            ReadString(document.RootElement, "toolboxStableKey"),
+            DateTimeOffset.TryParse(ReadString(document.RootElement, "publishedAt"), out var date) ? date : null);
+    }
+
+    /// <summary>
+    /// 非 2xx 时**连正文一起**抛出去。Gitee 的限流只能靠正文辨认（403 + <c>Rate Limit Exceeded</c>，
+    /// 既不是 429 也没有 <c>X-RateLimit-*</c> 头），而 <c>EnsureSuccessStatusCode</c> 抛出的消息里
+    /// 只有一句 "403 (Forbidden)" —— 调用方于是分不清"限流"和"没权限"，用户看到的就是个吓人的 403。
+    /// </summary>
+    private static async Task ThrowForFailureAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        string? body = null;
+        try
+        {
+            body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or InvalidOperationException or ObjectDisposedException)
+        {
+        }
+
+        var summary = string.IsNullOrWhiteSpace(body)
+            ? string.Empty
+            : "：" + (body.Trim().Length > 200 ? body.Trim()[..200] : body.Trim());
+        throw new HttpRequestException(
+            $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}{summary}",
+            inner: null,
+            statusCode: response.StatusCode);
+    }
+
     private async Task<PublishedVersionResult> ReadPrefixedReleasesAsync(
         string url,
         string tagPrefix,
@@ -97,7 +210,7 @@ public sealed class PublishedVersionService
         CancellationToken cancellationToken)
     {
         using var response = await _client.GetAsync(url, cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+        await ThrowForFailureAsync(response, cancellationToken).ConfigureAwait(false);
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
         var candidates = new List<SemanticVersion>();
@@ -185,7 +298,7 @@ public sealed class PublishedVersionService
                 return new PublishedVersionResult(false, null, sourceName, "还没发过这个平台的版本。");
             }
 
-            response.EnsureSuccessStatusCode();
+            await ThrowForFailureAsync(response, cancellationToken).ConfigureAwait(false);
             var index = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             var latest = ParseLatestVersionFromDirectoryIndex(index);
             return latest is null
@@ -248,7 +361,7 @@ public sealed class PublishedVersionService
         {
             return new PublishedVersionResult(false, null, "GitHub Release", "发布页暂无版本。");
         }
-        response.EnsureSuccessStatusCode();
+        await ThrowForFailureAsync(response, cancellationToken).ConfigureAwait(false);
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
         var candidates = new List<(SemanticVersion Version, DateTimeOffset? PublishedAt)>();
@@ -307,7 +420,7 @@ public sealed class PublishedVersionService
         {
             return new PublishedVersionResult(false, null, sourceName, "发布页暂无版本。");
         }
-        response.EnsureSuccessStatusCode();
+        await ThrowForFailureAsync(response, cancellationToken).ConfigureAwait(false);
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
         var node = document.RootElement;

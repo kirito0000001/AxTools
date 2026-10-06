@@ -42,6 +42,7 @@ public enum ManagedToolAction
     OpenWorkspace,
     ValidateAndStagePackage,
     ReplaceRelease,
+    BuildUpdatePackage,
     UploadDryRun,
     Upload,
     PublishDryRun,

@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
@@ -25,7 +25,7 @@ foreach ($requiredText in @(
 }
 
 $projectRoot = 'D:\UnrealMap\FantasyProject-PC'
-$lines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $entry `
+$lines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $entry `
     -Action CheckEnvironment -ProjectRoot $projectRoot 2>&1 |
     ForEach-Object { $_.ToString() })
 if ($LASTEXITCODE -ne 0) {
@@ -56,7 +56,7 @@ try {
     $originalPath = $env:PATH
     $env:PATH = "$fakeBin;$originalPath"
     try {
-        $developmentLines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $entry `
+        $developmentLines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $entry `
             -Action RunDevelopment -ProjectRoot $temporaryRoot -DevelopmentExecutable "$env:WINDIR\System32\where.exe" 2>&1 |
             ForEach-Object { $_.ToString() })
     }
@@ -84,7 +84,7 @@ try {
         }
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $packageRoot 'latest.json') -Encoding utf8NoBOM
 
-    $validationLines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $entry `
+    $validationLines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $entry `
         -Action ValidatePackage -ProjectRoot $temporaryRoot -OutputRoot (Join-Path $temporaryRoot 'empty-output') 2>&1 |
         ForEach-Object { $_.ToString() })
     if ($LASTEXITCODE -ne 0 -or !($validationLines | Where-Object { $_ -match '"status":"success"' })) {
@@ -92,7 +92,7 @@ try {
     }
 
     Remove-Item -LiteralPath "$installerPath.sig" -Force
-    $missingSignatureLines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $entry `
+    $missingSignatureLines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $entry `
         -Action ValidatePackage -ProjectRoot $temporaryRoot -OutputRoot (Join-Path $temporaryRoot 'empty-output') 2>&1 |
         ForEach-Object { $_.ToString() })
     if ($LASTEXITCODE -eq 0 -or !($missingSignatureLines | Where-Object { $_ -match '缺少启动器签名文件' })) {

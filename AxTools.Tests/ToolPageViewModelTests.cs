@@ -1,4 +1,4 @@
-using AxTools.Core.Adapters;
+﻿using AxTools.Core.Adapters;
 using AxTools.Core.Catalog;
 using AxTools.Core.Models;
 using AxTools.Core.Services;
@@ -80,6 +80,82 @@ public sealed class ToolPageViewModelTests : IDisposable
         viewModel.BeginAction(stage);
         viewModel.CompleteAction(SucceededResult());
         Assert.True(replace.IsEnabled);
+    }
+
+    /// <summary>
+    /// 热更新发布链（`Docs\热更新-发布侧需求.md`）必须落到「打包与发布」面板的启动器区：
+    /// 三个动作都归 In Publish 段、都由 LauncherPublishActions 承载（不是游戏包那一套），
+    /// 且**不需要线上版本门禁**（线上现在是空的，走门禁会永远拦死）——所以它们不能被
+    /// IsVersionGuardedPublishingAction 认领，也得能在没填版本号时保持可用。
+    /// </summary>
+    [Fact]
+    public async Task CrossingVoidZdTool_ExposesHotUpdatePublishActionsInLauncherSection()
+    {
+        var paths = CreateCrossingVoidZdProject();
+        var viewModel = new ToolPageViewModel(
+            GetDescriptor(ManagedToolKey.CrossingVoidZDTool),
+            paths,
+            new CrossingVoidZDToolAdapter(Path.Combine(_root, "Scripts")),
+            pendingPackageAvailable: () => true);
+
+        Assert.True(viewModel.HasPublishActions);
+        Assert.True(viewModel.HasLauncherPublishActions);
+        Assert.False(viewModel.HasGamePackagePublishing);
+
+        var publishActionSet = viewModel.LauncherPublishActions.Select(item => item.Action).ToArray();
+        Assert.Contains(ManagedToolAction.BuildUpdatePackage, publishActionSet);
+        Assert.Contains(ManagedToolAction.PublishDryRun, publishActionSet);
+        Assert.Contains(ManagedToolAction.Publish, publishActionSet);
+
+        // 老的「临时打包并验证 / 替换正式版」不能被挤掉。
+        Assert.Contains(ManagedToolAction.ValidateAndStagePackage, publishActionSet);
+        Assert.Contains(ManagedToolAction.ReplaceRelease, publishActionSet);
+
+        // 没填版本号也要能点：版本是 AX 设置里的值，由脚本按 -Version 收，不参与这里的门禁。
+        var hotUpdateActions = viewModel.LauncherPublishActions
+            .Where(item => item.Action is
+                ManagedToolAction.BuildUpdatePackage or
+                ManagedToolAction.PublishDryRun or
+                ManagedToolAction.Publish)
+            .ToArray();
+        Assert.Equal(3, hotUpdateActions.Length);
+        Assert.All(hotUpdateActions, item => Assert.True(item.IsEnabled, $"{item.DisplayName} 应当是可用状态"));
+
+        // 真实发布要二次确认，演练与出包不需要。
+        Assert.True(viewModel.LauncherPublishActions.Single(item => item.Action == ManagedToolAction.Publish).RequiresConfirmation);
+        Assert.False(viewModel.LauncherPublishActions.Single(item => item.Action == ManagedToolAction.BuildUpdatePackage).RequiresConfirmation);
+
+        // 版本门禁：ZD 只发 Gitee，而线上仓库目前一个 Release 都没有 —— 走线上门禁会永远拦死。
+        // 所以这三个动作**不进** IsVersionGuardedPublishingAction；版本号由 AX 设置经 -Version 传给脚本。
+        // 注意：这里不调 ValidatePublishingVersionAsync —— 它会去读线上版本（走网络），
+        // 测试不该依赖网络也不该依赖限流状态。
+        var gate = await viewModel.ValidatePublishingVersionAsync(ManagedToolAction.BuildUpdatePackage, CancellationToken.None);
+        Assert.True(gate.IsAllowed);
+        Assert.Contains("不需要发布版本门禁", gate.Message);
+    }
+
+    /// <summary>
+    /// 发布链的三个动作要派发到**另一个**适配器脚本：老的
+    /// `Invoke-CrossingVoidZDToolAction.ps1` 的 ValidateSet 里没有这些值，转过去会直接哑掉。
+    /// 同时确认版本号确实通过 -Version 传下去了（这是 ZD 出包唯一拿到版本的途径）。
+    /// </summary>
+    [Fact]
+    public void CrossingVoidZdTool_RoutesPublishPipelineToItsOwnWrapperWithVersion()
+    {
+        var paths = CreateCrossingVoidZdProject();
+        paths.PublishVersion = "1.0.2";
+        var viewModel = new ToolPageViewModel(
+            GetDescriptor(ManagedToolKey.CrossingVoidZDTool),
+            paths,
+            new CrossingVoidZDToolAdapter(Path.Combine(_root, "Scripts")),
+            pendingPackageAvailable: () => true);
+
+        var publishTask = viewModel.CreateTask(viewModel.CreateRequest(ManagedToolAction.Publish));
+        Assert.EndsWith("Invoke-CrossingVoidZDToolPublish.ps1", publishTask.ScriptPath, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("1.0.2", publishTask.Arguments);
+
+        var legacyTask = viewModel.CreateTask(viewModel.CreateRequest(ManagedToolAction.CheckEnvironment));
+        Assert.EndsWith("Invoke-CrossingVoidZDToolAction.ps1", legacyTask.ScriptPath, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

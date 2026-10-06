@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$SshTarget,
     [Parameter(Mandatory)][string]$Action,

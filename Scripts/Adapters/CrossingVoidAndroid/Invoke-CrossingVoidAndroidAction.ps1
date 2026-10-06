@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)]
     [ValidateSet('CheckEnvironment','TestFrontend','BuildFrontend','BuildAndroidDebug','BuildAndroidAndInstall','BuildAndroidRelease','ListAndroidDevices','StopAndroidApp','RunRelease','PublishDryRun','Publish')]

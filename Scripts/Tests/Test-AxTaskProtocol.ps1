@@ -1,8 +1,8 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
-$PSStyle.OutputRendering = 'PlainText'
+if ($null -ne (Get-Variable -Name PSStyle -ErrorAction SilentlyContinue)) { $PSStyle.OutputRendering = 'PlainText' }
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
@@ -37,7 +37,7 @@ function Invoke-DiagnosticScenario {
     $previousCancellationFile = $env:AXTOOLS_CANCEL_FILE
     try {
         $env:AXTOOLS_CANCEL_FILE = $CancellationFile
-        $lines = @(& (Join-Path $PSHOME 'pwsh.exe') `
+        $lines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source `
             -NoLogo -NoProfile -NonInteractive -File $entryScript -Scenario $Scenario 2>&1 |
             ForEach-Object { $_.ToString() })
         $exitCode = $LASTEXITCODE

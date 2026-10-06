@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
@@ -21,7 +21,7 @@ try {
     & git -C $source -c user.name=AxToolsTest -c user.email=axtools@example.invalid commit -m 'initial' | Out-Null
     & git clone --bare $source $remote | Out-Null
 
-    $lines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $cloneScript `
+    $lines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $cloneScript `
         -RepositoryUrl $remote `
         -DestinationPath $target `
         -ExpectedDirectoryName 'DemoTool' `

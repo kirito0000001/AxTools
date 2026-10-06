@@ -838,7 +838,14 @@ public sealed class ToolPageViewModel : ObservableObject
             await CheckLauncherPublishedVersionCoreAsync(channel, cancellationToken);
             if (!_launcherVersionCheckSucceeded)
             {
-                return PublishingVersionValidationResult.Blocked("无法确认线上最新版本，已停止打包或发布。");
+                // 读不到线上版本时**不再拦死**（2026-10-05 实测踩到：本机 IP 被 Gitee 匿名配额限流，
+                // 返回 403 Rate Limit Exceeded，于是「出更新包 / 发布演练 / 完整发布」全被这条门禁挡住，
+                // 连纯本地的出包都点不动 —— 而门禁本意只是防"版本倒退"）。
+                // 与游戏包发布那条路保持一致：读不到就先放行，真正的兜底放在脚本侧 ——
+                // 零境素材的发布脚本自己做幂等（同名同大小**且内容一致**才跳过）、
+                // 清单最后生效、发布后做匿名自检；版本倒退检查在读得到线上版本时依然生效。
+                return PublishingVersionValidationResult.Allowed(
+                    "未能确认线上版本（网络或匿名限流），先放行；脚本侧会做幂等与发布后核验。");
             }
             onlineVersion = _launcherPublishedVersion;
             if (onlineVersion is null)
@@ -849,8 +856,10 @@ public sealed class ToolPageViewModel : ObservableObject
 
         if (string.IsNullOrWhiteSpace(onlineVersion))
         {
-            return PublishingVersionValidationResult.Blocked(
-                "线上版本检查结果不完整，已停止打包或发布。");
+            // 走到这里说明"检查说自己成功了，但版本号是空的"——那是检查本身的问题，不是发布的问题。
+            // 门禁只拦"确认过的版本倒退"，读不出一律放行（见上面 2026-10-05 那条注释）。
+            return PublishingVersionValidationResult.Allowed(
+                "线上版本号读出来是空的，无法比较，先放行；脚本侧会做幂等与发布后核验。");
         }
 
         try
@@ -872,7 +881,18 @@ public sealed class ToolPageViewModel : ObservableObject
         }
         catch (FormatException exception)
         {
-            return PublishingVersionValidationResult.Blocked(exception.Message, onlineVersion);
+            // 分两种：本地版本号写错了 → 该拦（脚本侧也过不去）；线上版本号读不出来 → 放行。
+            try
+            {
+                PublishVersionComparer.Compare(candidate, candidate);
+            }
+            catch (FormatException)
+            {
+                return PublishingVersionValidationResult.Blocked(exception.Message, onlineVersion);
+            }
+
+            return PublishingVersionValidationResult.Allowed(
+                $"线上版本号 {onlineVersion} 无法解析，无法比较，先放行；脚本侧会做幂等与发布后核验。");
         }
     }
 
@@ -901,18 +921,50 @@ public sealed class ToolPageViewModel : ObservableObject
         catch (Exception exception) when (
             exception is HttpRequestException or TaskCanceledException or JsonException or InvalidDataException or FormatException)
         {
+            var rateLimited = IsGiteeRateLimitException(exception);
             _launcherVersionCheckSucceeded = false;
             _launcherPublishedVersion = null;
             LauncherPublishedVersionText = "线上当前版本：检查失败";
-            LauncherVersionCheckStatus = exception is TaskCanceledException
-                ? "检查超时，请稍后重试。"
-                : $"检查失败：{exception.Message}";
+            if (rateLimited)
+            {
+                // 发布源的匿名 API 都有小时级配额（Gitee 60 次/小时、**按 IP** 计；超了返回 403 +
+                // text/plain + body `403 Forbidden (Rate Limit Exceeded)`，不是 429、也没有
+                // X-RateLimit-* 头；GitHub 同类）。这不是"发布出问题了"，得把话说明白，
+                // 否则用户只会看到一个吓人的 403。
+                LauncherVersionCheckStatus =
+                    "检查失败：发布源匿名接口限流（Gitee 是 60 次/小时、按 IP 计）。等一会儿或换网络即可；" +
+                    "这不影响出包与发布——门禁已放行，脚本侧会做幂等与发布后核验。";
+            }
+            else
+            {
+                LauncherVersionCheckStatus = exception is TaskCanceledException
+                    ? "检查超时，请稍后重试。"
+                    : $"检查失败：{exception.Message}";
+            }
         }
         finally
         {
             IsLauncherVersionChecking = false;
             _launcherVersionCheckLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Gitee 的限流只能靠**响应体**认（需求 §2 第 5、6 条）：状态码是 403，正文是
+    /// <c>403 Forbidden (Rate Limit Exceeded)</c>，既不是 429 也没有 <c>X-RateLimit-*</c> 头。
+    /// 403 本身还有第二种含义（令牌无权限），所以不能只看状态码。
+    /// </summary>
+    private static bool IsGiteeRateLimitException(Exception exception)
+    {
+        if (exception is not HttpRequestException requestException)
+        {
+            return false;
+        }
+
+        var message = requestException.Message;
+        return message.Contains("Rate Limit Exceeded", StringComparison.OrdinalIgnoreCase) ||
+            (message.Contains("403", StringComparison.Ordinal) &&
+                message.Contains("Forbidden", StringComparison.OrdinalIgnoreCase));
     }
 
     public async Task CheckGamePublishedVersionAsync(CancellationToken cancellationToken)

@@ -1,6 +1,6 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$PSStyle.OutputRendering = 'PlainText'
+if ($null -ne (Get-Variable -Name PSStyle -ErrorAction SilentlyContinue)) { $PSStyle.OutputRendering = 'PlainText' }
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
@@ -47,7 +47,7 @@ function Write-AxTaskProgress {
     $eventData = [ordered]@{
         type = 'progress'
         stage = $Stage
-        percent = [Math]::Clamp($Percent, 0, 100)
+        percent = [Math]::Max(0, [Math]::Min(100, $Percent))   # 不用 [Math]::Clamp：它是 .NET Core 2.0+ API，Windows PowerShell 5.1 没有
         message = $Message
     }
     if (-not [string]::IsNullOrWhiteSpace($Detail)) { $eventData.detail = $Detail }

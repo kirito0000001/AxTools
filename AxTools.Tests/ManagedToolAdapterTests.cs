@@ -138,13 +138,30 @@ public sealed class ManagedToolAdapterTests : IDisposable
             ManagedToolAction.RunRelease,
             ManagedToolAction.OpenReleaseDirectory,
             ManagedToolAction.ValidateAndStagePackage,
-            ManagedToolAction.ReplaceRelease
+            ManagedToolAction.ReplaceRelease,
+            // 热更新发布链（`D:\UnrealMap\CrossingVoidZDTool\Docs\热更新-发布侧需求.md`）：
+            // 只发 Gitee 一个源，所以没有「单独上传」这一步 —— 发布 = 构建 + 上传一体。
+            ManagedToolAction.BuildUpdatePackage,
+            ManagedToolAction.PublishDryRun,
+            ManagedToolAction.Publish
         ],
         adapter.Actions.Select(action => action.Action));
         Assert.True(adapter.Actions.Single(action =>
             action.Action == ManagedToolAction.ReplaceRelease).RequiresConfirmation);
-        Assert.DoesNotContain(adapter.Actions, action => action.Action is
-            ManagedToolAction.Upload or ManagedToolAction.Publish);
+        // 「完整发布」会真的写远端，必须二次确认；「出更新包」只写本地，不用确认。
+        Assert.True(adapter.Actions.Single(action =>
+            action.Action == ManagedToolAction.Publish).RequiresConfirmation);
+        Assert.False(adapter.Actions.Single(action =>
+            action.Action == ManagedToolAction.BuildUpdatePackage).RequiresConfirmation);
+        // 版本门禁由 AX 设置里的版本号按 -Version 传给脚本，这三个动作不该走线上版本门禁
+        // （线上仓库现在一个 Release 都没有，走门禁会永远拦死）。
+        Assert.All(
+            adapter.Actions.Where(action => action.Action is
+                ManagedToolAction.BuildUpdatePackage or
+                ManagedToolAction.PublishDryRun or
+                ManagedToolAction.Publish),
+            action => Assert.False(action.RequiresVersion, $"{action.DisplayName} 不应要求发布版本门禁"));
+        Assert.DoesNotContain(adapter.Actions, action => action.Action == ManagedToolAction.Upload);
 
         var paths = new ManagedToolPaths
         {

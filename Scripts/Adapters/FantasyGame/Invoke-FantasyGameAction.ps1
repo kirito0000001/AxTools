@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     # 参数一律"可空 + 体内校验"：宿主在绑定阶段抛的错是系统本地代码页（GBK），
     # AxTools 按 UTF-8 读会变乱码；体内 throw 走任务协议才看得清。

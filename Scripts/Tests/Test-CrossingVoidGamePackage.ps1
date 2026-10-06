@@ -1,4 +1,4 @@
-# 零境游戏包发布内核（文件级清单 + git 增量 → 野草云下载站）的契约与端到端测试。
+﻿# 零境游戏包发布内核（文件级清单 + git 增量 → 野草云下载站）的契约与端到端测试。
 #
 # 端到端部分全部跑在临时目录里：临时打包目录 + 临时裸仓库 + 临时暂存仓库，
 # 不碰真实下载站、不联网（-SkipVerify）。
@@ -25,7 +25,7 @@ function Invoke-ReleaseKernel {
     param([string[]]$ExtraArguments)
 
     $arguments = @('-NoProfile', '-File', $kernelScript) + $ExtraArguments
-    $output = @(& (Join-Path $PSHOME 'pwsh.exe') @arguments 2>&1 | ForEach-Object { $_.ToString() })
+    $output = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source @arguments 2>&1 | ForEach-Object { $_.ToString() })
     return [pscustomobject]@{ Output = $output; ExitCode = $LASTEXITCODE }
 }
 

@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
@@ -65,7 +65,7 @@ if ([regex]::Matches($source, '\$output = Get-CrossingLauncherOutputRoot').Count
     throw 'Crossing PC 构建与发布没有统一使用独立 Launcher 目录。'
 }
 
-$lines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $entry `
+$lines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $entry `
     -Action CheckEnvironment -ProjectRoot 'D:\UnrealMap\CrossingVoidinitiator-PC' 2>&1 |
     ForEach-Object { $_.ToString() })
 if ($LASTEXITCODE -ne 0) { throw "Crossing 环境检查失败：$($lines -join [Environment]::NewLine)" }
@@ -73,7 +73,7 @@ if (!($lines | Where-Object { $_ -match '^::axtools .*"type":"result".*"status":
     throw 'Crossing 环境检查缺少成功 result。'
 }
 
-$forbiddenLines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $entry `
+$forbiddenLines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $entry `
     -Action CheckEnvironment -ProjectRoot 'D:\UnrealMap\CrossingVoid' 2>&1 |
     ForEach-Object { $_.ToString() })
 if ($LASTEXITCODE -eq 0) { throw 'Crossing 适配器没有拒绝虚幻项目路径。' }
@@ -100,7 +100,7 @@ try {
     $originalPath = $env:PATH
     $env:PATH = "$fakeBin;$originalPath"
     try {
-        $argumentLines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $entry `
+        $argumentLines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $entry `
             -Action RunDevelopment -ProjectRoot $projectRoot -DevelopmentExecutable "$env:WINDIR\System32\where.exe" 2>&1 |
             ForEach-Object { $_.ToString() })
     }
@@ -115,7 +115,7 @@ try {
         throw "Crossing 开发启动没有完整传递 npm 参数：$($argumentLines -join [Environment]::NewLine)"
     }
 
-    $versionLines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $entry `
+    $versionLines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $entry `
         -Action SetVersion -ProjectRoot $projectRoot -Version '1.0.14' 2>&1 |
         ForEach-Object { $_.ToString() })
     if ($LASTEXITCODE -ne 0) {
@@ -126,7 +126,7 @@ try {
         throw "Crossing 保存的新版本不正确：$savedVersion"
     }
 
-    $sameVersionLines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $entry `
+    $sameVersionLines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $entry `
         -Action SetVersion -ProjectRoot $projectRoot -Version '1.0.14' 2>&1 |
         ForEach-Object { $_.ToString() })
     if ($LASTEXITCODE -ne 0) {

@@ -37,6 +37,7 @@ public static class ManagedToolActionDescriptionCatalog
         ManagedToolAction.OpenWorkspace => "打开 AxTools 为当前工具管理的统一工作区。",
         ManagedToolAction.ValidateAndStagePackage => "校验发布产物并整理到待发布目录，不覆盖正在运行的正式版。",
         ManagedToolAction.ReplaceRelease => "用已校验产物替换正式版；执行前会检查并提示正在运行的程序。",
+        ManagedToolAction.BuildUpdatePackage => "生成热更新包、包内体检单、SHA256 与更新清单；只写本地产物目录，不上传，超过 Gitee 单附件 100 MiB 会在写清单前直接报错。",
         ManagedToolAction.UploadDryRun => "检查现有发布包并模拟上传流程；不上传任何文件，不修改远端版本、Release 或清单。",
         ManagedToolAction.Upload => "上传已经构建并校验的现有发布包，不重新构建源码。",
         ManagedToolAction.PublishDryRun => "执行完整发布所需的本地构建、打包和检查；不上传任何文件，不修改远端版本、Release 或清单。",

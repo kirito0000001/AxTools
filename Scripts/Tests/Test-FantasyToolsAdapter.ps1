@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
@@ -12,7 +12,7 @@ if (!$source.Contains('Invoke-AxDotNetIncrementalBuild', [StringComparison]::Ord
 $projectRoot = 'D:\UnrealMap\FantasyTools'
 
 foreach ($action in @('CheckEnvironment', 'ValidatePackage')) {
-    $lines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $entry `
+    $lines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $entry `
         -Action $action -ProjectRoot $projectRoot -OutputRoot (Join-Path $projectRoot 'ReleaseAssets') 2>&1 |
         ForEach-Object { $_.ToString() })
     if ($LASTEXITCODE -ne 0) { throw "FantasyTools $action 失败：$($lines -join [Environment]::NewLine)" }

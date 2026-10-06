@@ -64,8 +64,13 @@ public sealed class PublishingVersionGateTests : IDisposable
     }
 
     [Fact]
-    public async Task ValidatePublishingVersionAsync_BlocksWhenOnlineCheckFails()
+    public async Task ValidatePublishingVersionAsync_AllowsWhenOnlineCheckFails()
     {
+        // 2026-10-05 用户实测踩到：本机 IP 被 Gitee 匿名配额限流 → 线上版本读不到 →
+        // 「出更新包 / 发布演练 / 完整发布」全被这条门禁挡住，**连纯本地的出包都点不动**。
+        // 改成读不到就放行（与游戏包发布那条路一致），兜底交给脚本侧：
+        // 版本倒退的本地断言（PC 侧 Assert-CrossingVersionConfigured）、
+        // 发布脚本的幂等（同名同大小**且内容一致**才跳过）、清单最后生效、发布后匿名自检。
         var viewModel = CreateAxToolsViewModel(_ =>
             throw new HttpRequestException("offline"));
         viewModel.PublishVersion = "1.0.2";
@@ -74,8 +79,25 @@ public sealed class PublishingVersionGateTests : IDisposable
             ManagedToolAction.Publish,
             CancellationToken.None);
 
+        Assert.True(result.IsAllowed);
+        Assert.Contains("未能确认线上版本", result.Message);
+        Assert.Contains("先放行", result.Message);
+    }
+
+    [Fact]
+    public async Task ValidatePublishingVersionAsync_StillBlocksOlderVersionWhenOnlineIsReadable()
+    {
+        // 放行只针对"读不到"；能读到线上版本时，倒退依然要被拦住 —— 这条是门禁的本意，不能一起松掉。
+        var viewModel = CreateAxToolsViewModel(_ => Json(
+            "[{\"tag_name\":\"v1.0.9\",\"prerelease\":false}]"));
+        viewModel.PublishVersion = "1.0.2";
+
+        var result = await viewModel.ValidatePublishingVersionAsync(
+            ManagedToolAction.Publish,
+            CancellationToken.None);
+
         Assert.False(result.IsAllowed);
-        Assert.Contains("无法确认线上最新版本", result.Message);
+        Assert.Contains("低于线上最新版本", result.Message);
     }
 
     [Fact]
@@ -172,6 +194,116 @@ public sealed class PublishingVersionGateTests : IDisposable
         Assert.Contains("未能确认线上版本", result.Message);
     }
 
+    [Fact]
+    public async Task CheckLauncherAsync_PrefersZDToolboxLatestManifestAndNeverCallsGiteeApi()
+    {
+        // 2026-10-06 实测：Gitee 匿名 API 只有 60 次/小时、按 IP 计，被发布动作与客户端探针打光之后
+        // 「线上当前版本」永远是 403 检查失败。所以零境素材的第一来源改成**普通文件下载**
+        // （releases/download/latest/toolbox-update.json，302 → CDN，没有配额这回事），
+        // 和安卓启动器读官网清单是同一条思路。
+        var urls = new List<string>();
+        var service = new PublishedVersionService(new HttpClient(new StubHandler(request =>
+        {
+            var uri = request.RequestUri!.AbsoluteUri;
+            urls.Add(uri);
+            return uri.Contains("/releases/download/latest/", StringComparison.Ordinal)
+                ? Json("{\"version\":\"2.0.3\",\"channel\":\"stable\"," +
+                    "\"toolboxStableKey\":\"CrossingVoidZDTool\",\"publishedAt\":\"2026-10-06T12:33:13+08:00\"}")
+                : throw new HttpRequestException("不应该走到 Gitee API");
+        })));
+
+        var result = await service.CheckLauncherAsync(
+            ManagedToolKey.CrossingVoidZDTool,
+            "stable",
+            CancellationToken.None);
+
+        Assert.True(result.IsAvailable);
+        Assert.Equal("2.0.3", result.Version);
+        Assert.DoesNotContain(urls, url => url.Contains("/api/v5/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task CheckLauncherAsync_FallsBackToGiteeReleaseApiWhenZDToolboxManifestIsAnotherChannel()
+    {
+        // latest 指的是"最新那条 Release"，未必是本次要查的通道：清单里 channel=beta 而这次查 stable 时，
+        // 必须回落 API 由它按 prerelease 精确筛选，不能把 beta 的版本号当成 stable 的线上版本。
+        var urls = new List<string>();
+        var service = new PublishedVersionService(new HttpClient(new StubHandler(request =>
+        {
+            var uri = request.RequestUri!.AbsoluteUri;
+            urls.Add(uri);
+            return uri.Contains("/releases/download/latest/", StringComparison.Ordinal)
+                ? Json("{\"version\":\"2.1.0-Beta\",\"channel\":\"beta\"," +
+                    "\"toolboxStableKey\":\"CrossingVoidZDTool\"}")
+                : Json("[{\"tag_name\":\"v2.0.3\",\"prerelease\":false}]");
+        })));
+
+        var result = await service.CheckLauncherAsync(
+            ManagedToolKey.CrossingVoidZDTool,
+            "stable",
+            CancellationToken.None);
+
+        Assert.True(result.IsAvailable);
+        Assert.Equal("2.0.3", result.Version);
+        Assert.Contains(urls, url =>
+            url.Contains("/api/v5/repos/xiaojie578/CrossingVoidZDTool/releases", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ValidatePublishingVersionAsync_AllowsZDToolboxPublishWhenGiteeRateLimits()
+    {
+        // 用户实测那条：Gitee 匿名限流（403 + Rate Limit Exceeded）时「出更新包 / 发布演练 / 完整发布」
+        // 一个都不能被挡住 —— 门禁只防"确认过的版本倒退"。
+        var viewModel = CreateZDToolboxViewModel(_ => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("403 Forbidden (Rate Limit Exceeded)", Encoding.UTF8, "text/plain")
+        });
+        viewModel.PublishVersion = "2.0.4";
+
+        var result = await viewModel.ValidatePublishingVersionAsync(
+            ManagedToolAction.Publish,
+            CancellationToken.None);
+
+        Assert.True(result.IsAllowed);
+        Assert.Contains("未能确认线上版本", result.Message);
+        Assert.Contains("限流", viewModel.LauncherVersionCheckStatus);
+    }
+
+    [Fact]
+    public async Task ValidatePublishingVersionAsync_StillBlocksZDToolboxDowngradeWhenVersionIsReadable()
+    {
+        // 松开的只是"读不到"；读得到线上版本时，倒退发布依然要被拦住。
+        var viewModel = CreateZDToolboxViewModel(request =>
+            request.RequestUri!.AbsoluteUri.Contains("/releases/download/latest/", StringComparison.Ordinal)
+                ? Json("{\"version\":\"2.0.3\",\"channel\":\"stable\"}")
+                : throw new HttpRequestException("不应该走到 Gitee API"));
+        viewModel.PublishVersion = "2.0.2";
+
+        var result = await viewModel.ValidatePublishingVersionAsync(
+            ManagedToolAction.Publish,
+            CancellationToken.None);
+
+        Assert.False(result.IsAllowed);
+        Assert.Equal("2.0.3", result.OnlineVersion);
+        Assert.Contains("低于线上最新版本", result.Message);
+    }
+
+    [Fact]
+    public async Task ValidatePublishingVersionAsync_AllowsZDToolboxWhenOnlineVersionTextIsUnparsable()
+    {
+        // 线上版本号读不出来属于"检查本身有问题"，不该把发布挡死；本地版本号写错才拦。
+        var viewModel = CreateZDToolboxViewModel(
+            _ => Json("{\"version\":\"vNext\",\"channel\":\"stable\"}"));
+        viewModel.PublishVersion = "2.0.4";
+
+        var result = await viewModel.ValidatePublishingVersionAsync(
+            ManagedToolAction.Publish,
+            CancellationToken.None);
+
+        Assert.True(result.IsAllowed);
+        Assert.Contains("无法解析", result.Message);
+    }
+
     private ToolPageViewModel CreateAxToolsViewModel(
         Func<HttpRequestMessage, HttpResponseMessage> responder)
     {
@@ -185,6 +317,23 @@ public sealed class PublishingVersionGateTests : IDisposable
             descriptor,
             new ManagedToolPaths { SourceRoot = sourceRoot },
             new AxToolsAdapter(Path.Combine(_root, "Scripts")),
+            publishedVersionService: new PublishedVersionService(
+                new HttpClient(new StubHandler(responder))));
+    }
+
+    private ToolPageViewModel CreateZDToolboxViewModel(
+        Func<HttpRequestMessage, HttpResponseMessage> responder)
+    {
+        var sourceRoot = Path.Combine(_root, "CrossingVoidZDTool");
+        Directory.CreateDirectory(sourceRoot);
+        File.WriteAllText(Path.Combine(sourceRoot, "CrossingVoidZDTool.csproj"), string.Empty);
+        var descriptor = ManagedToolCatalog.All.Single(item =>
+            item.Key == ManagedToolKey.CrossingVoidZDTool);
+        return new ToolPageViewModel(
+            descriptor,
+            new ManagedToolPaths { SourceRoot = sourceRoot },
+            new CrossingVoidZDToolAdapter(Path.Combine(_root, "Scripts")),
+            pendingPackageAvailable: () => false,
             publishedVersionService: new PublishedVersionService(
                 new HttpClient(new StubHandler(responder))));
     }

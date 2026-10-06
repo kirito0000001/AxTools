@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
@@ -11,7 +11,7 @@ $originalLog = $env:AXTOOLS_FAKE_DOTNET_LOG
 function Invoke-Adapter {
     param([string]$Entry,[string]$ProjectRoot,[string]$Executable,[string]$Action = 'BuildAndRun')
 
-    $lines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $Entry `
+    $lines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $Entry `
         -Action $Action -ProjectRoot $ProjectRoot -DevelopmentExecutable $Executable 2>&1 |
         ForEach-Object { $_.ToString() })
     if ($LASTEXITCODE -ne 0) {

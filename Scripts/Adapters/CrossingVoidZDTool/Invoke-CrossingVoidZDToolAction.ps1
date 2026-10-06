@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidateSet('CheckEnvironment','BuildAndRun','ForceBuildAndRun','Test','CheckUnrealSyncEnvironment','InspectArtifacts','OpenDevelopmentOutput','OpenWorkspace','RunRelease','OpenReleaseDirectory','ValidateAndStagePackage','ReplaceRelease')][string]$Action,
     [Parameter(Mandatory)][string]$ProjectRoot,

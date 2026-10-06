@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     # 这些参数一律声明成"可空 + 体内校验"：PowerShell 在参数绑定阶段抛的错会用系统本地代码页
     # （中文机器上是 GBK）写到 stderr，AxTools 按 UTF-8 读就是一串乱码；放到体内 throw 才走

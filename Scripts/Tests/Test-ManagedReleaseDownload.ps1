@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
@@ -33,7 +33,7 @@ exit /b 0
 '@
     $env:PATH = "$fakeBin;$originalPath"
 
-    $lines = @(& (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File $downloadScript `
+    $lines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $downloadScript `
         -RepositoryName 'owner/DemoTool' `
         -DestinationPath $target `
         -ExpectedDirectoryName 'DemoTool-Release' 2>&1 |
