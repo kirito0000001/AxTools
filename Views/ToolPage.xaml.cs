@@ -94,7 +94,7 @@ public sealed partial class ToolPage : UserControl
                 CloseButtonText = "取消",
                 DefaultButton = ContentDialogButton.Primary
             };
-            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            if (await DialogGate.TryShowAsync(dialog) == ContentDialogResult.Primary)
             {
                 if (isGame)
                 {
@@ -301,7 +301,7 @@ public sealed partial class ToolPage : UserControl
                 CloseButtonText = "关闭",
                 DefaultButton = ContentDialogButton.Close
             };
-            await dialog.ShowAsync();
+            await DialogGate.TryShowAsync(dialog);
         }
         finally
         {

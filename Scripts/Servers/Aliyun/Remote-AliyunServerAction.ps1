@@ -268,9 +268,45 @@ function Invoke-AxCrashClean {
 function Get-AxServerProcesses {
     param($Server)
 
-    $targetPath = [System.IO.Path]::GetFullPath([string]$Server.ExePath)
+    # ExePath 为空或含非法字符时 GetFullPath 会抛非终止错误，调用方看到的会是「一个进程都没找到」，
+    # 而不是「配置写错了」；这里显式退化成空路径（匹配不到任何进程，且不刷噪音）。
+    $targetPath = ''
+    if (-not [string]::IsNullOrWhiteSpace([string]$Server.ExePath)) {
+        try {
+            $targetPath = [System.IO.Path]::GetFullPath([string]$Server.ExePath)
+        }
+        catch {
+            $targetPath = ''
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($targetPath)) {
+        return @()
+    }
+
     $escaped = $targetPath.Replace('\', '\\')
-    return @(Get-CimInstance Win32_Process -Filter "ExecutablePath = '$escaped'" -ErrorAction SilentlyContinue)
+    $candidates = @(Get-CimInstance Win32_Process -Filter "ExecutablePath = '$escaped'" -ErrorAction SilentlyContinue)
+
+    # Instances can share one executable (CrossingVoid login and main both use
+    # CrossingVoidServer.exe). Matching on ExecutablePath alone returns every sibling, and a
+    # "stop" would then kill all of them. The -PORT=<port> argument is what actually tells the
+    # instances apart, so prefer it whenever the config carries a port.
+    if ($Server.ContainsKey('Port') -and [int]$Server.Port -gt 0) {
+        $portPattern = '-PORT=' + [regex]::Escape([string][int]$Server.Port) + '(?![0-9])'
+        $filtered = @($candidates | Where-Object {
+                $_.CommandLine -and ([string]$_.CommandLine) -match $portPattern
+            })
+        if ($filtered.Count -gt 0) {
+            return $filtered
+        }
+        # No candidate carries this port. Only accept the ambiguous set when it is a single
+        # process; otherwise refuse, so a sibling instance is never killed by mistake.
+        if ($candidates.Count -eq 1) {
+            return $candidates
+        }
+        return @()
+    }
+
+    return $candidates
 }
 
 function Invoke-AxInstanceAction {
@@ -279,6 +315,22 @@ function Invoke-AxInstanceAction {
     $server = Get-AxServerEntry -Config $Config -InstanceName $InstanceName
     $processes = Get-AxServerProcesses -Server $server
     $stopped = 0
+    $maintenance = $null
+    $maintenanceError = ''
+
+    # The local menu enters maintenance mode when a server is stopped, and leaves it when the
+    # server is started, so the watchdog does not immediately pull the process back up. The
+    # remote path has to behave the same way: without this, "stop" reports success and the
+    # server is running again 30 seconds later.
+    if ($Mode -eq 'stop' -or $Mode -eq 'restart') {
+        try {
+            $null = Set-AxMaintenance -Config $Config -InstanceName $InstanceName -Enabled $true
+            $maintenance = $true
+        }
+        catch {
+            $maintenanceError = $_.Exception.Message
+        }
+    }
 
     if ($Mode -eq 'stop' -or $Mode -eq 'restart') {
         foreach ($process in $processes) {
@@ -291,7 +343,14 @@ function Invoke-AxInstanceAction {
             }
         }
         if ($Mode -eq 'stop') {
-            return [ordered]@{ instance = $InstanceName; stopped = $stopped; started = $null }
+            return [ordered]@{
+                instance         = $InstanceName
+                stopped          = $stopped
+                matched          = $processes.Count
+                started          = $null
+                maintenance      = $maintenance
+                maintenanceError = $maintenanceError
+            }
         }
         Start-Sleep -Seconds 3
     }
@@ -309,7 +368,23 @@ function Invoke-AxInstanceAction {
         -WorkingDirectory $workingDirectory `
         -WindowStyle Minimized -PassThru
 
-    return [ordered]@{ instance = $InstanceName; stopped = $stopped; started = $started.Id }
+    # Starting a server clears maintenance mode (same semantics as the local menu).
+    try {
+        $null = Set-AxMaintenance -Config $Config -InstanceName $InstanceName -Enabled $false
+        $maintenance = $false
+    }
+    catch {
+        $maintenanceError = $_.Exception.Message
+    }
+
+    return [ordered]@{
+        instance         = $InstanceName
+        stopped          = $stopped
+        matched          = $processes.Count
+        started          = $started.Id
+        maintenance      = $maintenance
+        maintenanceError = $maintenanceError
+    }
 }
 
 function Set-AxMaintenance {

@@ -12,7 +12,6 @@ namespace AxTools;
 public sealed partial class MainWindow
 {
     private readonly ProcessConflictDetector _processConflictDetector = new();
-    private bool _isDialogOpen;
 
     private async void ToolPage_ToolActionRequested(
         object? sender,
@@ -575,32 +574,11 @@ public sealed partial class MainWindow
 
     private async Task<ContentDialogResult?> TryShowDialogAsync(ContentDialog dialog)
     {
-        if (_isDialogOpen)
-        {
-            _viewModel.LogService.Write(
-                LogKind.Warning,
-                "已有对话框正在显示，已忽略重复提示。");
-            return null;
-        }
-
-        _isDialogOpen = true;
-        try
-        {
-            dialog.RequestedTheme = RootGrid.ActualTheme;
-            return await dialog.ShowAsync();
-        }
-        catch (Exception exception)
-        {
-            _viewModel.LogService.Write(
-                LogKind.Error,
-                "显示操作提示对话框失败。",
-                exception);
-            return null;
-        }
-        finally
-        {
-            _isDialogOpen = false;
-        }
+        // 闸门与异常兜底都在 DialogGate 里：抢不到就返回 null，调用方按"没确认/没成功"处理。
+        // 页面自己弹的窗（ServerPage / ToolPage / SettingsPage）也走同一道闸门，
+        // 否则"主窗口的提示 + 页面的确认框"撞在一起照样崩（同一个 XamlRoot，一个线程只能有一个弹窗）。
+        dialog.RequestedTheme = RootGrid.ActualTheme;
+        return await DialogGate.TryShowAsync(dialog, _viewModel.LogService);
     }
 
     private static TextBlock CreateDialogLine(string label, string value) =>

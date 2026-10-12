@@ -161,7 +161,7 @@ public sealed partial class MainWindow
             CloseButtonText = "知道了",
             DefaultButton = ContentDialogButton.Close
         };
-        await dialog.ShowAsync();
+        await TryShowDialogAsync(dialog);
         return false;
     }
 
@@ -286,7 +286,7 @@ public sealed partial class MainWindow
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close
         };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        return await TryShowDialogAsync(dialog) == ContentDialogResult.Primary;
     }
 
     private static bool IsPathInsideDirectory(string? candidate, string directory)

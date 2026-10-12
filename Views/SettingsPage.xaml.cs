@@ -193,7 +193,7 @@ public sealed partial class SettingsPage : UserControl
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await DialogGate.TryShowAsync(dialog) == ContentDialogResult.Primary)
         {
             ViewModel.DeveloperRelease.ReleaseDescription = editor.Text;
         }

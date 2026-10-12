@@ -174,9 +174,45 @@ function Get-AxCommitInfo {
     }
 }
 
+function Get-WqlCommandLineFilter {
+    param([string[]]$LikeValues)
+
+    # WMI 全表扫描在 1 核服务器上要 300~800ms：先用 WQL LIKE 让 WMI 只把命令行里带这些关键字的
+    # 进程传回来（本地实测 315 个进程 920ms -> 190ms）。LIKE 只当粗筛，真正的判定留在调用方的
+    # -like/-match 里，所以这里只要保证"只多不漏"：
+    #   * 反斜杠在 WQL 字符串里是转义符，必须写成 \\：写单个 \ 会让查询直接报"无效查询"，而
+    #     -ErrorAction SilentlyContinue 会把这种错误吞成"零进程"，静默漏掉进程；
+    #   * [ 在 LIKE 里是字符集，会把路径当成另一种模式去匹配，不能保证超集；
+    #   * ' 会截断字符串字面量。
+    # 后两种字符出现时返回空串，调用方退回全表扫描：结果一样，只是慢一点。
+    $clauses = @()
+    foreach ($value in @($LikeValues)) {
+        if ([string]::IsNullOrWhiteSpace($value)) { continue }
+        if ($value.Contains('[') -or $value.Contains("'")) { return '' }
+        $clauses += "CommandLine LIKE '%$($value.Replace('\', '\\'))%'"
+    }
+    if ($clauses.Count -eq 0) { return '' }
+    return ($clauses -join ' OR ')
+}
+
 function Get-AxProcessesForServer {
     param($ServerEntry)
-    $target = [IO.Path]::GetFullPath([string]$ServerEntry.ExePath)
+    # ExePath 是空串（或含 Windows 非法字符）时 GetFullPath 会抛非终止错误：调用方只看得到
+    # "没找到进程"，错误本身却会污染输出/日志。这里自己吞掉，统一按"匹配不到任何进程"处理
+    # （配置写错应该表现为"找不到"，而不是往外抛异常）。
+    $target = ''
+    if (-not [string]::IsNullOrWhiteSpace([string]$ServerEntry.ExePath)) {
+        try {
+            $target = [IO.Path]::GetFullPath([string]$ServerEntry.ExePath)
+        }
+        catch {
+            $target = ''
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($target)) {
+        return @()
+    }
+
     $escaped = $target.Replace('\', '\\')
     $exeName = [IO.Path]::GetFileName($target)
     $port = [int]$ServerEntry.Port
@@ -189,7 +225,16 @@ function Get-AxProcessesForServer {
     # 是它拉起的内层进程（CrossingVoidServer-Win64-Shipping.exe）。漏掉内层进程就停不
     # 干净，紧接着的 git checkout 会因为"文件被占用"整片失败（2026-09-19 实测踩过：
     # unable to unlink ... Invalid argument），最后连回滚都动不了。
-    $matches += @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    #
+    # 判定的两个关键字（端口参数、内层 exe 名）正好可以拿去缩小 WMI 的范围，省掉大部分
+    # 枚举开销；LIKE 只是粗筛，真正的判定仍在下面这个 Where-Object 里。
+    $cimParameters = @{ ClassName = 'Win32_Process' }
+    $commandLineFilter = Get-WqlCommandLineFilter -LikeValues @($portToken, $exeName)
+    if (-not [string]::IsNullOrWhiteSpace($commandLineFilter)) {
+        $cimParameters['Filter'] = $commandLineFilter
+    }
+
+    $matches += @(Get-CimInstance @cimParameters -ErrorAction SilentlyContinue | Where-Object {
             $commandLine = [string]$_.CommandLine
             $matched = $false
             if (-not [string]::IsNullOrWhiteSpace($commandLine)) {
@@ -224,6 +269,24 @@ function Set-AxMaintenanceState {
     }
     . $MenuCore
     Set-ServerMaintenance -Path $MaintenanceFile -Name $InstanceName -Enabled $Enabled
+}
+
+# 批量解除维护模式，并把失败原样带回来。
+# 之前的写法是 `try { ... } catch { }`：解除失败被吞掉，面板照样显示"已恢复看门狗自动重启"，
+# 而服务器其实还锁在维护模式里 —— 看门狗永远不接管，只有人工能救。
+function Release-AxMaintenance {
+    param([string[]]$InstanceNames)
+
+    $failed = @()
+    foreach ($name in $InstanceNames) {
+        try {
+            Set-AxMaintenanceState -InstanceName $name -Enabled $false
+        }
+        catch {
+            $failed += [ordered]@{ instance = $name; error = $_.Exception.Message }
+        }
+    }
+    return $failed
 }
 
 function Get-AxServerConfig {
@@ -634,11 +697,19 @@ function Invoke-AxSwitchTo {
     }
     finally {
         if ($report.success -or $report.restored) {
-            foreach ($name in $maintenanceOn) {
-                try { Set-AxMaintenanceState -InstanceName $name -Enabled $false } catch { }
+            $releaseFailures = @(Release-AxMaintenance -InstanceNames $maintenanceOn)
+            if ($releaseFailures.Count -eq 0) {
+                $report.maintenanceReleased = $true
+                Write-AxProgress -Stage 'maintenance' -Percent 99 -Message '已恢复看门狗自动重启'
             }
-            $report.maintenanceReleased = $true
-            Write-AxProgress -Stage 'maintenance' -Percent 99 -Message '已恢复看门狗自动重启'
+            else {
+                $report.maintenanceReleased = $false
+                $report.maintenanceReleaseError = (($releaseFailures | ForEach-Object { '{0}: {1}' -f $_.instance, $_.error }) -join '; ')
+                Write-AxStage `
+                    -Stage 'maintenance' `
+                    -Message '解除维护模式失败，服务端仍处于维护模式，需要人工介入' `
+                    -Detail $report.maintenanceReleaseError
+            }
         }
         else {
             $report.maintenanceReleased = $false
@@ -744,11 +815,19 @@ function Invoke-AxRecover {
     finally {
         # 只有真的健康起来才放开看门狗；否则保持维护模式，别让它在半死状态里反复重启。
         if ($report.success) {
-            foreach ($name in $maintenanceOn) {
-                try { Set-AxMaintenanceState -InstanceName $name -Enabled $false } catch { }
+            $releaseFailures = @(Release-AxMaintenance -InstanceNames $maintenanceOn)
+            if ($releaseFailures.Count -eq 0) {
+                $report.maintenanceReleased = $true
+                Write-AxProgress -Stage 'maintenance' -Percent 99 -Message '已恢复看门狗自动重启'
             }
-            $report.maintenanceReleased = $true
-            Write-AxProgress -Stage 'maintenance' -Percent 99 -Message '已恢复看门狗自动重启'
+            else {
+                $report.maintenanceReleased = $false
+                $report.maintenanceReleaseError = (($releaseFailures | ForEach-Object { '{0}: {1}' -f $_.instance, $_.error }) -join '; ')
+                Write-AxStage `
+                    -Stage 'maintenance' `
+                    -Message '解除维护模式失败，服务端仍处于维护模式，需要人工介入' `
+                    -Detail $report.maintenanceReleaseError
+            }
         }
         else {
             $report.maintenanceReleased = $false

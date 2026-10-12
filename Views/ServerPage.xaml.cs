@@ -607,7 +607,7 @@ public sealed partial class ServerPage : UserControl
         };
     }
 
-    private static Button CreateActionButton(
+    private Button CreateActionButton(
         string text,
         string glyph,
         Func<Task> onClick,
@@ -636,7 +636,19 @@ public sealed partial class ServerPage : UserControl
             button.Style = buttonStyle;
         }
 
-        button.Click += async (_, _) => await onClick();
+        // async void：从这里漏出去的异常会把进程直接带走（stowed exception 0xc000027b），
+        // 所以按钮动作的失败只写日志，不再往外抛。
+        button.Click += async (_, _) =>
+        {
+            try
+            {
+                await onClick();
+            }
+            catch (Exception exception)
+            {
+                ViewModel?.Log?.Write(LogKind.Error, $"「{text}」执行失败。", exception);
+            }
+        };
         return button;
     }
 
@@ -727,6 +739,11 @@ public sealed partial class ServerPage : UserControl
         string action,
         string verb)
     {
+        if (_isBusy)
+        {
+            return;
+        }
+
         if (action is "stop" or "restart")
         {
             var confirmed = await ShowConfirmAsync(
@@ -761,6 +778,11 @@ public sealed partial class ServerPage : UserControl
         string title,
         string description)
     {
+        if (_isBusy)
+        {
+            return;
+        }
+
         var scan = await RunActionAsync(string.Empty, scanAction, $"扫描（{title}）");
         if (scan?.Data is not { } data)
         {
@@ -830,6 +852,11 @@ public sealed partial class ServerPage : UserControl
 
     private async Task ToggleWatchdogTaskAsync()
     {
+        if (_isBusy)
+        {
+            return;
+        }
+
         var state = await RunActionAsync(string.Empty, "watchdog-task-state", "读取监控状态");
         var running = state?.Data is { } data &&
             string.Equals(ReadString(data, "state"), "Running", StringComparison.OrdinalIgnoreCase);
@@ -1083,6 +1110,13 @@ public sealed partial class ServerPage : UserControl
 
     private async Task ApplyAsync(ServerPageViewModel viewModel, ServerProgramProfile profile)
     {
+        // 连点两次就是两道确认弹窗：WinUI 一个线程只能有一个 ContentDialog，
+        // 第二个会抛 COMException(0x80000019) 并且直接崩进程（2026-10-11 实测）。
+        if (_isBusy)
+        {
+            return;
+        }
+
         var confirmed = await ShowConfirmAsync(
             $"{profile.DisplayName} · 切换最新版本",
             "将执行：暂挂看门狗 → 停止服务端 → 切换到最新版本 → 启动 → 健康检查 180 秒 → 恢复看门狗。" +
@@ -1116,6 +1150,11 @@ public sealed partial class ServerPage : UserControl
 
     private async Task RollbackAsync(ServerPageViewModel viewModel, ServerProgramProfile profile)
     {
+        if (_isBusy)
+        {
+            return;
+        }
+
         var confirmed = await ShowConfirmAsync(
             $"{profile.DisplayName} · 回退上个版本",
             "将把服务器切回上一个版本，流程与更新相同：暂挂看门狗 → 停服 → 切换 → 启动 → 健康检查。" +
@@ -1242,7 +1281,7 @@ public sealed partial class ServerPage : UserControl
         };
         ApplyDialogWidth(dialog);
 
-        var result = await dialog.ShowAsync();
+        var result = await ShowDialogCoreAsync(dialog);
         return result == ContentDialogResult.Primary ? textBox.Text.Trim() : null;
     }
 
@@ -1339,7 +1378,7 @@ public sealed partial class ServerPage : UserControl
         };
         ApplyDialogWidth(dialog);
 
-        var result = await dialog.ShowAsync();
+        var result = await ShowDialogCoreAsync(dialog);
         if (result == ContentDialogResult.Primary)
         {
             await CopyTextAsync(string.Join(Environment.NewLine, lines), "全部日志");
@@ -1457,6 +1496,14 @@ public sealed partial class ServerPage : UserControl
         dialog.MaxWidth = maxWidth;
     }
 
+    /// <summary>
+    /// 本页所有弹窗统一从这里出去：<see cref="DialogGate"/> 保证同一时刻只有一个 ContentDialog
+    /// （两个撞在一起会抛 COMException 0x80000019，进而把进程带走），抢不到闸门或 ShowAsync
+    /// 抛异常都返回 null，调用方按"用户取消"处理。
+    /// </summary>
+    private Task<ContentDialogResult?> ShowDialogCoreAsync(ContentDialog dialog) =>
+        DialogGate.TryShowAsync(dialog, ViewModel?.Log);
+
     private async Task ShowTextAsync(string title, string subtitle, string body)
     {
         var content = subtitle;
@@ -1495,7 +1542,7 @@ public sealed partial class ServerPage : UserControl
         };
         ApplyDialogWidth(dialog);
 
-        var result = await dialog.ShowAsync();
+        var result = await ShowDialogCoreAsync(dialog);
         return result == ContentDialogResult.Primary;
     }
 

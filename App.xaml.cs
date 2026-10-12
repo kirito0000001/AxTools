@@ -14,6 +14,38 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+
+        // 兜底：UI 线程上没人接的异常默认会让进程直接消失、什么都不留
+        // （2026-10-11 的闪退就是 COMException 0x80000019 双弹窗被抛到 async void 上，
+        //  最终表现成 Microsoft.UI.Xaml.dll 的 stowed exception 0xc000027b）。
+        // 这里先落一份现场，再让进程活下去。
+        UnhandledException += OnUnhandledException;
+    }
+
+    private static void OnUnhandledException(
+        object sender,
+        Microsoft.UI.Xaml.UnhandledExceptionEventArgs args)
+    {
+        try
+        {
+            var logRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "AxTools",
+                "CrashLogs");
+            Directory.CreateDirectory(logRoot);
+            File.AppendAllText(
+                Path.Combine(logRoot, $"Unhandled-{DateTime.Now:yyyyMMdd}.log"),
+                $"[{DateTime.Now:O}] {args.Message}{Environment.NewLine}" +
+                $"{args.Exception}{Environment.NewLine}{Environment.NewLine}");
+        }
+        catch
+        {
+            // 记录现场本身失败就算了，别在兜底里再抛一次。
+        }
+
+        // 已经接过手：不让它升级成"进程消失"。当前这一件事多半是没做成，
+        // 状态拿不准就重启一次 AxTools。
+        args.Handled = true;
     }
 
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
