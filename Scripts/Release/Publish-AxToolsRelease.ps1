@@ -1,185 +1,154 @@
-﻿[CmdletBinding()]
+﻿# 完整发布编排：凭据预检 → Gitee（0-50%）→ GitHub（50-100%），同进程顺序调用。
+#
+# 与 ZD 工具箱（CrossingVoidZDTool\Scripts\Publish-ZDToolboxRelease.ps1）同构：
+# 出包只做一次（Gitee 段负责），两条通道传的是**同一批附件**；任一段失败都可以原样重跑，
+# 已传成功的附件会核对内容后跳过。
+
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$ProjectRoot,
-    [Parameter(Mandatory)][string]$Version,
-    [ValidateSet('stable','beta')][string]$Channel = 'stable',
-    [Parameter(Mandatory)][string]$OutputRoot,
-    [ValidateSet('GitHub','Gitee','Both')][string]$Target = 'Both',
-    [string]$ReleaseNotes = '',
+    [Parameter(Mandatory = $true)]
+    [string]$Version,
+    [string]$Notes = '',
+    [string]$StagingDirectory = '',
+    [string]$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
+    [ValidateSet('win-x64')]
+    [string]$Runtime = 'win-x64',
+    [switch]$DryRun,
+    [switch]$ForceRebuild,
+    # 跳过出包：产物目录里必须已有三件产物（「单独上传」这条动作走它）。
     [switch]$SkipBuild,
-    [switch]$DryRun
+    [switch]$SkipTests,
+    [switch]$SkipVersionWrite,
+    [int64]$PartSizeBytes = 0,
+    [switch]$ExcludeAiRuntime,
+    [switch]$NoDelta,
+
+    [switch]$SkipGitee,
+    [switch]$SkipGithub,
+    [string]$GiteeRepository = 'xiaojie578/AxTools',
+    [string]$GiteeBranch = 'master',
+    [string]$GiteeAccessToken = '',
+    [string]$GithubRepository = 'kirito0000001/AxTools',
+    [string]$GithubBranch = 'main',
+    [string]$GithubAccessToken = '',
+    [int]$KeepReleasesWithAssets = 3,
+    [switch]$SkipPrune,
+    [switch]$KeepOldReleaseRecords,
+    [switch]$SkipSelfCheck,
+    [switch]$TolerateSelfCheckFailure
 )
+. (Join-Path $PSScriptRoot 'AxToolsPublish.ps1')
 
-$ErrorActionPreference = 'Stop'
-$packageScript = Join-Path $ProjectRoot 'Scripts\Release\Package-AxTools.ps1'
-$validateScript = Join-Path $ProjectRoot 'Scripts\Release\Test-AxToolsPackage.ps1'
-$releaseCommonModule = Join-Path $ProjectRoot 'Scripts\Release\AxToolsReleaseCommon.psm1'
-Import-Module $releaseCommonModule -Force
-if (!$SkipBuild) {
-    & $packageScript `
-        -ProjectRoot $ProjectRoot `
-        -Version $Version `
-        -Channel $Channel `
-        -OutputRoot $OutputRoot `
-        -ReleaseNotes $ReleaseNotes
-}
-& $validateScript -ReleaseAssetRoot $OutputRoot -ExpectedVersion $Version
-$manifestPath = Join-Path $OutputRoot 'toolbox-update.json'
-$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$asset = @($manifest.assets)[0]
-$zipPath = Join-Path $OutputRoot $asset.fileName
-$shaPath = Join-Path $OutputRoot ([IO.Path]::GetFileNameWithoutExtension($asset.fileName) + '.sha256.txt')
-$assets = @($zipPath, $shaPath, $manifestPath)
-$tag = "v$Version"
-$title = if ($Channel -eq 'beta') { "AxTools $Version 测试版" } else { "AxTools $Version 正式版" }
-$defaultNotes = @"
-## AxTools V$Version
-
-统一管理工具的启动、构建、打包、发布、热更新与开发环境。
-"@.Trim()
-$notes = if ([string]::IsNullOrWhiteSpace($ReleaseNotes)) {
-    $defaultNotes
-} else {
-    $ReleaseNotes.Trim()
-}
-
-Write-Host "发布摘要：$tag / $Channel / $($asset.fileName) / $($asset.sizeBytes) bytes / $($asset.sha256)"
-if ($DryRun) { Write-Host 'DryRun：已完成本地校验，没有执行网络写入。'; $global:LASTEXITCODE = 0; return }
-
-if ($Target -in @('GitHub','Both')) {
-    if (!(Get-Command gh -ErrorAction SilentlyContinue)) { throw '未找到 GitHub CLI。' }
-    $existing = & gh release view $tag --repo 'kirito0000001/AxTools' --json tagName 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        $args = @('release','create',$tag,'--repo','kirito0000001/AxTools','--title',$title,'--notes',$notes)
-        if ($Channel -eq 'beta') { $args += '--prerelease' }
-        & gh @args
-        if ($LASTEXITCODE -ne 0) { throw "GitHub Release 创建失败：$LASTEXITCODE" }
+$exitCode = 0
+try {
+    if ($SkipGitee -and $SkipGithub) { throw '两条通道都被 -SkipGitee / -SkipGithub 跳过了，没有可做的事。' }
+    $root = Get-AxNormalizedPath -Path $ProjectRoot
+    $targetVersion = $Version.Trim().TrimStart('v')
+    $staging = if ([string]::IsNullOrWhiteSpace($StagingDirectory)) {
+        Join-Path $root (Join-Path 'Artifacts\ReleaseAssets' "v$targetVersion")
     }
-    else {
-        $editArgs = @('release','edit',$tag,'--repo','kirito0000001/AxTools','--title',$title,'--notes',$notes)
-        if ($Channel -eq 'beta') { $editArgs += '--prerelease' } else { $editArgs += '--latest' }
-        & gh @editArgs
-        if ($LASTEXITCODE -ne 0) { throw "GitHub Release 标题或说明更新失败：$LASTEXITCODE" }
-    }
-    $releaseJson = & gh release view $tag --repo 'kirito0000001/AxTools' --json assets
-    if ($LASTEXITCODE -ne 0) { throw 'GitHub Release 附件列表读取失败。' }
-    $oldAssets = @((ConvertFrom-Json ($releaseJson -join [Environment]::NewLine)).assets)
-    foreach ($oldAsset in $oldAssets) {
-        & gh release delete-asset $tag ([string]$oldAsset.name) --repo 'kirito0000001/AxTools' --yes
-        if ($LASTEXITCODE -ne 0) { throw "GitHub 旧附件删除失败：$($oldAsset.name)" }
-    }
-    & gh release upload $tag @assets --repo 'kirito0000001/AxTools'
-    if ($LASTEXITCODE -ne 0) { throw "GitHub Release 附件上传失败：$LASTEXITCODE" }
-
-    $uploadedJson = & gh release view $tag --repo 'kirito0000001/AxTools' --json assets
-    if ($LASTEXITCODE -ne 0) { throw 'GitHub 上传结果读取失败。' }
-    $uploadedAssets = @((ConvertFrom-Json ($uploadedJson -join [Environment]::NewLine)).assets)
-    if ($uploadedAssets.Count -ne $assets.Count) { throw 'GitHub 上传后的附件数量不一致。' }
-    foreach ($path in $assets) {
-        $file = Get-Item -LiteralPath $path
-        $remote = @($uploadedAssets | Where-Object name -CEQ $file.Name)
-        if ($remote.Count -ne 1 -or [int64]$remote[0].size -ne $file.Length) {
-            throw "GitHub 附件核对失败：$($file.Name)"
+    else { Get-AxNormalizedPath -Path $StagingDirectory }
+    Write-Host "== 完整发布 AxTools v$targetVersion ==" -ForegroundColor Cyan
+    Write-Host "   工程根  ：$root"
+    Write-Host "   产物目录：$staging"
+    Write-Host "   通道    ：$(if ($SkipGitee) { 'GitHub' } elseif ($SkipGithub) { 'Gitee' } else { 'Gitee + GitHub' })"
+    $giteeToken = ''
+    $githubToken = ''
+    if (!$DryRun) {
+        if (!$SkipGitee) {
+            $credential = Get-AxToolsGiteeCredential
+            $giteeToken = Get-AxToolsGiteeToken -Explicit $GiteeAccessToken
+            Write-Host "Gitee 令牌 ：$(if ([string]::IsNullOrWhiteSpace($GiteeAccessToken)) { "来自环境变量 $($credential.SourceName)（$($credential.Scope)）" } else { '来自 -GiteeAccessToken' })"
         }
-    }
-}
-
-if ($Target -in @('Gitee','Both')) {
-    $credential = Get-AxToolsGiteeCredential
-    $token = $credential.Token
-    Write-Host "Gitee 凭据来源：$($credential.SourceName) / $($credential.Scope)"
-    $repoApi = 'https://gitee.com/api/v5/repos/xiaojie578/AxTools'
-    try {
-        Invoke-RestMethod -Method Get -Uri $repoApi -Body @{ access_token=$token } | Out-Null
-    }
-    catch {
-        $statusCode = if ($_.Exception.Response) {
-            [int]$_.Exception.Response.StatusCode
-        } else {
-            0
-        }
-        if ($statusCode -ne 404) { throw }
-        Write-Host 'Gitee AxTools 仓库不存在，正在创建公开的 README-only 仓库...'
-        $created = Invoke-RestMethod `
-            -Method Post `
-            -Uri 'https://gitee.com/api/v5/user/repos' `
-            -ContentType 'application/x-www-form-urlencoded; charset=utf-8' `
-            -Body @{
-                access_token=$token
-                name='AxTools'
-                description='AxTools 统一工具管理器 Release 镜像'
-                private='false'
-                auto_init='true'
+        if (!$SkipGithub) {
+            $github = Get-AxToolsGithubCredential -Explicit $GithubAccessToken
+            if ($null -eq $github) {
+                throw ('缺少 GitHub 令牌：请设置 AXTOOLS_GITHUB_TOKEN（或 GITHUB_TOKEN / GH_TOKEN）、' +
+                    '先执行 `gh auth login`，或传 -GithubAccessToken；也可以加 -SkipGithub 只发 Gitee。')
             }
-        if ([string]$created.full_name -ne 'xiaojie578/AxTools') {
-            throw 'Gitee AxTools 仓库创建结果无效。'
+            $githubToken = $github.Token
+            Write-Host "GitHub 令牌：已就绪（$($github.SourceName)）"
         }
     }
-    $repository = Invoke-RestMethod `
-        -Method Patch `
-        -Uri $repoApi `
-        -ContentType 'application/x-www-form-urlencoded; charset=utf-8' `
-        -Body @{
-            access_token=$token
-            name='AxTools'
-            description='AxTools 统一工具管理器 Release 镜像'
-            private='false'
+    # 只发 GitHub 时没人出包，这里补一次，免得白跑一趟才报"缺少发布物"。
+    if ($SkipGitee -and !$SkipBuild) {
+        $buildScript = Join-Path $axScriptRoot 'Build-AxToolsUpdatePackage.ps1'
+        Write-Host ''
+        Write-Host '===== 出包（只发 GitHub，Gitee 段被跳过）=====' -ForegroundColor Cyan
+        $buildArguments = @{
+            Version          = $targetVersion
+            ProjectRoot      = $root
+            StagingDirectory = $staging
+            Runtime          = $Runtime
+            Notes            = $Notes
         }
-    if ($repository.private -eq $true -or $repository.public -ne $true) {
-        throw 'Gitee AxTools 仓库不是公开仓库，已停止发布。'
+        if ($ExcludeAiRuntime) { $buildArguments.ExcludeAiRuntime = $true }
+        if ($ForceRebuild) { $buildArguments.ForceRebuild = $true }
+        if ($SkipTests) { $buildArguments.SkipTests = $true }
+        if ($SkipVersionWrite) { $buildArguments.SkipVersionWrite = $true }
+        if ($NoDelta) { $buildArguments.NoDelta = $true }
+        if ($PartSizeBytes -gt 0) { $buildArguments.PartSizeBytes = $PartSizeBytes }
+        & $buildScript @buildArguments | Out-Null
+        $buildExit = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+        if ($buildExit -ne 0) { throw "出包失败，退出码 $buildExit。" }
     }
-    $api = 'https://gitee.com/api/v5/repos/xiaojie578/AxTools/releases'
-    $releaseResponse = Invoke-RestMethod -Method Get -Uri $api -Body @{ access_token=$token }
-    $releases = @($releaseResponse.GetEnumerator())
-    $release = @($releases | Where-Object tag_name -eq $tag | Select-Object -First 1)
-    if ($release.Count -eq 0) {
-        $release = Invoke-RestMethod `
-            -Method Post `
-            -Uri $api `
-            -ContentType 'application/x-www-form-urlencoded; charset=utf-8' `
-            -Body @{ access_token=$token; tag_name=$tag; name=$title; body=$notes; prerelease=($Channel -eq 'beta').ToString().ToLowerInvariant(); target_commitish='master' }
-    } else {
-        $release = $release[0]
-        $release = Invoke-RestMethod `
-            -Method Patch `
-            -Uri "$api/$($release.id)" `
-            -ContentType 'application/x-www-form-urlencoded; charset=utf-8' `
-            -Body @{ access_token=$token; tag_name=$tag; name=$title; body=$notes; prerelease=($Channel -eq 'beta').ToString().ToLowerInvariant(); target_commitish='master' }
+    if (!$SkipGitee) {
+        Set-AxProgressRange -From 0 -To $(if ($SkipGithub) { 100 } else { 50 })
+        Write-Host ''
+        Write-Host '===== Gitee 通道 =====' -ForegroundColor Cyan
+        $code = Invoke-AxToolsGiteePublish -Version $targetVersion -ProjectRoot $root -StagingDirectory $staging `
+            -Runtime $Runtime -Notes $Notes -DryRun:$DryRun `
+            -GiteeRepository $GiteeRepository -GiteeBranch $GiteeBranch -GiteeAccessToken $GiteeAccessToken `
+            -KeepReleasesWithAssets $KeepReleasesWithAssets -SkipPrune:$SkipPrune `
+            -KeepOldReleaseRecords:$KeepOldReleaseRecords -ForceRebuild:$ForceRebuild `
+            -SkipBuild:$SkipBuild -SkipTests:$SkipTests -SkipVersionWrite:$SkipVersionWrite -NoDelta:$NoDelta `
+            -PartSizeBytes $PartSizeBytes -ExcludeAiRuntime:$ExcludeAiRuntime `
+            -SkipSelfCheck:$SkipSelfCheck -TolerateSelfCheckFailure:$TolerateSelfCheckFailure
+        if ($code -ne 0) { throw "Gitee 通道失败（退出码 $code）。已传成功的附件不会重传，修好上面那个原因后原样重跑即可。" }
     }
-    $attachApi = "$api/$($release.id)/attach_files"
-    $existingResponse = Invoke-RestMethod -Method Get -Uri $attachApi -Body @{
-        access_token=$token
-        per_page=100
+    if (!$SkipGithub) {
+        Set-AxProgressRange -From $(if ($SkipGitee) { 0 } else { 50 }) -To 100
+        Write-Host ''
+        Write-Host '===== GitHub 通道 =====' -ForegroundColor Cyan
+        $code = Invoke-AxToolsGithubPublish -Version $targetVersion -ProjectRoot $root -StagingDirectory $staging `
+            -Runtime $Runtime -DryRun:$DryRun -GithubRepository $GithubRepository -GithubBranch $GithubBranch `
+            -GithubAccessToken $githubToken -SkipSelfCheck:$SkipSelfCheck `
+            -TolerateSelfCheckFailure:$TolerateSelfCheckFailure
+        if ($code -ne 0) { throw "GitHub 通道失败（退出码 $code）。已传成功的附件不会重传，修好上面那个原因后原样重跑即可。" }
     }
-    $existingFiles = @($existingResponse.GetEnumerator() | Where-Object {
-        $null -ne $_ -and $null -ne $_.id
-    })
-    foreach ($existingFile in $existingFiles) {
-        Invoke-RestMethod `
-            -Method Delete `
-            -Uri "$attachApi/$($existingFile.id)" `
-            -ContentType 'application/x-www-form-urlencoded; charset=utf-8' `
-            -Body @{ access_token=$token } | Out-Null
+    Set-AxProgressRange -From 0 -To 100
+    Write-AxReleaseProgress -Stage 'completed' -Percent 100 -Message "完整发布完成：v$targetVersion"
+    Write-Host ''
+    Write-Host "完整发布完成：v$targetVersion" -ForegroundColor Green
+    if (!$SkipGitee) {
+        Write-Host ("  Gitee ：https://gitee.com/$GiteeRepository/releases/tag/v$targetVersion" +
+            "（附件只保留最近 $KeepReleasesWithAssets 个 Release）")
     }
-    foreach ($path in $assets) {
-        $name = [IO.Path]::GetFileName($path)
-        & curl.exe --fail-with-body --silent --show-error --request POST --form "access_token=$token" --form "file=@$path;filename=$name" $attachApi | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "Gitee 附件上传失败：$name" }
-    }
-    $uploadedResponse = Invoke-RestMethod -Method Get -Uri $attachApi -Body @{
-        access_token=$token
-        per_page=100
-    }
-    $uploadedFiles = @($uploadedResponse.GetEnumerator() | Where-Object {
-        $null -ne $_ -and ![string]::IsNullOrWhiteSpace([string]$_.name)
-    })
-    foreach ($path in $assets) {
-        $file = Get-Item -LiteralPath $path
-        $remote = @($uploadedFiles | Where-Object name -CEQ $file.Name)
-        if ($remote.Count -ne 1 -or [int64]$remote[0].size -ne $file.Length) {
-            throw "Gitee 附件核对失败：$($file.Name)"
-        }
+    if (!$SkipGithub) {
+        Write-Host "  GitHub：https://github.com/$GithubRepository/releases/tag/v$targetVersion（旧版本永久保留）"
     }
 }
-Write-Host "发布完成：$tag"
-$global:LASTEXITCODE = 0
+catch {
+    $exitCode = 1
+    $message = [string]$_.Exception.Message
+    $redactions = [Collections.Generic.List[string]]::new()
+    $redactions.Add($GiteeAccessToken)
+    $redactions.Add($GithubAccessToken)
+    if (![string]::IsNullOrWhiteSpace($giteeToken)) { $redactions.Add($giteeToken) }
+    if (![string]::IsNullOrWhiteSpace($githubToken)) { $redactions.Add($githubToken) }
+    foreach ($name in @('AXTOOLS_GITEE_TOKEN', 'FANTASYTOOLS_GITEE_TOKEN', 'GITEE_TOKEN', 'GITEE_ACCESS_TOKEN',
+            'AXTOOLS_GITHUB_TOKEN', 'GITHUB_TOKEN', 'GH_TOKEN')) {
+        foreach ($scope in @('Process', 'User', 'Machine')) {
+            $value = [Environment]::GetEnvironmentVariable($name, $scope)
+            if (![string]::IsNullOrWhiteSpace($value)) { $redactions.Add($value) }
+        }
+    }
+    foreach ($secret in $redactions) {
+        if ($secret.Length -ge 8) { $message = $message.Replace($secret, '<token>') }
+    }
+    $payload = [ordered]@{ type = 'progress'; stage = 'failed'; percent = 100; message = ('完整发布失败：' + $message) }
+    [Console]::Out.WriteLine('::axtools ' + ($payload | ConvertTo-Json -Compress))
+    [Console]::Error.WriteLine('完整发布失败：' + $message)
+    [Console]::Error.WriteLine($_.ScriptStackTrace)
+}
+exit $exitCode

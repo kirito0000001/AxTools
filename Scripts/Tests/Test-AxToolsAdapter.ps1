@@ -45,4 +45,18 @@ finally {
     }
 }
 
+# 通道以版本号为准：选了 beta 却填 1.2.0 必须被拒（否则会发出一个"通道标测试版、版本像正式版"的包）。
+$conflictLines = @(& (Get-Command pwsh.exe -ErrorAction Stop).Source -NoLogo -NoProfile -NonInteractive -File $entry `
+    -Action PackageStable `
+    -ProjectRoot (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) `
+    -OutputRoot $dryRunOutputRoot `
+    -Version '1.2.0' `
+    -Channel 'beta' `
+    -DryRun 2>&1 |
+    ForEach-Object { $_.ToString() })
+if ($LASTEXITCODE -eq 0) { throw '通道与版本号冲突时不该成功。' }
+if (!($conflictLines | Where-Object { $_ -match '通道与版本号不一致' })) {
+    throw '通道与版本号冲突的报错文案不对。'
+}
+
 Write-Output 'PASS: AxTools 适配器契约通过。'

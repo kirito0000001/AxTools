@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Xml.Linq;
 using Xunit;
 
@@ -342,39 +342,28 @@ public sealed class ToolPageXamlLayoutTests
             document.Descendants(presentation + "Button"),
             element => (string?)element.Attribute("Click") == "RefreshAxToolsPublishedVersion_Click");
         Assert.Contains(
-            document.Descendants(presentation + "TextBox"),
-            element => (string?)element.Attribute("Header") == "Release 介绍" &&
-                (string?)element.Attribute("IsReadOnly") != "True" &&
-                ((string?)element.Attribute("Text"))?.Contains("ReleaseDescription") == true);
+            document.Descendants(presentation + "Button"),
+            element => (string?)element.Attribute("Click") == "EditAxToolsReleaseDescription_Click" &&
+                ((string?)element.Attribute("Content"))?.Contains("Release 介绍") == true);
     }
 
     [Fact]
-    public void GamePublishing_ShowsInstantReleaseNotesField()
+    public void ReleaseDescription_HasExactlyOneEditableEntryInDeveloperReleaseCenter()
     {
-        var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
+        var settings = XDocument.Load(FindProjectFile(Path.Combine("Views", "SettingsPage.xaml")));
+        var toolPage = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
         XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
 
         Assert.Contains(
-            document.Descendants(presentation + "TextBox"),
-            element => (string?)element.Attribute("Header") == "Release 介绍" &&
-                (string?)element.Attribute("IsReadOnly") != "True" &&
-                ((string?)element.Attribute("Text"))?.Contains("GameReleaseDescription") == true);
+            settings.Descendants(presentation + "Button"),
+            element => (string?)element.Attribute("Click") == "EditAxToolsReleaseDescription_Click" &&
+                ((string?)element.Attribute("Content"))?.Contains("Release 介绍") == true);
         Assert.DoesNotContain(
-            document.Descendants(presentation + "TextBox"),
-            element => (string?)element.Attribute("Header") is "游戏更新说明" or "默认 Release 介绍");
-    }
-
-    [Fact]
-    public void LauncherPublishing_ShowsEditableReleaseDescription()
-    {
-        var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
-        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-
-        Assert.Contains(
-            document.Descendants(presentation + "TextBox"),
-            element => (string?)element.Attribute("Header") == "Release 介绍" &&
-                (string?)element.Attribute("IsReadOnly") != "True" &&
-                ((string?)element.Attribute("Text"))?.Contains("LauncherReleaseDescription") == true);
+            toolPage.Descendants(presentation + "TextBox"),
+            element => (string?)element.Attribute("Header") is "Release 介绍" or "游戏更新说明" or "默认 Release 介绍");
+        Assert.DoesNotContain(
+            toolPage.Descendants(presentation + "TextBox"),
+            element => ((string?)element.Attribute("Text"))?.Contains("ReleaseDescription") == true);
     }
 
     [Fact]

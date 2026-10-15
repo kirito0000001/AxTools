@@ -1,4 +1,4 @@
-using AxTools.Core.Models;
+﻿using AxTools.Core.Models;
 using AxTools.Core.Services;
 using Xunit;
 
@@ -103,17 +103,18 @@ public sealed class AxTaskRunnerIntegrationTests
     private static (AxTaskRunner Runner, AxTaskDefinition Definition) CreateScenario(
         string scenario)
     {
-        var scriptPath = Path.GetFullPath(
-            Path.Combine(
-                AppContext.BaseDirectory,
-                "..",
-                "..",
-                "..",
-                "..",
-                "..",
-                "Scripts",
-                "Diagnostics",
-                "Invoke-RunnerSelfTest.ps1"));
+        // 从测试程序集往上找仓库根：以前写死往上 5 层，bin 布局一变就指向 D:\UnrealMap\Scripts，
+        // 于是五个用例集体报"任务脚本不存在"（2026-10-15 实测）。
+        var scriptPath = Path.Combine(
+            FindRepositoryRoot(),
+            "Scripts",
+            "Diagnostics",
+            "Invoke-RunnerSelfTest.ps1");
+        if (!File.Exists(scriptPath))
+        {
+            throw new FileNotFoundException($"找不到自检脚本：{scriptPath}", scriptPath);
+        }
+
         var host = new PowerShellProcessHost(new PowerShellLocator().FindPowerShell());
         var runner = new AxTaskRunner(host, new AxTaskEventParser());
         var definition = new AxTaskDefinition(
@@ -123,6 +124,21 @@ public sealed class AxTaskRunnerIntegrationTests
             new[] { "-Scenario", scenario });
 
         return (runner, definition);
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
+             directory is not null;
+             directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "AxTools.sln")))
+            {
+                return directory.FullName;
+            }
+        }
+
+        throw new DirectoryNotFoundException("找不到仓库根（AxTools.sln）。");
     }
 
     private static TaskCompletionSource NewSignal() =>

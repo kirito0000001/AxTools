@@ -21,9 +21,9 @@ foreach ($relativePath in $adapterPaths) {
     }
 }
 
-$axPackagePath = Join-Path $scriptsRoot 'Release\Package-AxTools.ps1'
+$axPackagePath = Join-Path $scriptsRoot 'Release\Build-AxToolsUpdatePackage.ps1'
 $axPackageSource = Get-Content -LiteralPath $axPackagePath -Raw -Encoding UTF8
-if (!$axPackageSource.Contains('$workRoot = Join-Path $outputFull ".work\$Version"', [StringComparison]::Ordinal)) {
+if (!$axPackageSource.Contains('$workRoot = Join-Path $staging ".work\$targetVersion"', [StringComparison]::Ordinal)) {
     throw 'AxTools 打包工作目录没有位于统一工作区输出根。'
 }
 

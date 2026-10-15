@@ -1,4 +1,4 @@
-using AxTools.Core.Adapters;
+﻿using AxTools.Core.Adapters;
 using AxTools.Core.Models;
 using Xunit;
 
@@ -182,6 +182,57 @@ public sealed class ManagedToolAdapterTests : IDisposable
         Assert.Contains(paths.ReleaseExecutable, task.Arguments);
         Assert.Contains(paths.OutputRoot, task.Arguments);
         Assert.True(task.IsHeavy);
+    }
+
+    [Fact]
+    public void GalExcleTools_ExposesHotUpdatePublishPipelineAndRoutesItToItsOwnWrapper()
+    {
+        var scriptsRoot = Path.Combine(_root, "Scripts");
+        var adapter = new GalExcleToolsAdapter(scriptsRoot);
+
+        Assert.Contains(adapter.Actions, action => action.Action == ManagedToolAction.BuildUpdatePackage);
+        Assert.Contains(adapter.Actions, action => action.Action == ManagedToolAction.PublishDryRun);
+        Assert.Contains(adapter.Actions, action => action.Action == ManagedToolAction.Publish);
+        // 老的打包/校验动作不能被挤掉。
+        Assert.Contains(adapter.Actions, action => action.Action == ManagedToolAction.PackageX64);
+        Assert.Contains(adapter.Actions, action => action.Action == ManagedToolAction.ValidatePackage);
+
+        Assert.True(adapter.Actions.Single(action =>
+            action.Action == ManagedToolAction.Publish).RequiresConfirmation);
+        Assert.False(adapter.Actions.Single(action =>
+            action.Action == ManagedToolAction.BuildUpdatePackage).RequiresConfirmation);
+        Assert.False(adapter.Actions.Single(action =>
+            action.Action == ManagedToolAction.PublishDryRun).RequiresConfirmation);
+        // 版本号由 AX 设置按 -Version 传给脚本，这三个动作不走线上版本门禁。
+        Assert.All(
+            adapter.Actions.Where(action => action.Action is
+                ManagedToolAction.BuildUpdatePackage or
+                ManagedToolAction.PublishDryRun or
+                ManagedToolAction.Publish),
+            action => Assert.False(action.RequiresVersion, $"{action.DisplayName} 不应要求发布版本门禁"));
+
+        var paths = new ManagedToolPaths
+        {
+            SourceRoot = Path.Combine(_root, "GalExcleTools"),
+            DevelopmentExecutable = Path.Combine(_root, "Release", "TFAC剧情箱-轮椅版.exe"),
+            ReleaseExecutable = Path.Combine(_root, "Formal", "TFAC剧情箱-轮椅版.exe"),
+            OutputRoot = Path.Combine(_root, "DabaoV")
+        };
+
+        var publishTask = adapter.CreateTask(
+            new ManagedToolActionRequest(ManagedToolAction.Publish, "2.3.0"),
+            paths);
+        Assert.EndsWith(
+            Path.Combine("Scripts", "Adapters", "GalExcleTools", "Invoke-GalExcleToolsPublish.ps1"),
+            publishTask.ScriptPath);
+        Assert.Contains("2.3.0", publishTask.Arguments);
+
+        var legacyTask = adapter.CreateTask(
+            new ManagedToolActionRequest(ManagedToolAction.ValidatePackage),
+            paths);
+        Assert.EndsWith(
+            Path.Combine("Scripts", "Adapters", "GalExcleTools", "Invoke-GalExcleToolsAction.ps1"),
+            legacyTask.ScriptPath);
     }
 
     [Fact]
@@ -406,7 +457,7 @@ public sealed class ManagedToolAdapterTests : IDisposable
     }
 
     [Fact]
-    public void GalExcleTools_ExposesSevenStandardActionsAndStructuredTask()
+    public void GalExcleTools_ExposesStandardActionsAndHotUpdatePipeline()
     {
         var scriptsRoot = Path.Combine(_root, "Scripts");
         var adapter = new GalExcleToolsAdapter(scriptsRoot);
@@ -419,12 +470,16 @@ public sealed class ManagedToolAdapterTests : IDisposable
                 ManagedToolAction.SourceHealthCheck,
                 ManagedToolAction.RunRelease,
                 ManagedToolAction.PackageX64,
-                ManagedToolAction.ValidatePackage
+                ManagedToolAction.ValidatePackage,
+                // 热更新发布链：真相源在 TFACStorybox 自己的 Scripts\ 下（出包 / 演练 / 完整发布）。
+                ManagedToolAction.BuildUpdatePackage,
+                ManagedToolAction.PublishDryRun,
+                ManagedToolAction.Publish
             ],
             adapter.Actions.Select(action => action.Action));
         Assert.Equal(5, adapter.Actions.Count(action => action.Section == ManagedToolActionSection.Development));
         Assert.Single(adapter.Actions, action => action.Section == ManagedToolActionSection.Release);
-        Assert.Equal(2, adapter.Actions.Count(action => action.Section == ManagedToolActionSection.Publish));
+        Assert.Equal(5, adapter.Actions.Count(action => action.Section == ManagedToolActionSection.Publish));
 
         var paths = new ManagedToolPaths
         {

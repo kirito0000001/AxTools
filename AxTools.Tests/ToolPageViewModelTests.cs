@@ -31,7 +31,7 @@ public sealed class ToolPageViewModelTests : IDisposable
     }
 
     [Fact]
-    public void GalExcleTools_GroupsEightActionsAndRequiresAllProjectMarkers()
+    public void GalExcleTools_GroupsActionsAndRequiresAllProjectMarkers()
     {
         var paths = CreateGalExcleProject();
         var viewModel = new ToolPageViewModel(
@@ -41,8 +41,8 @@ public sealed class ToolPageViewModelTests : IDisposable
 
         Assert.Equal(5, viewModel.DevelopmentActions.Count);
         Assert.Single(viewModel.ReleaseActions);
-        Assert.Equal(2, viewModel.PublishActions.Count);
-        Assert.Equal(8, viewModel.AllActions.Count);
+        Assert.Equal(5, viewModel.PublishActions.Count);
+        Assert.Equal(11, viewModel.AllActions.Count);
         Assert.True(viewModel.HasPublishActions);
         Assert.True(viewModel.IsExecutionAvailable);
 
@@ -132,6 +132,36 @@ public sealed class ToolPageViewModelTests : IDisposable
         var gate = await viewModel.ValidatePublishingVersionAsync(ManagedToolAction.BuildUpdatePackage, CancellationToken.None);
         Assert.True(gate.IsAllowed);
         Assert.Contains("不需要发布版本门禁", gate.Message);
+    }
+
+    /// <summary>
+    /// 剧情填表（TFAC剧情箱）也接了同一套热更新发布链：三个动作要落在「打包与发布」面板的启动器区，
+    /// 而且老的「x64 正式打包 / 校验打包产物」不能被挤掉。
+    /// </summary>
+    [Fact]
+    public void GalExcleTools_ExposesHotUpdatePublishActionsInLauncherSection()
+    {
+        var paths = CreateGalExcleProject();
+        var viewModel = new ToolPageViewModel(
+            GetDescriptor(ManagedToolKey.GalExcleTools),
+            paths,
+            new GalExcleToolsAdapter(Path.Combine(_root, "Scripts")));
+
+        Assert.True(viewModel.HasPublishActions);
+        Assert.True(viewModel.HasLauncherPublishActions);
+        Assert.False(viewModel.HasGamePackagePublishing);
+
+        var publishActionSet = viewModel.LauncherPublishActions.Select(item => item.Action).ToArray();
+        Assert.Contains(ManagedToolAction.BuildUpdatePackage, publishActionSet);
+        Assert.Contains(ManagedToolAction.PublishDryRun, publishActionSet);
+        Assert.Contains(ManagedToolAction.Publish, publishActionSet);
+        Assert.Contains(ManagedToolAction.PackageX64, publishActionSet);
+        Assert.Contains(ManagedToolAction.ValidatePackage, publishActionSet);
+
+        // 真实发布要二次确认，演练与出包不需要。
+        Assert.True(viewModel.LauncherPublishActions.Single(item => item.Action == ManagedToolAction.Publish).RequiresConfirmation);
+        Assert.False(viewModel.LauncherPublishActions.Single(item => item.Action == ManagedToolAction.BuildUpdatePackage).RequiresConfirmation);
+        Assert.False(viewModel.LauncherPublishActions.Single(item => item.Action == ManagedToolAction.PublishDryRun).RequiresConfirmation);
     }
 
     /// <summary>

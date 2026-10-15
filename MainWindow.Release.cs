@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using AxTools.Core.Models;
 using AxTools.Core.Services;
 using AxTools.Views;
@@ -24,13 +24,20 @@ public sealed partial class MainWindow
 
     private async void GlobalSettingsPage_ReleaseActionRequested(object? sender, ReleaseActionRequestedEventArgs args)
     {
+        var targetVersion = (args.Version ?? string.Empty).Trim().TrimStart('v');
+        if (string.IsNullOrWhiteSpace(targetVersion))
+        {
+            _viewModel.Settings.DeveloperRelease.Status = "请先填写要打包或发布的版本号。";
+            return;
+        }
+
         if (args.Action is "Upload" or "Publish")
         {
             var dialog = new ContentDialog
             {
                 XamlRoot = RootGrid.XamlRoot,
                 Title = "确认真实发布",
-                Content = new TextBlock { Text = $"版本：{args.Version}\n通道：{args.Channel}\n目标：GitHub kirito0000001/AxTools 与 Gitee xiaojie578/AxTools\n\n该版本 Release 的全部旧附件会先被清空，再上传本次产物。", TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap },
+                Content = new TextBlock { Text = $"版本：{targetVersion}\n通道：{args.Channel}\n目标：Gitee xiaojie578/AxTools 与 GitHub kirito0000001/AxTools\n\n先传包体与 sha256.txt，复查通过后才传更新清单（客户端读到的最后一步）。Gitee 只保留最近 3 个带附件的 Release；GitHub 从不删除旧版本。", TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap },
                 PrimaryButtonText = "确认发布",
                 CloseButtonText = "取消",
                 DefaultButton = ContentDialogButton.Close
@@ -50,21 +57,27 @@ public sealed partial class MainWindow
             return;
         }
 
-        var outputRoot = Path.Combine(sourceRoot, "Artifacts", "ReleaseAssets");
+        // 每一版一个产物目录：zip / sha256 / 清单 / 台账 / 文件索引 / 程序目录都在它下面，
+        // 下一版算增量时要回来读上一版的 file-index.json。
+        var staging = Path.Combine(sourceRoot, "Artifacts", "ReleaseAssets", "v" + targetVersion);
         var script = args.Action switch
         {
             "Validate" => Path.Combine(sourceRoot, "Scripts", "Release", "Test-AxToolsPackage.ps1"),
             "Upload" or "Publish" => Path.Combine(sourceRoot, "Scripts", "Release", "Publish-AxToolsRelease.ps1"),
-            _ => Path.Combine(sourceRoot, "Scripts", "Release", "Package-AxTools.ps1")
+            _ => Path.Combine(sourceRoot, "Scripts", "Release", "Build-AxToolsUpdatePackage.ps1")
         };
         var arguments = args.Action switch
         {
-            "Validate" => new[] { "-ReleaseAssetRoot", outputRoot, "-ExpectedVersion", args.Version },
-            "Upload" => new[] { "-ProjectRoot", sourceRoot, "-Version", args.Version, "-Channel", args.Channel, "-OutputRoot", outputRoot, "-Target", "Both", "-ReleaseNotes", args.ReleaseNotes, "-SkipBuild" },
-            "Publish" => new[] { "-ProjectRoot", sourceRoot, "-Version", args.Version, "-Channel", args.Channel, "-OutputRoot", outputRoot, "-Target", "Both", "-ReleaseNotes", args.ReleaseNotes },
-            _ => new[] { "-ProjectRoot", sourceRoot, "-Version", args.Version, "-Channel", args.Channel, "-OutputRoot", outputRoot }
+            "Validate" => new[] { "-ReleaseAssetRoot", staging, "-ExpectedVersion", targetVersion },
+            // 单独上传：产物已经在，出包那一步跳过，只走校验 + 上传。
+            "Upload" => AppendNotes(
+                new[] { "-Version", targetVersion, "-ProjectRoot", sourceRoot, "-StagingDirectory", staging, "-SkipBuild" },
+                args.ReleaseNotes),
+            _ => AppendNotes(
+                new[] { "-Version", targetVersion, "-ProjectRoot", sourceRoot, "-StagingDirectory", staging },
+                args.ReleaseNotes)
         };
-        _viewModel.GlobalProgress.Start($"AxTools 发布：{args.Action}", $"{args.Version} / {args.Channel}");
+        _viewModel.GlobalProgress.Start($"AxTools 发布：{args.Action}", $"{targetVersion} / {args.Channel}");
         _viewModel.GlobalProgress.SetCancellationMode(args.Action is "Upload" or "Publish" ? AxTaskCancellationMode.Locked : AxTaskCancellationMode.Cancel);
         StartTaskElapsedTimer();
         try
@@ -79,7 +92,7 @@ public sealed partial class MainWindow
                 return ValueTask.CompletedTask;
             }, _windowTaskCancellation.Token);
             if (result.ExitCode != 0) throw new InvalidOperationException($"发布脚本退出码：{result.ExitCode}");
-            developer.Status = $"{args.Action} 已完成：{args.Version}";
+            developer.Status = $"{args.Action} 已完成：{targetVersion}";
             _viewModel.GlobalProgress.Complete("发布动作完成", developer.Status);
         }
         catch (Exception exception)
@@ -96,4 +109,8 @@ public sealed partial class MainWindow
             _hostedTaskCoordinator.End();
         }
     }
+
+    // 空公告不拼进参数数组：让脚本用它自己的默认介绍，别传一个空串过去。
+    private static string[] AppendNotes(string[] arguments, string? notes) =>
+        string.IsNullOrWhiteSpace(notes) ? arguments : [.. arguments, "-Notes", notes.Trim()];
 }
