@@ -418,6 +418,19 @@
                                     <TextBlock Text="发布碎片清单" />
                                 </StackPanel>
                             </Button>
+                            <Button
+                                x:Name="PublishFragmentManifestToGitHubButton"
+                                HorizontalAlignment="Left"
+                                IsEnabled="{Binding CanPublishFragmentManifest}"
+                                Visibility="{Binding HasFragmentGitHubFallback, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                Click="PublishFragmentManifestToGitHub_Click"
+                                Style="{StaticResource PrimaryToolButtonStyle}"
+                                ToolTipService.ToolTip="只把 fragments.json 发到 GitHub Release 兜底，不连下载站，也不上传碎片 zip">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <SymbolIcon Symbol="Upload" />
+                                    <TextBlock Text="GitHub 兜底清单" />
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                         <TextBlock
                             Text="{Binding FragmentLastResultText}"

@@ -17,6 +17,9 @@ public sealed partial class ToolPage
     /// <summary>点《发布碎片清单》（把 fragments.json 传到下载站）。</summary>
     public event EventHandler? FragmentManifestPublishRequested;
 
+    /// <summary>点《GitHub 兜底清单》（只把 fragments.json 发到 GitHub Release）。</summary>
+    public event EventHandler? FragmentManifestPublishToGitHubRequested;
+
     /// <summary>点碎片区里那个"选择文件夹"（碎片输出目录）。</summary>
     public event EventHandler<FragmentPathRequestedEventArgs>? FragmentPathSelectionRequested;
 
@@ -25,6 +28,9 @@ public sealed partial class ToolPage
 
     private void PublishFragmentManifest_Click(object sender, RoutedEventArgs e) =>
         FragmentManifestPublishRequested?.Invoke(this, EventArgs.Empty);
+
+    private void PublishFragmentManifestToGitHub_Click(object sender, RoutedEventArgs e) =>
+        FragmentManifestPublishToGitHubRequested?.Invoke(this, EventArgs.Empty);
 
     private void FragmentPathBrowse_Click(object sender, RoutedEventArgs e)
     {

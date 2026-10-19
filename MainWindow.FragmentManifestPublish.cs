@@ -22,9 +22,18 @@ public sealed partial class MainWindow
         CrossingVoidPcPage.FragmentManifestPublishRequested += ToolPage_FragmentManifestPublishRequested;
         CrossingVoidAndroidPage.FragmentManifestPublishRequested += ToolPage_FragmentManifestPublishRequested;
         FantasyAndroidPage.FragmentManifestPublishRequested += ToolPage_FragmentManifestPublishRequested;
+        CrossingVoidPcPage.FragmentManifestPublishToGitHubRequested += ToolPage_FragmentManifestPublishToGitHubRequested;
+        CrossingVoidAndroidPage.FragmentManifestPublishToGitHubRequested += ToolPage_FragmentManifestPublishToGitHubRequested;
+        FantasyAndroidPage.FragmentManifestPublishToGitHubRequested += ToolPage_FragmentManifestPublishToGitHubRequested;
     }
 
-    private async void ToolPage_FragmentManifestPublishRequested(object? sender, EventArgs args)
+    private async void ToolPage_FragmentManifestPublishRequested(object? sender, EventArgs args) =>
+        await PublishFragmentManifestAsync(sender, gitHubOnly: false);
+
+    private async void ToolPage_FragmentManifestPublishToGitHubRequested(object? sender, EventArgs args) =>
+        await PublishFragmentManifestAsync(sender, gitHubOnly: true);
+
+    private async Task PublishFragmentManifestAsync(object? sender, bool gitHubOnly)
     {
         if (sender is not ToolPage page || page.DataContext is not ToolPageViewModel viewModel)
         {
@@ -68,6 +77,15 @@ public sealed partial class MainWindow
             return;
         }
 
+        var gitHubRepository = viewModel.FragmentGitHubRepository;
+        if (gitHubOnly && string.IsNullOrWhiteSpace(gitHubRepository))
+        {
+            await ShowMessageDialogAsync(
+                "无法发布 GitHub 兜底清单",
+                "当前游戏没有配置 GitHub 发布仓库。");
+            return;
+        }
+
         if (!_hostedTaskCoordinator.TryBegin())
         {
             _viewModel.LogService.Write(
@@ -82,18 +100,28 @@ public sealed partial class MainWindow
             "Publishing",
             "Games",
             "Publish-GameFragmentManifest.ps1");
-        var taskTitle = $"发布{viewModel.FragmentGameShortName}{viewModel.FragmentPlatformLabel}碎片清单";
+        var taskTitle = gitHubOnly
+            ? $"发布{viewModel.FragmentGameShortName}{viewModel.FragmentPlatformLabel}碎片清单到 GitHub"
+            : $"发布{viewModel.FragmentGameShortName}{viewModel.FragmentPlatformLabel}碎片清单";
+        var arguments = new List<string>
+        {
+            "-FragmentDirectory", outputDirectory,
+            "-ReleaseVersion", gameVersion,
+            "-ProductSegment", viewModel.FragmentProductSegment,
+            "-GameShortName", viewModel.FragmentGameShortName
+        };
+        if (gitHubOnly)
+        {
+            arguments.Add("-GitHubOnly");
+            arguments.Add("-GitHubRepository");
+            arguments.Add(gitHubRepository ?? string.Empty);
+        }
+
         var definition = new AxTaskDefinition(
             $"game-fragment-manifest-publish-{Guid.NewGuid():N}",
             taskTitle,
             scriptPath,
-            new[]
-            {
-                "-FragmentDirectory", outputDirectory,
-                "-ReleaseVersion", gameVersion,
-                "-ProductSegment", viewModel.FragmentProductSegment,
-                "-GameShortName", viewModel.FragmentGameShortName
-            });
+            arguments);
 
         _activeHostedTaskId = definition.Id;
         _activeHostedTaskKind = HostedTaskKind.GameFragmentManifestPublish;
@@ -101,7 +129,9 @@ public sealed partial class MainWindow
         {
             _viewModel.LogService.Write(
                 LogKind.User,
-                $"开始发布碎片清单：{outputDirectory}（版本 {gameVersion} · 产品段 {viewModel.FragmentProductSegment}）");
+                gitHubOnly
+                    ? $"开始发布 GitHub 兜底清单：{outputDirectory}（版本 {gameVersion} · {gitHubRepository}）"
+                    : $"开始发布碎片清单：{outputDirectory}（版本 {gameVersion} · 产品段 {viewModel.FragmentProductSegment}）");
             viewModel.BeginFragmentManifestPublishing();
             _viewModel.GlobalProgress.Start(taskTitle, "正在检查碎片清单...");
             _viewModel.GlobalProgress.SetCancellationMode(

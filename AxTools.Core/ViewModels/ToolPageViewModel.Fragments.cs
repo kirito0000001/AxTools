@@ -206,6 +206,11 @@ public sealed partial class ToolPageViewModel
     /// <summary>两个页都有《发布碎片清单》：PC 传 PC 的清单，安卓传安卓的清单。</summary>
     public bool HasFragmentManifestPublishing => HasFragmentGeneration;
 
+    /// <summary>当前游戏配置的 GitHub 兜底仓库；未配置时页面不显示 GitHub 按钮。</summary>
+    public string? FragmentGitHubRepository => FragmentProfile?.GitHubRepository;
+
+    public bool HasFragmentGitHubFallback => !string.IsNullOrWhiteSpace(FragmentGitHubRepository);
+
     /// <summary>
     /// 能不能发布碎片清单：两个页走同一条脚本，靠产品段区分 PC / 安卓。
     /// 清单存在可以直接发；清单不存在但目录里有这一版的碎片包时也允许 ——
@@ -301,6 +306,8 @@ public sealed partial class ToolPageViewModel
         OnPropertyChanged(nameof(FragmentChannel));
         OnPropertyChanged(nameof(FragmentProductKey));
         OnPropertyChanged(nameof(FragmentGenerationDescription));
+        OnPropertyChanged(nameof(FragmentGitHubRepository));
+        OnPropertyChanged(nameof(HasFragmentGitHubFallback));
         OnPropertyChanged(nameof(CanGenerateFragments));
         OnPropertyChanged(nameof(CanPublishFragmentManifest));
     }

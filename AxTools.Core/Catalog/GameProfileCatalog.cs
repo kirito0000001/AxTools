@@ -15,6 +15,7 @@ public sealed record GameProfile(
     string ObbSidecarFileName,
     string PcFragmentDirectoryName,
     string AndroidFragmentDirectoryName,
+    string GitHubRepository,
     ManagedToolKey GameToolKey,
     ManagedToolKey PcToolKey,
     ManagedToolKey AndroidToolKey)
@@ -39,6 +40,7 @@ public static class GameProfileCatalog
         ObbSidecarFileName: "CrossingVoid.obb.json",
         PcFragmentDirectoryName: "零境交错PC碎片",
         AndroidFragmentDirectoryName: "零境交错安卓碎片",
+        GitHubRepository: "kirito0000001/CrossingVoid",
         GameToolKey: ManagedToolKey.CrossingVoidGame,
         PcToolKey: ManagedToolKey.CrossingVoidPc,
         AndroidToolKey: ManagedToolKey.CrossingVoidAndroid);
@@ -52,6 +54,7 @@ public static class GameProfileCatalog
         ObbSidecarFileName: "FantasyProject.obb.json",
         PcFragmentDirectoryName: "幻杀PC碎片",
         AndroidFragmentDirectoryName: "幻杀安卓碎片",
+        GitHubRepository: "kirito0000001/fantasy-project-packages",
         GameToolKey: ManagedToolKey.FantasyGame,
         PcToolKey: ManagedToolKey.FantasyProjectPc,
         AndroidToolKey: ManagedToolKey.FantasyAndroid);

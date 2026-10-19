@@ -6,6 +6,9 @@ param(
     [string]$GameShortName = '零境',
     [string]$FileSyncTarget = 'yecaoyun-hk',
     [string]$PublicBaseUrl = 'https://dl.crossingvoid.top',
+    # GitHub 兜底：只传 fragments.json，不传 zip；固定 latest Release 给启动器回退。
+    [string]$GitHubRepository = '',
+    [switch]$GitHubOnly,
     [switch]$SkipSyncScriptDeploy,
     [switch]$SkipVerify,
     [switch]$DryRun
@@ -42,6 +45,13 @@ if ($ProductSegment -notmatch '^[A-Za-z0-9._-]+$') { throw "产品目录名不�
 if ([string]::IsNullOrWhiteSpace($GameShortName)) { throw '碎片包名短名（GameShortName）不能为空。' }
 if ($ReleaseVersion -notmatch '^[0-9]+(\.[0-9]+){1,3}$') { throw "版本号格式不对：$ReleaseVersion（应形如 0.6.0）" }
 if ($PublicBaseUrl -notmatch '^https?://') { throw "PublicBaseUrl 不合法：$PublicBaseUrl" }
+if ($GitHubOnly -and [string]::IsNullOrWhiteSpace($GitHubRepository)) {
+    throw '选择了只发 GitHub，但没有提供 GitHubRepository。'
+}
+if (-not [string]::IsNullOrWhiteSpace($GitHubRepository) -and
+    $GitHubRepository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') {
+    throw "GitHubRepository 不合法：$GitHubRepository（应形如 owner/repo）"
+}
 
 # 服务器是公网机器，SSH 常年被扫描/暴力尝试，偶尔会出现连接被拖住、密码提示挂起。
 # 统一加 BatchMode（绝不等待交互输入）+ 连接/握手超时 + 保活，避免整个发布任务无限挂起。
@@ -146,6 +156,88 @@ function Invoke-SftpBatch {
     finally {
         Remove-Item -LiteralPath $batchFile -Force -ErrorAction SilentlyContinue
     }
+}
+
+function Invoke-GitHubCli {
+    param([Parameter(Mandatory)][string[]]$Arguments)
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & gh @Arguments 2>&1
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
+
+    return [pscustomobject]@{
+        ExitCode = $code
+        Lines = @($output | ForEach-Object { [string]$_ })
+    }
+}
+
+# 只上传 fragments.json：latest 给启动器固定 URL 兜底，版本标签保留历史。
+function Publish-GitHubFragmentManifest {
+    param(
+        [Parameter(Mandatory)][string]$Repository,
+        [Parameter(Mandatory)][string]$Version,
+        [Parameter(Mandatory)][string]$ManifestPath
+    )
+
+    if ($null -eq (Get-Command gh -CommandType Application -ErrorAction SilentlyContinue)) {
+        throw '没有找到 GitHub CLI（gh），无法发布 GitHub 兜底清单。'
+    }
+
+    $auth = Invoke-GitHubCli -Arguments @('auth', 'status')
+    if ($auth.ExitCode -ne 0) {
+        $detail = (($auth.Lines | Out-String).Trim())
+        throw ("GitHub CLI 未登录或 token 已失效，先执行 gh auth login。" +
+            $(if ($detail) { "`n$detail" } else { '' }))
+    }
+
+    $latestTag = 'fragments-latest'
+    $versionTag = "fragments-v$Version"
+    $releases = @(
+        [ordered]@{
+            Tag   = $versionTag
+            Title = "碎片清单 V$Version"
+            Notes = "碎片清单 V$Version（GitHub 兜底；只含 fragments.json，碎片 zip 走网盘/群）"
+        },
+        [ordered]@{
+            Tag   = $latestTag
+            Title = '碎片清单 latest'
+            Notes = '最新碎片清单（GitHub 兜底；只含 fragments.json，碎片 zip 走网盘/群）'
+        }
+    )
+
+    foreach ($release in $releases) {
+        Assert-NotCancelled
+        $tag = [string]$release.Tag
+        $view = Invoke-GitHubCli -Arguments @('release', 'view', $tag, '--repo', $Repository)
+        if ($view.ExitCode -ne 0) {
+            Write-AxTaskStage -Stage 'github' -Message "GitHub 上还没有 $tag，正在创建 Release" -Detail $Repository
+            $created = Invoke-GitHubCli -Arguments @(
+                'release', 'create', $tag,
+                '--repo', $Repository,
+                '--title', [string]$release.Title,
+                '--notes', [string]$release.Notes)
+            if ($created.ExitCode -ne 0) {
+                throw ("GitHub Release 创建失败（{0}）：{1}" -f $tag, (($created.Lines | Out-String).Trim()))
+            }
+        }
+
+        Write-AxTaskProgress -Stage 'github' -Percent 96 -Message "正在上传 GitHub 兜底清单：$tag"
+        $upload = Invoke-GitHubCli -Arguments @(
+            'release', 'upload', $tag, $ManifestPath,
+            '--repo', $Repository,
+            '--clobber')
+        if ($upload.ExitCode -ne 0) {
+            throw ("GitHub 清单上传失败（{0}）：{1}" -f $tag, (($upload.Lines | Out-String).Trim()))
+        }
+    }
+
+    return "https://github.com/$Repository/releases/download/$latestTag/fragments.json"
 }
 
 try {
@@ -291,6 +383,30 @@ try {
     $remoteManifest = "$remoteBase/fragments/$ReleaseVersion.json"
     $remoteLatest = "$remoteBase/latest.json"
     $publicFragmentsUrl = "$PublicBaseUrl/games/$ProductSegment/fragments/$ReleaseVersion.json"
+
+    # GitHub 兜底：project 暂不上下载站时，只发 fragments.json 到 GitHub Release。
+    if ($GitHubOnly) {
+        if ($DryRun) {
+            Write-AxTaskStage `
+                -Stage 'github' `
+                -Message '演练模式：跳过 GitHub 清单上传' `
+                -Detail $GitHubRepository
+            Write-AxTaskResult -Status 'success' -ExitCode 0 -Message (
+                "演练通过：{0} 个包 / {1}；GitHub 目标 {2}" -f `
+                    $entries.Count, (Format-Bytes $totalBytes), $GitHubRepository)
+            exit 0
+        }
+
+        Write-AxTaskStage -Stage 'github' -Message '正在发布 GitHub 兜底清单' -Detail $GitHubRepository
+        $gitHubUrl = Publish-GitHubFragmentManifest `
+            -Repository $GitHubRepository `
+            -Version $ReleaseVersion `
+            -ManifestPath $manifestPath
+        Write-AxTaskResult -Status 'success' -ExitCode 0 -Message (
+            "GitHub 兜底清单已发布：{0} · {1} 个包 / {2} · {3}" -f `
+                $ReleaseVersion, $entries.Count, (Format-Bytes $totalBytes), $gitHubUrl)
+        exit 0
+    }
 
     if ($DryRun) {
         Write-AxTaskStage `
