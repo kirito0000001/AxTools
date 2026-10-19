@@ -123,6 +123,23 @@ public sealed partial class ServerPage : UserControl
         }
     }
 
+    /// <summary>任务主体结束后仍在忙碌周期里，只更新提示文字/进度，不解除按钮锁。</summary>
+    private void UpdateBusyStatus(string message)
+    {
+        BusyText.Text = message;
+        ActionBusyText.Text = message;
+        ActionBusyProgressBar.IsIndeterminate = true;
+        if (ViewModel?.GlobalProgress is { } progress)
+        {
+            progress.SetCancellationMode(AxTaskCancellationMode.Locked, message);
+            progress.Report(new ProgressUpdate(
+                message,
+                progress.Percent,
+                "正在读取服务器最新状态…",
+                IsIndeterminate: true));
+        }
+    }
+
     /// <summary>全局进度条的取消按钮会调到这里；只在当前操作明确可取消时生效。</summary>
     internal bool TryCancelActiveUpdate()
     {
@@ -965,7 +982,8 @@ public sealed partial class ServerPage : UserControl
         Func<T, bool>? succeeded = null,
         Func<T, string>? outcome = null,
         string? busyMessage = null,
-        bool canCancel = false)
+        bool canCancel = false,
+        Func<Task>? afterOperation = null)
         where T : class
     {
         if (_isBusy)
@@ -1027,6 +1045,25 @@ public sealed partial class ServerPage : UserControl
             if (updateService is not null)
             {
                 updateService.EventSink = null;
+            }
+
+            // “脚本已完成”不等于“界面已经拿到最新状态”。这里如果把遮罩先撤掉，
+            // 后面那次 SSH 刷新会留下十几秒空窗，用户会以为可以再点一次。
+            // 因此把完成后刷新也关在同一个忙碌周期里，刷新完才解锁。
+            if (afterOperation is not null)
+            {
+                try
+                {
+                    UpdateBusyStatus("正在刷新服务器状态…");
+                    await afterOperation();
+                }
+                catch (Exception exception)
+                {
+                    viewModel.Log?.Write(
+                        LogKind.Warning,
+                        $"{title}完成后刷新服务器状态失败。",
+                        exception);
+                }
             }
 
             _isBusy = false;
@@ -1137,10 +1174,10 @@ public sealed partial class ServerPage : UserControl
             $"{profile.DisplayName} · 导入新构建",
             ct => viewModel.UpdateService.ImportBuildAsync(profile, source, null, ct),
             busyMessage: "正在导入新构建（只改本机仓库）；完成后会弹出提交确认…",
-            canCancel: true);
+            canCancel: true,
+            afterOperation: () => RefreshUpdateSectionAsync(viewModel, profile));
         if (import is null)
         {
-            await RefreshUpdateSectionAsync(viewModel, profile);
             return;
         }
 
@@ -1193,14 +1230,12 @@ public sealed partial class ServerPage : UserControl
             $"{profile.DisplayName} · 提交",
             ct => viewModel.UpdateService.CommitAsync(profile, message, null, ct),
             busyMessage: "正在提交到本机仓库…",
-            canCancel: true);
+            canCancel: true,
+            afterOperation: () => RefreshUpdateSectionAsync(viewModel, profile));
         if (commit is null)
         {
-            await RefreshUpdateSectionAsync(viewModel, profile);
             return;
         }
-
-        await RefreshUpdateSectionAsync(viewModel, profile);
 
         if (commit.Committed)
         {
@@ -1227,14 +1262,13 @@ public sealed partial class ServerPage : UserControl
             $"{profile.DisplayName} · 推送新版本",
             ct => viewModel.UpdateService.PushAsync(profile, null, ct),
             busyMessage: "正在推送到服务器；服务端仍在运行，完成后还需要切换最新版本…",
-            canCancel: true);
+            canCancel: true,
+            afterOperation: () => RefreshUpdateSectionAsync(viewModel, profile));
         if (status is null)
         {
-            await RefreshUpdateSectionAsync(viewModel, profile);
             return;
         }
 
-        await RefreshUpdateSectionAsync(viewModel, profile);
         await ShowTextAsync(
             $"{profile.DisplayName} · 推送完成，下一步：切换最新版本",
             string.Empty,
@@ -1277,15 +1311,17 @@ public sealed partial class ServerPage : UserControl
             succeeded: result => result.Success,
             outcome: result => result.Describe(),
             busyMessage: "正在切换版本并重启；健康检查最长 7 分钟，请不要重复操作…",
-            canCancel: false);
+            canCancel: false,
+            afterOperation: async () =>
+            {
+                await RefreshUpdateSectionAsync(viewModel, profile);
+                await RefreshAsync();
+            });
         if (report is null)
         {
-            await RefreshUpdateSectionAsync(viewModel, profile);
             return;
         }
 
-        await RefreshUpdateSectionAsync(viewModel, profile);
-        await RefreshAsync();
         await ShowTextAsync($"{profile.DisplayName} · 切换结果", string.Empty, report.Describe());
     }
 
@@ -1322,15 +1358,17 @@ public sealed partial class ServerPage : UserControl
             succeeded: result => result.Success,
             outcome: result => result.Describe(),
             busyMessage: "正在回退版本并重启；健康检查最长 7 分钟，请不要重复操作…",
-            canCancel: false);
+            canCancel: false,
+            afterOperation: async () =>
+            {
+                await RefreshUpdateSectionAsync(viewModel, profile);
+                await RefreshAsync();
+            });
         if (report is null)
         {
-            await RefreshUpdateSectionAsync(viewModel, profile);
             return;
         }
 
-        await RefreshUpdateSectionAsync(viewModel, profile);
-        await RefreshAsync();
         await ShowTextAsync($"{profile.DisplayName} · 回退结果", string.Empty, report.Describe());
     }
 
@@ -1366,15 +1404,17 @@ public sealed partial class ServerPage : UserControl
             succeeded: result => result.Success,
             outcome: result => result.Describe(),
             busyMessage: "正在恢复服务端；对齐部署版本并等待健康检查，最长 7 分钟…",
-            canCancel: false);
+            canCancel: false,
+            afterOperation: async () =>
+            {
+                await RefreshUpdateSectionAsync(viewModel, profile);
+                await RefreshAsync();
+            });
         if (report is null)
         {
-            await RefreshUpdateSectionAsync(viewModel, profile);
             return;
         }
 
-        await RefreshUpdateSectionAsync(viewModel, profile);
-        await RefreshAsync();
         await ShowTextAsync($"{profile.DisplayName} · 恢复结果", string.Empty, report.Describe());
     }
 
@@ -1403,14 +1443,13 @@ public sealed partial class ServerPage : UserControl
             $"{profile.DisplayName} · 清理本地仓库",
             ct => viewModel.UpdateService.CleanupLocalRepoAsync(profile, null, ct),
             busyMessage: "正在清理本地 .git（reflog + gc），不动工作树和 Saved…",
-            canCancel: true);
+            canCancel: true,
+            afterOperation: () => RefreshUpdateSectionAsync(viewModel, profile));
         if (result is null)
         {
-            await RefreshUpdateSectionAsync(viewModel, profile);
             return;
         }
 
-        await RefreshUpdateSectionAsync(viewModel, profile);
         var report = new StringBuilder();
         report.AppendLine($"本地 .git：{FormatSize(result.GitBeforeBytes)} → {FormatSize(result.GitAfterBytes)}");
         report.AppendLine($"工作树：{FormatSize(result.WorkTreeBytes)}（未改动）");
