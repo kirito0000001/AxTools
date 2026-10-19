@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$FragmentDirectory,
     [Parameter(Mandatory)][string]$ReleaseVersion,
@@ -350,25 +350,31 @@ try {
     # 3) latest.json 加/改 fragmentsUrl（读服务端的，不用 CDN 缓存）
     Assert-NotCancelled
     Write-AxTaskProgress -Stage 'manifest' -Percent 90 -Message '正在更新 latest.json 的 fragmentsUrl'
-    $latestLines = Invoke-Ssh -Command ("cat `"{0}`"" -f $remoteLatest)
+    $latestWarning = $null
+    $latestLines = Invoke-Ssh -Command (
+        "if [ -f '{0}' ]; then cat '{0}'; else printf '%s\n' '__AXTOOLS_LATEST_MISSING__'; fi" -f $remoteLatest)
     $latestText = ($latestLines | Out-String).Trim()
-    if ([string]::IsNullOrWhiteSpace($latestText)) {
-        throw "服务端没有 latest.json：$remoteLatest（先发布一次游戏包）"
+    if ($latestText -eq '__AXTOOLS_LATEST_MISSING__' -or [string]::IsNullOrWhiteSpace($latestText)) {
+        # 还没有游戏包清单时，fragments 本身已经可单独访问；不要为了缺 latest 把整次发布判失败。
+        $latestWarning = "未找到 latest.json（$remoteLatest），碎片清单已发布，但未写入 fragmentsUrl；先发布一次游戏包后再发布清单即可挂上链接。"
+        Write-Output $latestWarning
+        Write-AxTaskProgress -Stage 'manifest' -Percent 94 -Message '未找到 latest.json，已跳过 fragmentsUrl 更新' -Detail $latestWarning
     }
-
-    $latest = $latestText | ConvertFrom-Json -AsHashtable
-    $latest['fragmentsUrl'] = $publicFragmentsUrl
-    $latestJson = $latest | ConvertTo-Json -Compress -Depth 10
-    $latestTemp = Join-Path ([IO.Path]::GetTempPath()) ("axtools-latest-" + [guid]::NewGuid().ToString('N') + ".json")
-    [IO.File]::WriteAllText($latestTemp, $latestJson + "`n", [Text.UTF8Encoding]::new($false))
-    try {
-        Invoke-SftpBatch -Commands @(
-            ("put `"{0}`" `"{1}`"" -f $latestTemp, "$remoteLatest.axtmp"),
-            ("rename `"{0}`" `"{1}`"" -f "$remoteLatest.axtmp", $remoteLatest)
-        ) -Detail 'latest.json'
-    }
-    finally {
-        Remove-Item -LiteralPath $latestTemp -Force -ErrorAction SilentlyContinue
+    else {
+        $latest = $latestText | ConvertFrom-Json -AsHashtable
+        $latest['fragmentsUrl'] = $publicFragmentsUrl
+        $latestJson = $latest | ConvertTo-Json -Compress -Depth 10
+        $latestTemp = Join-Path ([IO.Path]::GetTempPath()) ("axtools-latest-" + [guid]::NewGuid().ToString('N') + ".json")
+        [IO.File]::WriteAllText($latestTemp, $latestJson + "`n", [Text.UTF8Encoding]::new($false))
+        try {
+            Invoke-SftpBatch -Commands @(
+                ("put `"{0}`" `"{1}`"" -f $latestTemp, "$remoteLatest.axtmp"),
+                ("rename `"{0}`" `"{1}`"" -f "$remoteLatest.axtmp", $remoteLatest)
+            ) -Detail 'latest.json'
+        }
+        finally {
+            Remove-Item -LiteralPath $latestTemp -Force -ErrorAction SilentlyContinue
+        }
     }
 
     # 4) 公网校验：清单能读到，且条目与本地一致（zip 本身不在服务器上，不查包）
@@ -423,9 +429,10 @@ try {
 
     $rebuildNote = if ($manifestRebuilt) { '（按现有包重建）' } else { '' }
     $verifyNote = if ([string]::IsNullOrWhiteSpace($verifyWarning)) { '' } else { " · $verifyWarning" }
+    $latestNote = if ([string]::IsNullOrWhiteSpace($latestWarning)) { '' } else { ' · latest.json 缺失，fragmentsUrl 未写入' }
     Write-AxTaskResult -Status 'success' -ExitCode 0 -Message (
-        "碎片清单已发布{0}：{1} · {2} 个包 / {3} · {4}{5}" -f `
-            $rebuildNote, $ReleaseVersion, $entries.Count, (Format-Bytes $totalBytes), $publicFragmentsUrl, $verifyNote)
+        "碎片清单已发布{0}：{1} · {2} 个包 / {3} · {4}{5}{6}" -f `
+            $rebuildNote, $ReleaseVersion, $entries.Count, (Format-Bytes $totalBytes), $publicFragmentsUrl, $verifyNote, $latestNote)
     exit 0
 }
 catch [OperationCanceledException] {
