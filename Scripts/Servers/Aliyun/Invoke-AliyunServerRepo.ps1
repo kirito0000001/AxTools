@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory)][string]$LocalRepoPath,
     [Parameter(Mandatory)]
-    [ValidateSet('status', 'import', 'commit', 'push', 'preview')]
+    [ValidateSet('status', 'import', 'commit', 'push', 'preview', 'cleanup')]
     [string]$Action,
     [Parameter(Mandatory)][string]$OutputPath,
     [string]$SourceDirectory = '',
@@ -21,7 +21,8 @@ Import-Module (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
 # 本机仓库侧动作：镜像导入、提交、推送、预览。不涉及 SSH。
 # 注意：这里必须有 '.git'。镜像同步是"多删、少补、变更新"，漏掉它就会把整个版本库删掉
 # （2026-09-19 在克隆上实测撞过：import 完 `git add` 报 fatal: not a git repository）。
-$preservedNames = @('.git', '.gitignore', '.gitattributes')
+# Saved 是服务器运行时存档/配置，不属于构建产物，镜像和清空目录时必须保留。
+$preservedNames = @('.git', '.gitignore', '.gitattributes', 'Saved')
 
 function Invoke-AxGit {
     param([string[]]$Arguments, [switch]$AllowFailure)
@@ -95,6 +96,8 @@ function Get-AxRelativeFileMap {
     foreach ($file in (Get-ChildItem -LiteralPath $Root -Recurse -File -Force -ErrorAction SilentlyContinue)) {
         $relative = $file.FullName.Substring($Root.Length).TrimStart('\', '/')
         if ([string]::IsNullOrWhiteSpace($relative)) { continue }
+        $topLevel = ($relative -split '[\\/]')[0]
+        if ($SkipNames -contains $topLevel) { continue }
         # 别写成 $relative.Split('\', '/')：PowerShell 会把第二个参数绑到
         # String.Split(char separator, int count) 那个重载上，'/' 转 int 直接抛
         # "Cannot convert argument "count", with value: "/""。用 -split 运算符没有这个歧义。
@@ -190,9 +193,10 @@ function Sync-AxBuildMirror {
     Write-AxTaskStage -Stage 'cleanup' -Message '正在清理空目录…'
     foreach ($directory in (Get-ChildItem -LiteralPath $Target -Recurse -Directory -Force -ErrorAction SilentlyContinue |
             Sort-Object { $_.FullName.Length } -Descending)) {
-        # .git 自己、以及它下面的任何一级目录都不动（空目录也留着，让 git 自己管）
+        # .git / Saved 自己、以及它们下面的任何一级目录都不动（空目录也留着，让 git/服务端自己管）
         $relative = $directory.FullName.Substring($Target.Length).TrimStart('\', '/')
-        if (($relative -split '[\\/]')[0] -eq '.git') { continue }
+        $topLevel = ($relative -split '[\\/]')[0]
+        if ($topLevel -in @('.git', 'Saved')) { continue }
         if (@(Get-ChildItem -LiteralPath $directory.FullName -Force -ErrorAction SilentlyContinue).Count -eq 0) {
             Remove-Item -LiteralPath $directory.FullName -Force -ErrorAction SilentlyContinue
         }
@@ -204,6 +208,15 @@ function Sync-AxBuildMirror {
         removedFiles = $removed
         removedBytes = $removedBytes
     }
+}
+
+function Get-AxDirectoryBytes {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return 0L }
+    $sum = (Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyContinue |
+        Measure-Object -Property Length -Sum).Sum
+    if ($null -eq $sum) { return 0L }
+    return [int64]$sum
 }
 
 function Get-AxLocalStatus {
@@ -300,6 +313,43 @@ function Invoke-AxLocalAction {
         Assert-AxRepository -Path $LocalRepoPath
 
         switch ($Action) {
+            'cleanup' {
+                # 只清理 .git：不 check out、不删工作树，Saved 永远不在这里被碰。
+                $gitPath = Join-Path $LocalRepoPath '.git'
+                $before = Get-AxDirectoryBytes -Path $gitPath
+                Write-AxTaskProgress `
+                    -Stage 'cleanup' `
+                    -Percent 10 `
+                    -Message "正在安全清理本地仓库（清理前 .git $([Math]::Round($before / 1MB, 1)) MB）…" `
+                    -Detail '只执行 reflog expire + git gc，不动工作树和 Saved。'
+
+                $reflog = Invoke-AxGit -Arguments @(
+                    '-C', $LocalRepoPath, 'reflog', 'expire', '--expire=now', '--all') -AllowFailure
+                if ($reflog.ExitCode -ne 0) {
+                    Write-AxTaskStage -Stage 'cleanup' -Message 'reflog 回收失败，继续尝试 git gc' -Detail (($reflog.Output | Out-String).Trim())
+                }
+
+                Write-AxTaskProgress -Stage 'cleanup' -Percent 45 -Message '正在执行 git gc --prune=now…'
+                $gc = Invoke-AxGit -Arguments @('-C', $LocalRepoPath, 'gc', '--prune=now') -AllowFailure
+                if ($gc.ExitCode -ne 0) {
+                    throw ("git gc 失败（退出码 {0}）：{1}" -f $gc.ExitCode, (($gc.Output | Out-String).Trim()))
+                }
+
+                $after = Get-AxDirectoryBytes -Path $gitPath
+                $workTree = Get-AxDirectoryBytes -Path $LocalRepoPath
+                $status = Get-AxLocalStatus -Path $LocalRepoPath
+                $result.data = [ordered]@{
+                    gitBeforeBytes = $before
+                    gitAfterBytes  = $after
+                    workTreeBytes  = $workTree
+                    status         = $status
+                }
+                Write-AxTaskProgress `
+                    -Stage 'cleanup' `
+                    -Percent 95 `
+                    -Message ("清理完成：.git {0} MB → {1} MB" -f [Math]::Round($before / 1MB, 1), [Math]::Round($after / 1MB, 1)) `
+                    -Detail '工作树和 Saved 未改动。'
+            }
             'status' { $result.data = Get-AxLocalStatus -Path $LocalRepoPath }
             'import' {
                 if ([string]::IsNullOrWhiteSpace($SourceDirectory)) {

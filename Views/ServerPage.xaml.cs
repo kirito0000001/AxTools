@@ -496,6 +496,11 @@ public sealed partial class ServerPage : UserControl
             () => RecoverAsync(viewModel, profile),
             isEnabled: state.Remote is { Initialized: true }));
         buttons.Children.Add(CreateActionButton("查看待更新内容", "\uE8A5", () => PreviewAsync(viewModel, profile)));
+        buttons.Children.Add(CreateActionButton(
+            "清理本地仓库",
+            "\uE74D",
+            () => CleanupLocalRepoAsync(viewModel, profile),
+            isEnabled: state.Local is not null));
         host.Children.Add(buttons);
 
         host.Children.Add(CreateHintText($"本机仓库：{state.LocalRepoPath}"));
@@ -1328,6 +1333,52 @@ public sealed partial class ServerPage : UserControl
         await RefreshUpdateSectionAsync(viewModel, profile);
         await RefreshAsync();
         await ShowTextAsync($"{profile.DisplayName} · 恢复结果", string.Empty, report.Describe());
+    }
+
+    private async Task CleanupLocalRepoAsync(ServerPageViewModel viewModel, ServerProgramProfile profile)
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        var confirmed = await ShowConfirmAsync(
+            $"{profile.DisplayName} · 清理本地仓库",
+            "只清理本地仓库的 .git：执行 reflog 回收和 git gc。" +
+            Environment.NewLine + Environment.NewLine +
+            "不会动工作树、不会动 Saved，也不会删除 main / deployed / previous 引用。" +
+            Environment.NewLine +
+            "清理期间可能占用几分钟，确定继续吗？",
+            "开始清理");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var result = await RunUpdateOperationAsync(
+            viewModel,
+            $"{profile.DisplayName} · 清理本地仓库",
+            () => viewModel.UpdateService.CleanupLocalRepoAsync(profile, null, CancellationToken.None),
+            busyMessage: "正在清理本地 .git（reflog + gc），不动工作树和 Saved…");
+        if (result is null)
+        {
+            await RefreshUpdateSectionAsync(viewModel, profile);
+            return;
+        }
+
+        await RefreshUpdateSectionAsync(viewModel, profile);
+        var report = new StringBuilder();
+        report.AppendLine($"本地 .git：{FormatSize(result.GitBeforeBytes)} → {FormatSize(result.GitAfterBytes)}");
+        report.AppendLine($"工作树：{FormatSize(result.WorkTreeBytes)}（未改动）");
+        report.AppendLine($"分支：{result.Status?.Branch ?? "未知"}");
+        if (result.Status?.Head is { } head)
+        {
+            report.AppendLine($"HEAD：{head.Describe()}");
+        }
+        await ShowTextAsync(
+            $"{profile.DisplayName} · 本地仓库清理结果",
+            string.Empty,
+            report.ToString());
     }
 
     private async Task PreviewAsync(ServerPageViewModel viewModel, ServerProgramProfile profile)

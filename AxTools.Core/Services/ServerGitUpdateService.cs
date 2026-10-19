@@ -135,6 +135,19 @@ public sealed class ServerGitUpdateService(
             commitMessage,
             cancellationToken);
 
+    /// <summary>只清理本地 .git（reflog + gc），不动工作树和 Saved。</summary>
+    public async Task<ServerGitLocalMaintenanceResult> CleanupLocalRepoAsync(
+        ServerProgramProfile profile,
+        string? localRoot,
+        CancellationToken cancellationToken) =>
+        await RunLocalAsync<ServerGitLocalMaintenanceResult>(
+            profile,
+            localRoot,
+            "cleanup",
+            sourceDirectory: null,
+            commitMessage: null,
+            cancellationToken);
+
     public async Task<ServerGitLocalStatus> PushAsync(
         ServerProgramProfile profile,
         string? localRoot,
@@ -223,6 +236,7 @@ public sealed class ServerGitUpdateService(
         "commit" => "提交",
         "push" => "推送",
         "preview" => "查看待更新内容",
+        "cleanup" => "清理本地仓库",
         _ => action
     };
 
@@ -429,6 +443,17 @@ public sealed class ServerGitCommitResult
     public bool Committed { get; set; }
 
     public string Detail { get; set; } = string.Empty;
+
+    public ServerGitLocalStatus? Status { get; set; }
+}
+
+public sealed class ServerGitLocalMaintenanceResult
+{
+    public long GitBeforeBytes { get; set; }
+
+    public long GitAfterBytes { get; set; }
+
+    public long WorkTreeBytes { get; set; }
 
     public ServerGitLocalStatus? Status { get; set; }
 }
