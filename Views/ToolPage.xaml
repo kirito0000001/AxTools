@@ -71,6 +71,10 @@
                     x:Name="PublishSelectorItem"
                     Text="打包与发布"
                     Visibility="{Binding HasPublishActions, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <SelectorBarItem
+                    x:Name="FragmentSelectorItem"
+                    Text="碎片制作"
+                    Visibility="{Binding HasFragmentGeneration, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 <SelectorBarItem x:Name="StorageSelectorItem" Text="存储清理" />
             </SelectorBar>
 
@@ -341,83 +345,76 @@
                             </Expander>
                         </StackPanel>
 
-                        <!-- 《生成碎片》：只有零境的两个工具页会出现
-                             （TFAC平台页 → 零境碎片生成；平台-零境-安卓 → 碎片生成）。
-                             别的工具整块收起来，连标题都不出现。 -->
-                        <StackPanel
-                            x:Name="FragmentGenerationSection"
-                            Spacing="12"
-                            Visibility="{Binding HasFragmentGeneration, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="{Binding FragmentGenerationTitle}" Style="{StaticResource SectionTitleStyle}" />
-                                <TextBlock
-                                    Text="{Binding FragmentGenerationDescription}"
-                                    Style="{StaticResource SubtleTextStyle}"
-                                    TextWrapping="Wrap" />
-                            </StackPanel>
-                            <StackPanel Spacing="3">
-                                <TextBlock Text="源文件" Style="{StaticResource SubtleTextStyle}" />
-                                <TextBlock
-                                    Text="{Binding FragmentSourceText}"
-                                    TextTrimming="CharacterEllipsis"
-                                    ToolTipService.ToolTip="{Binding FragmentGameDirectory}" />
-                            </StackPanel>
-                            <Grid ColumnSpacing="10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="40" />
-                                </Grid.ColumnDefinitions>
-                                <TextBox
-                                    Header="碎片输出目录"
-                                    Text="{Binding FragmentOutputDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <Button
-                                    x:Name="FragmentOutputDirectoryBrowseButton"
-                                    Grid.Column="1"
-                                    Width="40"
-                                    Height="40"
-                                    Margin="0,24,0,0"
-                                    HorizontalAlignment="Stretch"
-                                    Click="FragmentPathBrowse_Click"
-                                    Tag="OutputDirectory"
-                                    Style="{StaticResource PrimaryToolButtonStyle}"
-                                    ToolTipService.ToolTip="选择碎片输出目录">
-                                    <FontIcon Glyph="&#xE8B7;" />
-                                </Button>
-                            </Grid>
-                            <StackPanel Orientation="Horizontal" Spacing="10">
-                                <Button
-                                    x:Name="GenerateFragmentsButton"
-                                    HorizontalAlignment="Left"
-                                    IsEnabled="{Binding CanGenerateFragments}"
-                                    Click="GenerateFragments_Click"
-                                    Style="{StaticResource AccentButtonStyle}">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <SymbolIcon Symbol="Save" />
-                                        <TextBlock Text="{Binding FragmentGenerationActionText}" />
-                                    </StackPanel>
-                                </Button>
-                                <Button
-                                    x:Name="PublishFragmentManifestButton"
-                                    HorizontalAlignment="Left"
-                                    IsEnabled="{Binding CanPublishFragmentManifest}"
-                                    Visibility="{Binding HasFragmentManifestPublishing, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                    Click="PublishFragmentManifest_Click"
-                                    Style="{StaticResource PrimaryToolButtonStyle}"
-                                    ToolTipService.ToolTip="把 fragments.json 传到下载站并更新 latest.json（碎片包走网盘/群，不上传）">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <SymbolIcon Symbol="Upload" />
-                                        <TextBlock Text="发布碎片清单" />
-                                    </StackPanel>
-                                </Button>
-                            </StackPanel>
-                            <TextBlock
-                                Text="{Binding FragmentLastResultText}"
-                                Style="{StaticResource SubtleTextStyle}"
-                                TextWrapping="Wrap" />
-                        </StackPanel>
-
                         <TextBlock Text="{Binding ExecutionAvailabilityText}" Style="{StaticResource SubtleTextStyle}" />
                         <TextBlock Text="{Binding LastResultText}" Style="{StaticResource SubtleTextStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="FragmentPanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="18">
+                    <StackPanel x:Name="FragmentGenerationSection" Spacing="12">
+                        <TextBlock
+                            Text="{Binding FragmentGenerationDescription}"
+                            Style="{StaticResource SubtleTextStyle}"
+                            TextWrapping="Wrap" />
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="源文件" Style="{StaticResource SubtleTextStyle}" />
+                            <TextBlock
+                                Text="{Binding FragmentSourceText}"
+                                TextTrimming="CharacterEllipsis"
+                                ToolTipService.ToolTip="{Binding FragmentGameDirectory}" />
+                        </StackPanel>
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="40" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                Header="碎片输出目录"
+                                Text="{Binding FragmentOutputDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button
+                                x:Name="FragmentOutputDirectoryBrowseButton"
+                                Grid.Column="1"
+                                Width="40"
+                                Height="40"
+                                Margin="0,24,0,0"
+                                HorizontalAlignment="Stretch"
+                                Click="FragmentPathBrowse_Click"
+                                Tag="OutputDirectory"
+                                Style="{StaticResource PrimaryToolButtonStyle}"
+                                ToolTipService.ToolTip="选择碎片输出目录">
+                                <FontIcon Glyph="&#xE8B7;" />
+                            </Button>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button
+                                x:Name="GenerateFragmentsButton"
+                                HorizontalAlignment="Left"
+                                IsEnabled="{Binding CanGenerateFragments}"
+                                Click="GenerateFragments_Click"
+                                Style="{StaticResource AccentButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <SymbolIcon Symbol="Save" />
+                                    <TextBlock Text="{Binding FragmentGenerationActionText}" />
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                x:Name="PublishFragmentManifestButton"
+                                HorizontalAlignment="Left"
+                                IsEnabled="{Binding CanPublishFragmentManifest}"
+                                Visibility="{Binding HasFragmentManifestPublishing, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                Click="PublishFragmentManifest_Click"
+                                Style="{StaticResource PrimaryToolButtonStyle}"
+                                ToolTipService.ToolTip="把 fragments.json 传到下载站并更新 latest.json（碎片包走网盘/群，不上传）">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <SymbolIcon Symbol="Upload" />
+                                    <TextBlock Text="发布碎片清单" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <TextBlock
+                            Text="{Binding FragmentLastResultText}"
+                            Style="{StaticResource SubtleTextStyle}"
+                            TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
 

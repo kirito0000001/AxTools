@@ -317,6 +317,8 @@ public sealed partial class ToolPage : UserControl
         ModeSelector.Visibility = Visibility.Collapsed;
         DevelopmentPanel.Visibility = Visibility.Collapsed;
         ReleasePanel.Visibility = Visibility.Collapsed;
+        FragmentSelectorItem.Visibility = Visibility.Collapsed;
+        FragmentPanel.Visibility = Visibility.Collapsed;
         StoragePanel.Visibility = Visibility.Collapsed;
 
         // 外面已经套了一层卡片（服务器页的 CreatePanel），这里不要再叠一层边框和底色。
@@ -347,6 +349,10 @@ public sealed partial class ToolPage : UserControl
             DataContext is ToolPageViewModel { HasPublishActions: true }
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+        FragmentPanel.Visibility = selectedItem == FragmentSelectorItem &&
+            DataContext is ToolPageViewModel { HasFragmentGeneration: true }
+                ? Visibility.Visible
+                : Visibility.Collapsed;
         StoragePanel.Visibility = selectedItem == StorageSelectorItem
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -354,10 +360,15 @@ public sealed partial class ToolPage : UserControl
         if (selectedItem == PublishSelectorItem &&
             DataContext is ToolPageViewModel publishViewModel)
         {
-            // 碎片区的"源文件"是复用服务器页那份游戏包目录，隔了一页，进来时重算一次。
-            publishViewModel.RefreshFragmentBindings();
             await publishViewModel.CheckLauncherPublishedVersionAsync(CancellationToken.None);
             await publishViewModel.CheckGamePublishedVersionAsync(CancellationToken.None);
+        }
+
+        if (selectedItem == FragmentSelectorItem &&
+            DataContext is ToolPageViewModel fragmentViewModel)
+        {
+            // 碎片页的"源文件"复用服务器页那份游戏包目录，隔了一页，进来时重算一次。
+            fragmentViewModel.RefreshFragmentBindings();
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Xml.Linq;
 using Xunit;
 
@@ -327,6 +327,50 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains(
             game.Descendants(presentation + "Button"),
             element => (string?)element.Attribute("Click") == "RefreshGameVersion_Click");
+    }
+
+    [Fact]
+    public void FragmentCreation_IsItsOwnTabAndNotInsidePublishPanel()
+    {
+        var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+        var tabs = document.Descendants(presentation + "SelectorBarItem").ToList();
+        var publishIndex = tabs.FindIndex(item => (string?)item.Attribute(xaml + "Name") == "PublishSelectorItem");
+        var fragmentIndex = tabs.FindIndex(item => (string?)item.Attribute(xaml + "Name") == "FragmentSelectorItem");
+        var storageIndex = tabs.FindIndex(item => (string?)item.Attribute(xaml + "Name") == "StorageSelectorItem");
+
+        Assert.True(publishIndex >= 0);
+        Assert.Equal(publishIndex + 1, fragmentIndex);
+        Assert.Equal(fragmentIndex + 1, storageIndex);
+
+        var fragmentTab = tabs[fragmentIndex];
+        Assert.Equal("碎片制作", (string?)fragmentTab.Attribute("Text"));
+        Assert.Equal(
+            "{Binding HasFragmentGeneration, Converter={StaticResource BooleanToVisibilityConverter}}",
+            (string?)fragmentTab.Attribute("Visibility"));
+
+        var publishPanel = document.Descendants()
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "PublishPanel");
+        var fragmentPanel = document.Descendants()
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "FragmentPanel");
+        var fragmentSection = document.Descendants()
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "FragmentGenerationSection");
+
+        Assert.Contains(fragmentSection, fragmentPanel.Descendants());
+        Assert.DoesNotContain(fragmentSection, publishPanel.Descendants());
+        // 页签本身已经叫「碎片制作」，内层不再重复一个同名标题；只保留说明。
+        Assert.Null((string?)fragmentSection.Attribute("Visibility"));
+        Assert.Contains(
+            fragmentPanel.Descendants(presentation + "TextBlock"),
+            element => ((string?)element.Attribute("Text"))?.Contains("FragmentGenerationDescription") == true);
+
+        var codeBehind = File.ReadAllText(FindProjectFile(Path.Combine("Views", "ToolPage.xaml.cs")));
+        Assert.Contains("FragmentPanel.Visibility = selectedItem == FragmentSelectorItem", codeBehind);
+        Assert.Contains("fragmentViewModel.RefreshFragmentBindings();", codeBehind);
+        Assert.Contains("FragmentSelectorItem.Visibility = Visibility.Collapsed", codeBehind);
+        Assert.Contains("FragmentPanel.Visibility = Visibility.Collapsed", codeBehind);
     }
 
     [Fact]

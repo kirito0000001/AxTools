@@ -17,11 +17,11 @@ public sealed partial class ToolPageViewModel
 
     // ==================== 《生成碎片》 ====================
     //
-    // 只有零境的两个工具页有这一块：
+    // 「碎片制作」是 ToolPage 里的独立页签；当前只有零境的两个工具页支持：
     //   · TFAC平台页（PC 产物）      → 《零境碎片生成》
     //   · 平台-零境-安卓（安卓产物）  → 《碎片生成》
-    // TFAC 那个按钮必须带"零境"：那个页面以后还要放别的游戏，不写清楚就分不出是谁的。
-    // 安卓页自己就是零境专用的，所以不用重复。
+    // 页签本身是模板级的，以后幻杀/火影接上 profile 后，只要 HasFragmentGeneration 为 true，
+    // 同一页签会自动出现，不需要再复制 XAML。
 
     /// <summary>这个工具页有没有《生成碎片》。</summary>
     public bool HasFragmentGeneration =>
@@ -48,8 +48,6 @@ public sealed partial class ToolPageViewModel
         CrossingVoidAndroidObbSidecar.BuildProductKey(FragmentProductSegment, FragmentChannel);
 
     public string FragmentGenerationActionText => IsAndroidFragmentPage ? "碎片生成" : "零境碎片生成";
-
-    public string FragmentGenerationTitle => $"{FragmentGenerationActionText}";
 
     /// <summary>
     /// 碎片里版本标记和包名用的游戏版本 —— 读**游戏包发布**那份（<c>CrossingVoid</c>），
