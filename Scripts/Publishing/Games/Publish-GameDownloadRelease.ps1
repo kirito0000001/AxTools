@@ -52,6 +52,12 @@ param(
     # PC → PC-V<版本>、安卓 → Android-V<版本>。和 dl 那条互不依赖：dl 是主线，GitHub 是备用源。
     [string]$GitHubRepo = '',
 
+    # 两个独立发布目标由宿主按钮控制：
+    #   SkipGitHub = 只发下载站，不再顺带发 GitHub 备用渠道；
+    #   GitHubOnly = 跳过下载站/SFTP，只生成清单后发 GitHub Release。
+    [switch]$SkipGitHub,
+    [switch]$GitHubOnly,
+
     [switch]$SkipVerify,
     [switch]$DryRun
 )
@@ -134,6 +140,12 @@ else {
 $GitHubTagPrefix = if ($Platform -eq 'Android') { 'Android' } else { 'PC' }
 $GitHubTag = "$GitHubTagPrefix-V$ReleaseVersion"
 $GitHubAssetRoot = Join-Path $StagingRoot ("_github-" + $ProductSegment)
+if ($GitHubOnly -and $SkipGitHub) {
+    throw '发布目标不能同时选择“只发 GitHub”和“跳过 GitHub”。'
+}
+if ($GitHubOnly -and [string]::IsNullOrWhiteSpace($GitHubRepo)) {
+    throw '选择了“发布到 GitHub”，但这个游戏没有配置 GitHub 发布仓库。'
+}
 
 $script:GitOutput = [System.Collections.Generic.List[string]]::new()
 $script:RebuildBackup = ''
@@ -1629,7 +1641,14 @@ try {
     }
 
     $pushed = $false
-    if ($TransferMode -eq 'files') {
+    if ($GitHubOnly) {
+        Write-AxTaskProgress `
+            -Stage 'local' `
+            -Percent 94 `
+            -Message '已生成本地清单：按选择跳过下载站，直接准备 GitHub Release' `
+            -Detail $VersionDirectory
+    }
+    elseif ($TransferMode -eq 'files') {
         # 逐文件同步：不碰 git，只传变化的文件 + 清单（内容没变就是 0 字节）
         $pushed = Invoke-FileSyncPublish -ManifestFiles $manifestFiles
     }
@@ -1741,7 +1760,7 @@ try {
     # 同一版重跑时 dl 是幂等 0 字节，但 GitHub 可能还一次都没发过（0.5.14 就是这种局面）。
     # 顺序：先传文件、最后传清单 —— 消费方拿到清单就会按 path 去找附件。
     $gitHubSummary = $null
-    if (-not [string]::IsNullOrWhiteSpace($GitHubRepo) -and -not $DryRun) {
+    if (-not $SkipGitHub -and -not [string]::IsNullOrWhiteSpace($GitHubRepo) -and -not $DryRun) {
         $gitHubFiles = [System.Collections.Generic.List[object]]::new()
         # 注意：这里必须从**版本目录**取文件，不能沿用扫描时的路径。
         # 安卓的清单条目来自 OBB 解包临时目录（_obb-<段>），那个目录在写清单之前就被清掉了
@@ -1795,12 +1814,12 @@ try {
                 $gitHubSummary.Uploaded, (Format-Size -Bytes $gitHubSummary.Bytes), $gitHubSummary.Skipped) `
             -Detail $gitHubReleaseUrl
     }
-    elseif (-not [string]::IsNullOrWhiteSpace($GitHubRepo)) {
+    elseif (-not $SkipGitHub -and -not [string]::IsNullOrWhiteSpace($GitHubRepo)) {
         Write-AxTaskStage -Stage 'github' -Message '演练模式：跳过 GitHub 渠道上传' -Detail "$GitHubRepo · $GitHubTag"
     }
 
     $verify = $null
-    if (-not $SkipVerify) {
+    if (-not $SkipVerify -and -not $GitHubOnly) {
         Write-AxTaskStage -Stage 'verify' -Message '正在做公网校验（清单 + 抽样文件）' -Detail $BaseUrl
         $verify = Invoke-PublicVerify -Files $hashedFiles -ExpectedFileCount $manifestFiles.Count
         Write-AxTaskProgress `
@@ -1821,6 +1840,8 @@ try {
 
     $summary['Committed'] = $pushed
     $summary['Pushed'] = $pushed
+    $summary['GitHubOnly'] = $GitHubOnly
+    $summary['SkipGitHub'] = $SkipGitHub
     $summary['TransferMode'] = $TransferMode
     $summary['StagingRepoBytes'] = $gitDirectorySize
     $summary['TreeBytes'] = $treeSize
@@ -1833,7 +1854,10 @@ try {
         $summary['GitHubRemoved'] = $gitHubSummary.Removed
     }
 
-    $completedMessage = if ($pushed) {
+    $completedMessage = if ($GitHubOnly) {
+        '本地清单已生成：{0} {1}（{2} 个文件 / {3}），本次只发 GitHub' -f $PlatformLabel, $ReleaseVersion, $summary.FileCount, (Format-Size -Bytes $summary.TotalBytes)
+    }
+    elseif ($pushed) {
         '发布完成：{0} {1}（{2} 个文件 / {3}）' -f $PlatformLabel, $ReleaseVersion, $summary.FileCount, (Format-Size -Bytes $summary.TotalBytes)
     }
     else {
@@ -1848,7 +1872,7 @@ try {
         $completedDetail = "https://github.com/$($gitHubSummary.Repository)/releases/tag/$($gitHubSummary.Tag)"
     }
     else {
-        $completedDetail = $BaseUrl
+        $completedDetail = if ($GitHubOnly) { $ManifestPath } else { $BaseUrl }
     }
     Write-AxTaskProgress -Stage 'completed' -Percent 100 -Message $completedMessage -Detail $completedDetail
     $summary | ConvertTo-Json -Depth 6

@@ -138,6 +138,7 @@ public sealed partial class ToolPage : UserControl
     {
         if (action is ManagedToolAction.CheckGamePackage or
             ManagedToolAction.PublishGameVersion or
+            ManagedToolAction.PublishGameVersionToGitHub or
             ManagedToolAction.RebuildGameDownloadRepo)
         {
             viewModel.GamePublishVersion = ComposeVersion(

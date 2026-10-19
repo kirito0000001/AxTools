@@ -38,7 +38,7 @@ $kernel = Join-Path $scriptsRoot 'Publishing\Games\Publish-GameDownloadRelease.p
 $segment = if ($Platform -eq 'Android') { "$ProductSegment-android" } else { $ProductSegment }
 
 try {
-    if ($Action -notin @('CheckEnvironment', 'CheckGamePackage', 'PublishGameVersion', 'RebuildGameDownloadRepo')) {
+    if ($Action -notin @('CheckEnvironment', 'CheckGamePackage', 'PublishGameVersion', 'PublishGameVersionToGitHub', 'RebuildGameDownloadRepo')) {
         throw "未知的游戏包发布动作：'$Action'。"
     }
     if ([string]::IsNullOrWhiteSpace($ProductSegment)) {
@@ -78,6 +78,7 @@ try {
     $mode = switch ($Action) {
         'CheckGamePackage' { 'Check' }
         'PublishGameVersion' { 'Publish' }
+        'PublishGameVersionToGitHub' { 'Publish' }
         'RebuildGameDownloadRepo' { 'RebuildRepo' }
     }
     $parameters = @{
@@ -94,6 +95,16 @@ try {
     }
     if (-not [string]::IsNullOrWhiteSpace($GitHubRepo)) {
         $parameters['GitHubRepo'] = $GitHubRepo
+    }
+    if ($Action -eq 'PublishGameVersionToGitHub') {
+        if ([string]::IsNullOrWhiteSpace($GitHubRepo)) {
+            throw "这个游戏没有配置 GitHub 发布仓库，不能执行「发布到 GitHub」。"
+        }
+        $parameters['GitHubOnly'] = $true
+    }
+    if ($Action -eq 'PublishGameVersion') {
+        # 两个按钮互斥：服务器按钮不再顺带把 GitHub 备用渠道也发一遍。
+        $parameters['SkipGitHub'] = $true
     }
     if ($DryRun) { $parameters['DryRun'] = $true }
 

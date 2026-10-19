@@ -44,6 +44,7 @@ public static class ManagedToolActionDescriptionCatalog
         ManagedToolAction.Publish => "构建、校验并真实发布新版本，会写入配置的远端发布目标。",
         ManagedToolAction.CheckGamePackage => "扫描所选游戏包、算出每个文件的哈希并生成清单，报告体积与差异；不提交、不上传。",
         ManagedToolAction.PublishGameVersion => "把所选游戏包按文件清单增量推送到下载站，落位后做公网抽样校验；没变化就什么都不传。",
+        ManagedToolAction.PublishGameVersionToGitHub => "只在本地生成清单和版本目录，然后把这版文件按附件发到 GitHub Release；不连下载站、不走 SFTP。",
         ManagedToolAction.RebuildGameDownloadRepo => "重建本机暂存仓库并压成单提交，顺便清掉历史对象；代价是这一次要全量重传（整包）。",
         ManagedToolAction.EditLauncherReleaseNotes => "打开启动器 Release 介绍编辑窗口，保存后立即写入 AX 设置。",
         ManagedToolAction.EditGameReleaseNotes => "打开游戏 Release 介绍编辑窗口，保存后立即写入 AX 设置。",

@@ -8,4 +8,5 @@ public sealed class CrossingVoidGameAdapter(string scriptsRoot) : GameUploadAdap
     scriptsRoot,
     "CrossingVoidGame",
     "零境交错：空界幻境",
-    "crossingvoid");
+    "crossingvoid",
+    "kirito0000001/CrossingVoid");

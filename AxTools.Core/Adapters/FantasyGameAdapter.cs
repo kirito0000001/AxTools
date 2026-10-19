@@ -8,4 +8,5 @@ public sealed class FantasyGameAdapter(string scriptsRoot) : GameUploadAdapter(
     scriptsRoot,
     "FantasyGame",
     "幻杀",
-    "fantasyproject");
+    "fantasyproject",
+    "kirito0000001/fantasy-project-packages");

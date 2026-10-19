@@ -351,6 +351,7 @@ public sealed partial class MainWindow
         var isGamePublishingAction = request.Action is
             ManagedToolAction.CheckGamePackage or
             ManagedToolAction.PublishGameVersion or
+            ManagedToolAction.PublishGameVersionToGitHub or
             ManagedToolAction.RebuildGameDownloadRepo;
         var content = new StackPanel { Spacing = 8 };
         content.Children.Add(CreateDialogLine("工具", tool.DisplayName));
@@ -365,11 +366,17 @@ public sealed partial class MainWindow
         {
             content.Children.Add(CreateDialogLine("游戏目录", tool.GamePackageRoot));
         }
-        content.Children.Add(CreateDialogLine("发布目标", GetPublishTarget(tool.Descriptor.Key)));
+        content.Children.Add(CreateDialogLine(
+            "发布目标",
+            request.Action == ManagedToolAction.PublishGameVersionToGitHub
+                ? "GitHub Release（游戏适配器配置的仓库）"
+                : GetPublishTarget(tool.Descriptor.Key)));
         var gameIntentText = request.Action switch
         {
             ManagedToolAction.CheckGamePackage =>
                 "这一步只在本机扫描产物、算哈希、生成清单，不会提交也不会联网。",
+            ManagedToolAction.PublishGameVersionToGitHub =>
+                "这一步只在本机生成清单和版本目录，然后上传到 GitHub Release；不连下载站、不走 SFTP。",
             ManagedToolAction.RebuildGameDownloadRepo =>
                 "这一步会重建本机暂存仓库、压成单提交（清掉历史对象）；代价是这次必须全量重传一次，耗时最长。只在仓库体积顶不住时用。",
             _ => "这是实际上传操作：按文件清单把这一版增量推到下载站，没有变化的文件不会重复上传。"

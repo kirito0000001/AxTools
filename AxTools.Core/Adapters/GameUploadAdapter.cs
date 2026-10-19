@@ -21,23 +21,42 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
         string scriptsRoot,
         string wrapperDirectory,
         string displayName,
-        string productSegment)
-        : base(key, scriptsRoot, wrapperDirectory, ActionsList)
+        string productSegment,
+        string? gitHubRepository = null)
+        : base(key, scriptsRoot, wrapperDirectory, BuildActions(gitHubRepository))
     {
         DisplayName = displayName;
         ProductSegment = productSegment;
+        GitHubRepository = gitHubRepository;
     }
 
-    private static readonly IReadOnlyList<ManagedToolActionDefinition> ActionsList =
-    [
-        Action(ManagedToolAction.CheckEnvironment, "检查环境", ManagedToolActionSection.Development, "\uE9D9", false),
-        Action(ManagedToolAction.CheckGamePackage, "只检查，不发布", ManagedToolActionSection.Publish, "\uE9D5", false, true),
-        Action(ManagedToolAction.PublishGameVersion, "发布新版本", ManagedToolActionSection.Publish, "\uE72D", true, true, true)
-        // 「重整仓库（压平历史）」已移除：那是 git 时代用来压平本机暂存仓库历史的，
-        // 2026-09-20 传输改成逐文件同步后本机不再有仓库，这个动作没有意义了。
-    ];
+    private static IReadOnlyList<ManagedToolActionDefinition> BuildActions(string? gitHubRepository)
+    {
+        var actions = new List<ManagedToolActionDefinition>
+        {
+            Action(ManagedToolAction.CheckEnvironment, "检查环境", ManagedToolActionSection.Development, "\uE9D9", false),
+            Action(ManagedToolAction.CheckGamePackage, "只检查，不发布", ManagedToolActionSection.Publish, "\uE9D5", false, true),
+            Action(ManagedToolAction.PublishGameVersion, "发布到服务器", ManagedToolActionSection.Publish, "\uE72D", true, true, true)
+        };
+        if (!string.IsNullOrWhiteSpace(gitHubRepository))
+        {
+            actions.Add(Action(
+                ManagedToolAction.PublishGameVersionToGitHub,
+                "发布到 GitHub",
+                ManagedToolActionSection.Publish,
+                "\uE72D",
+                true,
+                true,
+                true));
+        }
+
+        return actions;
+    }
 
     protected string DisplayName { get; }
+
+    /// <summary>这个游戏配置的 GitHub 发布仓库；为空则界面不显示「发布到 GitHub」。</summary>
+    public string? GitHubRepository { get; }
 
     /// <summary>PC 侧的产品段名；安卓侧自动加 `-android` 后缀。</summary>
     protected string ProductSegment { get; }
@@ -93,6 +112,7 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
         if (request.Action is not (
                 ManagedToolAction.CheckGamePackage or
                 ManagedToolAction.PublishGameVersion or
+                ManagedToolAction.PublishGameVersionToGitHub or
                 ManagedToolAction.RebuildGameDownloadRepo))
         {
             return task;

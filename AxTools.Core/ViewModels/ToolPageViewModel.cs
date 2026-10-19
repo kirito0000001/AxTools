@@ -92,7 +92,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
         var gamePublishActions = PublishActions
             .Where(item => IsGamePublishingAction(item.Action))
             .ToArray();
-        // 「发布新版本 / 只检查」是日常入口；「重整仓库」是维护动作，收进折叠区。
+        // 日常入口：「只检查」+「发布到服务器」+「发布到 GitHub」；「重整仓库」是维护动作。
         var gameMaintenanceActions = gamePublishActions
             .Where(item => IsGameMaintenanceAction(item.Action))
             .ToArray();
@@ -196,8 +196,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
     public string GamePublishingTitle => $"{DisplayName} · 游戏包发布";
 
     public string GamePublishingDescription =>
-        "把选定的产物目录按文件清单增量发到下载站：PC 与安卓各发各的，" +
-        "每个平台记自己的目录；没变化的文件不会重复上传。";
+        "把选定的产物目录生成文件级清单，按需要发到下载站或 GitHub Release；" +
+        "两个目标互相独立，PC 与安卓各发各的。";
 
     public string GameReleaseDescription
     {
@@ -866,7 +866,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
         ManagedToolAction.Upload or
         ManagedToolAction.PublishDryRun or
         ManagedToolAction.Publish or
-        ManagedToolAction.PublishGameVersion;
+        ManagedToolAction.PublishGameVersion or
+        ManagedToolAction.PublishGameVersionToGitHub;
 
     private IReadOnlyList<ToolActionItemViewModel> FilterActions(
         ManagedToolActionSection section) =>
@@ -913,7 +914,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
     private bool IsBlockedByOlderGameVersion(ManagedToolAction action)
     {
         if (_gamePublishState is null ||
-            action is not ManagedToolAction.PublishGameVersion ||
+            action is not (ManagedToolAction.PublishGameVersion or
+                ManagedToolAction.PublishGameVersionToGitHub) ||
             string.IsNullOrWhiteSpace(GamePublishVersion))
         {
             return false;
@@ -938,6 +940,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
     private static bool IsGamePublishingAction(ManagedToolAction action) => action is
         ManagedToolAction.CheckGamePackage or
         ManagedToolAction.PublishGameVersion or
+        ManagedToolAction.PublishGameVersionToGitHub or
         ManagedToolAction.RebuildGameDownloadRepo;
 
     private static bool IsGameMaintenanceAction(ManagedToolAction action) =>

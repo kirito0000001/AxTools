@@ -1,4 +1,4 @@
-﻿using AxTools.Core.Adapters;
+using AxTools.Core.Adapters;
 using AxTools.Core.Models;
 using Xunit;
 
@@ -356,13 +356,13 @@ public sealed class ManagedToolAdapterTests : IDisposable
 
         AssertGameUploadAdapter(
             new CrossingVoidGameAdapter(scriptsRoot), "零境交错：空界幻境",
-            "crossingvoid", windowsRoot, androidRoot);
+            "crossingvoid", windowsRoot, androidRoot, supportsGitHub: true);
         AssertGameUploadAdapter(
             new FantasyGameAdapter(scriptsRoot), "幻杀",
-            "fantasyproject", windowsRoot, androidRoot);
+            "fantasyproject", windowsRoot, androidRoot, supportsGitHub: true);
         AssertGameUploadAdapter(
             new NarutoGameAdapter(scriptsRoot), "火影",
-            "narutobp", windowsRoot, androidRoot);
+            "narutobp", windowsRoot, androidRoot, supportsGitHub: false);
     }
 
     /// <summary>
@@ -394,22 +394,36 @@ public sealed class ManagedToolAdapterTests : IDisposable
         string displayName,
         string productSegment,
         string windowsRoot,
-        string androidRoot)
+        string androidRoot,
+        bool supportsGitHub)
     {
-        Assert.Equal(
-            [
+        var expectedActions = supportsGitHub
+            ? new[]
+            {
+                ManagedToolAction.CheckEnvironment,
+                ManagedToolAction.CheckGamePackage,
+                ManagedToolAction.PublishGameVersion,
+                ManagedToolAction.PublishGameVersionToGitHub
+            }
+            : new[]
+            {
                 ManagedToolAction.CheckEnvironment,
                 ManagedToolAction.CheckGamePackage,
                 ManagedToolAction.PublishGameVersion
-            ],
-            adapter.Actions.Select(action => action.Action));
-        Assert.Equal(
-            ["检查环境", "只检查，不发布", "发布新版本"],
-            adapter.Actions.Select(action => action.DisplayName));
+            };
+        var expectedNames = supportsGitHub
+            ? new[] { "检查环境", "只检查，不发布", "发布到服务器", "发布到 GitHub" }
+            : new[] { "检查环境", "只检查，不发布", "发布到服务器" };
+        Assert.Equal(expectedActions, adapter.Actions.Select(action => action.Action));
+        Assert.Equal(expectedNames, adapter.Actions.Select(action => action.DisplayName));
         Assert.All(
             adapter.Actions.Where(action => action.Action != ManagedToolAction.CheckEnvironment),
             action => Assert.True(action.RequiresVersion));
         Assert.True(adapter.Actions.Single(action => action.Action == ManagedToolAction.PublishGameVersion).RequiresConfirmation);
+        if (supportsGitHub)
+        {
+            Assert.True(adapter.Actions.Single(action => action.Action == ManagedToolAction.PublishGameVersionToGitHub).RequiresConfirmation);
+        }
         // 「重整仓库（压平历史）」已经随着 git 传输一起退场（现在没有本机仓库可压）。
         Assert.DoesNotContain(adapter.Actions, action => action.Action == ManagedToolAction.RebuildGameDownloadRepo);
         // 线上版本检查靠这个产品段去找下载站目录；要经接口拿到（默认实现取到过 null）。
@@ -435,7 +449,7 @@ public sealed class ManagedToolAdapterTests : IDisposable
         var pcTask = adapter.CreateTask(
             new ManagedToolActionRequest(ManagedToolAction.PublishGameVersion, "1.0.0", "stable", "PC 更新"),
             pcPaths);
-        Assert.Equal($"{displayName} · 发布新版本", pcTask.Title);
+        Assert.Equal($"{displayName} · 发布到服务器", pcTask.Title);
         AssertArgumentPair(pcTask.Arguments, "-Platform", "Windows");
         // 游戏工具没有源码目录：-ProjectRoot 要用产物目录。空字符串会让 PowerShell 的
         // Mandatory 参数在绑定阶段直接失败（任务还没跑就挂，且报错是乱码）。
@@ -445,6 +459,21 @@ public sealed class ManagedToolAdapterTests : IDisposable
         // 产品段名和版本标记名由包装脚本自己带给内核，这里不再重复下发。
         Assert.DoesNotContain("-ProductSegment", pcTask.Arguments);
         Assert.DoesNotContain("-VersionMarkerName", pcTask.Arguments);
+
+        if (supportsGitHub)
+        {
+            var gitHubTask = adapter.CreateTask(
+                new ManagedToolActionRequest(
+                    ManagedToolAction.PublishGameVersionToGitHub,
+                    "1.0.0",
+                    "stable",
+                    "PC 更新"),
+                pcPaths);
+            Assert.Equal($"{displayName} · 发布到 GitHub", gitHubTask.Title);
+            AssertArgumentPair(gitHubTask.Arguments, "-Action", "PublishGameVersionToGitHub");
+            AssertArgumentPair(gitHubTask.Arguments, "-Platform", "Windows");
+            AssertArgumentPair(gitHubTask.Arguments, "-GamePackageRoot", windowsRoot);
+        }
 
         var androidTask = adapter.CreateTask(
             new ManagedToolActionRequest(ManagedToolAction.PublishGameVersion, "1.0.0", "stable", "安卓更新"),

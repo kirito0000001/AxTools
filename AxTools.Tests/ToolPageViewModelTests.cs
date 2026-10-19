@@ -342,12 +342,13 @@ public sealed class ToolPageViewModelTests : IDisposable
             paths,
             new CrossingVoidGameAdapter(Path.Combine(_root, "Scripts")));
 
-        // 日常入口：「只检查」+「发布新版本」；维护折叠区已随 git 传输退场，不再有动作。
+        // 日常入口：「只检查」+「发布到服务器」+「发布到 GitHub」；维护折叠区已随 git 传输退场。
         Assert.Equal(
             [
                 ManagedToolAction.EditGameReleaseNotes,
                 ManagedToolAction.CheckGamePackage,
-                ManagedToolAction.PublishGameVersion
+                ManagedToolAction.PublishGameVersion,
+                ManagedToolAction.PublishGameVersionToGitHub
             ],
             viewModel.GamePublishActions.Select(item => item.Action));
         Assert.Empty(viewModel.GameMaintenanceActions);
