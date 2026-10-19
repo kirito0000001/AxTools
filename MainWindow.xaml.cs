@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
         CrossingVoidPcPage.DataContext = viewModel.Tools[7];
         CrossingVoidAndroidPage.DataContext = viewModel.Tools[8];
         FantasyAndroidPage.DataContext = viewModel.Tools[9];
+        FantasyProjectPcPage.DataContext = viewModel.Tools[10];
         ServerAliyunPage.DataContext = viewModel.Server;
         GlobalSettingsPage.DataContext = viewModel.Settings;
 
@@ -75,6 +76,7 @@ public sealed partial class MainWindow : Window
         CrossingVoidZDToolPage.ToolActionRequested += ToolPage_ToolActionRequested;
         CrossingVoidPcPage.ToolActionRequested += ToolPage_ToolActionRequested;
         CrossingVoidAndroidPage.ToolActionRequested += ToolPage_ToolActionRequested;
+        FantasyProjectPcPage.ToolActionRequested += ToolPage_ToolActionRequested;
         FantasyGamePage.ToolActionRequested += ToolPage_ToolActionRequested;
         FantasyAndroidPage.ToolActionRequested += ToolPage_ToolActionRequested;
         CrossingVoidGamePage.ToolActionRequested += ToolPage_ToolActionRequested;
@@ -85,6 +87,7 @@ public sealed partial class MainWindow : Window
         CrossingVoidZDToolPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         CrossingVoidPcPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         CrossingVoidAndroidPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
+        FantasyProjectPcPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         FantasyGamePage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         FantasyAndroidPage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
         CrossingVoidGamePage.ProjectDownloadRequested += ToolPage_ProjectDownloadRequested;
@@ -100,6 +103,8 @@ public sealed partial class MainWindow : Window
         CrossingVoidPcPage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
         CrossingVoidPcPage.DownloadLinkRequested += ToolPage_DownloadLinkRequested;
         CrossingVoidAndroidPage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
+        FantasyProjectPcPage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
+        FantasyProjectPcPage.DownloadLinkRequested += ToolPage_DownloadLinkRequested;
         FantasyGamePage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
         FantasyAndroidPage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
         CrossingVoidGamePage.ReleaseDownloadRequested += ToolPage_ReleaseDownloadRequested;
@@ -114,8 +119,8 @@ public sealed partial class MainWindow : Window
         CrossingVoidGamePage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested;
         NarutoGamePage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested;
         FantasyGamePage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested;
-        // 《生成碎片》只在零境的两个工具页里出现（TFAC平台页 / 平台-零境-安卓）。
-        // 接线、确认弹窗、执行和进度全在 MainWindow.Fragments.cs 里，这里只留这一行。
+        // 《生成碎片》的页面由 GameProfileCatalog 决定（零境/幻杀 PC/安卓）；
+        // 接线、确认弹窗、执行和进度全在 MainWindow.Fragments.cs 里。
         AttachFragmentGenerationHandlers();
         viewModel.GlobalProgress.PropertyChanged += GlobalProgress_PropertyChanged;
         if (viewModel.TaskRunner is not null)
@@ -190,6 +195,7 @@ public sealed partial class MainWindow : Window
         CrossingVoidZDToolPage.ToolActionRequested -= ToolPage_ToolActionRequested;
         CrossingVoidPcPage.ToolActionRequested -= ToolPage_ToolActionRequested;
         CrossingVoidAndroidPage.ToolActionRequested -= ToolPage_ToolActionRequested;
+        FantasyProjectPcPage.ToolActionRequested -= ToolPage_ToolActionRequested;
         FantasyGamePage.ToolActionRequested -= ToolPage_ToolActionRequested;
         FantasyAndroidPage.ToolActionRequested -= ToolPage_ToolActionRequested;
         CrossingVoidGamePage.ToolActionRequested -= ToolPage_ToolActionRequested;
@@ -200,6 +206,7 @@ public sealed partial class MainWindow : Window
         CrossingVoidZDToolPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         CrossingVoidPcPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         CrossingVoidAndroidPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
+        FantasyProjectPcPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         FantasyGamePage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         FantasyAndroidPage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
         CrossingVoidGamePage.ProjectDownloadRequested -= ToolPage_ProjectDownloadRequested;
@@ -215,6 +222,8 @@ public sealed partial class MainWindow : Window
         CrossingVoidPcPage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;
         CrossingVoidPcPage.DownloadLinkRequested -= ToolPage_DownloadLinkRequested;
         CrossingVoidAndroidPage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;
+        FantasyProjectPcPage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;
+        FantasyProjectPcPage.DownloadLinkRequested -= ToolPage_DownloadLinkRequested;
         FantasyGamePage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;
         FantasyAndroidPage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;
         CrossingVoidGamePage.ReleaseDownloadRequested -= ToolPage_ReleaseDownloadRequested;

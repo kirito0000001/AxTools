@@ -63,18 +63,22 @@ public static class CrossingVoidAndroidFragmentPlanner
         string version,
         string archiveNamePrefix,
         long maxSliceBytes = CrossingVoidFragmentPlanner.DefaultSliceBytes,
-        string productKey = CrossingVoidAndroidObbSidecar.ProductKey)
+        string productKey = CrossingVoidAndroidObbSidecar.ProductKey,
+        string versionMarkerFileName = CrossingVoidVersionMarker.FileName,
+        string obbSidecarFileName = CrossingVoidAndroidObbSidecar.FileName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(version);
         ArgumentException.ThrowIfNullOrWhiteSpace(archiveNamePrefix);
         ArgumentException.ThrowIfNullOrWhiteSpace(productKey);
+        ValidateFileName(versionMarkerFileName, nameof(versionMarkerFileName));
+        ValidateFileName(obbSidecarFileName, nameof(obbSidecarFileName));
 
         var package = CrossingVoidAndroidPackage.Locate(gameDirectory);
 
         var versionMarkerPath = Path.Combine(
             package.GameDirectory,
-            CrossingVoidVersionMarker.FileName);
+            versionMarkerFileName);
         if (!File.Exists(versionMarkerPath))
         {
             throw new InvalidOperationException(
@@ -95,12 +99,12 @@ public static class CrossingVoidAndroidFragmentPlanner
                 CrossingVoidAndroidFragmentSource.LocalFile,
                 package.ApkPath),
             new(
-                CrossingVoidVersionMarker.FileName,
+                versionMarkerFileName,
                 new FileInfo(versionMarkerPath).Length,
                 CrossingVoidAndroidFragmentSource.LocalFile,
                 versionMarkerPath),
             new(
-                CrossingVoidAndroidObbSidecar.FileName,
+                obbSidecarFileName,
                 sidecarBytes.Length,
                 CrossingVoidAndroidFragmentSource.InMemory,
                 Content: sidecarBytes),
@@ -139,5 +143,15 @@ public static class CrossingVoidAndroidFragmentPlanner
             sidecarBytes,
             slices,
             obbPlan.OversizedFiles);
+    }
+
+    private static void ValidateFileName(string fileName, string parameterName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) ||
+            !string.Equals(Path.GetFileName(fileName), fileName, StringComparison.Ordinal) ||
+            fileName is "." or "..")
+        {
+            throw new ArgumentException("文件名不合法。", parameterName);
+        }
     }
 }

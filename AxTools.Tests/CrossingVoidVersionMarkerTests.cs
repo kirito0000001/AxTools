@@ -115,6 +115,36 @@ public sealed class CrossingVoidVersionMarkerTests
     }
 
     [Fact]
+    public async Task WritesTheGameSpecificMarkerFileName()
+    {
+        var root = NewTempDirectory("marker-game-name");
+        try
+        {
+            const string markerName = "FantasyProject.version.json";
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            var result = await CrossingVoidVersionMarker.EnsureAsync(
+                root,
+                "0.1.0",
+                "Windows",
+                "stable",
+                client,
+                downloadBase: "http://127.0.0.1:9",
+                markerFileName: markerName);
+
+            Assert.Equal(CrossingVoidVersionMarkerAction.Generated, result.Action);
+            Assert.Equal(Path.Combine(root, markerName), result.Path);
+            Assert.Equal(
+                CrossingVoidVersionMarker.BuildBytes("0.1.0", "Windows", "stable"),
+                File.ReadAllBytes(result.Path));
+            Assert.False(File.Exists(Path.Combine(root, CrossingVoidVersionMarker.FileName)));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ReplacesAMarkerWhosePlatformOrChannelDoesNotMatch()
     {
         var root = NewTempDirectory("marker-platform");

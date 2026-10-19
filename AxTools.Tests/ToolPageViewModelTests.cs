@@ -1,4 +1,4 @@
-﻿using AxTools.Core.Adapters;
+using AxTools.Core.Adapters;
 using AxTools.Core.Catalog;
 using AxTools.Core.Models;
 using AxTools.Core.Services;
@@ -484,6 +484,37 @@ public sealed class ToolPageViewModelTests : IDisposable
         Assert.Equal("双端同步更新", android.GamePublishReleaseNotes);
         Assert.Equal("双端同步更新", pcPaths.GamePublishReleaseNotes);
         Assert.Equal("双端同步更新", androidPaths.GamePublishReleaseNotes);
+    }
+
+    [Fact]
+    public void FantasyPages_ExposeTheSameFragmentTabWithTheirOwnProfile()
+    {
+        var fantasyGamePaths = new ManagedToolPaths
+        {
+            GamePublishVersion = "0.1.0",
+            GamePackageRoot = @"F:\DaBaoV\Fantasy\Windows",
+            GamePackageRootAndroid = @"F:\DaBaoV\Fantasy\Android"
+        };
+        var pc = new ToolPageViewModel(
+            GetDescriptor(ManagedToolKey.FantasyProjectPc),
+            new ManagedToolPaths(),
+            new FantasyProjectPcAdapter(Path.Combine(_root, "Scripts")),
+            gamePublishPaths: fantasyGamePaths);
+        var android = new ToolPageViewModel(
+            GetDescriptor(ManagedToolKey.FantasyAndroid),
+            new ManagedToolPaths(),
+            new FantasyAndroidAdapter(Path.Combine(_root, "Scripts")),
+            gamePublishPaths: fantasyGamePaths);
+
+        Assert.True(pc.HasFragmentGeneration);
+        Assert.True(android.HasFragmentGeneration);
+        Assert.Equal("fantasyproject", pc.FragmentProductSegment);
+        Assert.Equal("fantasyproject-android", android.FragmentProductSegment);
+        Assert.Equal("幻杀V0.1PC", pc.FragmentArchiveNamePrefix);
+        Assert.Equal("幻杀V0.1安卓", android.FragmentArchiveNamePrefix);
+        Assert.Equal("幻杀碎片生成", pc.FragmentGenerationActionText);
+        Assert.Equal(@"F:\DaBaoV\Fantasy\Windows", pc.FragmentGameDirectory);
+        Assert.Equal(@"F:\DaBaoV\Fantasy\Android", android.FragmentGameDirectory);
     }
 
     [Fact]

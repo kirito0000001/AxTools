@@ -23,30 +23,34 @@ public static class CrossingVoidFragmentPlanner
     private const int ArchiveFixedArgumentLength = 512;
 
     /// <summary>
-    /// 基础碎片的文件名前缀：<c>零境V0.6PC</c> / <c>零境V0.6安卓</c>
+    /// 基础碎片的文件名前缀：<c>零境V0.6PC</c> / <c>幻杀V0.1安卓</c>
     /// （后面直接接 <c>基础碎片001</c>，不加分隔符）。
     ///
     /// 只取主/次版本：0.0.x 是补丁，补丁之后单独出包，不混进基础碎片；
     /// 名字里也不放短横线/空格 —— 有些平台对文件名挑字符。
     /// </summary>
-    public static string BuildArchiveNamePrefix(string version, string platformLabel = "PC")
+    public static string BuildArchiveNamePrefix(
+        string version,
+        string platformLabel = "PC",
+        string gameShortName = "零境")
     {
+        var shortName = string.IsNullOrWhiteSpace(gameShortName) ? "零境" : gameShortName.Trim();
         var normalized = version?.Trim() ?? string.Empty;
         if (normalized.Length == 0)
         {
-            return $"零境V{platformLabel}";
+            return $"{shortName}V{platformLabel}";
         }
 
         var segments = normalized.Split('.', StringSplitOptions.RemoveEmptyEntries);
         if (segments.Length == 0)
         {
-            return $"零境V{platformLabel}";
+            return $"{shortName}V{platformLabel}";
         }
 
         var display = segments.Length >= 2
             ? $"{segments[0]}.{segments[1]}"
             : segments[0];
-        return $"零境V{display}{platformLabel}";
+        return $"{shortName}V{display}{platformLabel}";
     }
 
     /// <summary>

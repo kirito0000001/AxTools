@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)][string]$FragmentDirectory,
     [Parameter(Mandatory)][string]$ReleaseVersion,
     [string]$ProductSegment = 'crossingvoid',
+    [string]$GameShortName = '零境',
     [string]$FileSyncTarget = 'yecaoyun-hk',
     [string]$PublicBaseUrl = 'https://dl.crossingvoid.top',
     [switch]$SkipSyncScriptDeploy,
@@ -36,7 +37,9 @@ Import-Module (Join-Path $scriptsRoot 'Common\AxTaskProtocol.psm1') -Force
 Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
 
 $ProductSegment = $ProductSegment.Trim().Trim('/')
+$GameShortName = $GameShortName.Trim()
 if ($ProductSegment -notmatch '^[A-Za-z0-9._-]+$') { throw "产品目录名不合法：$ProductSegment" }
+if ([string]::IsNullOrWhiteSpace($GameShortName)) { throw '碎片包名短名（GameShortName）不能为空。' }
 if ($ReleaseVersion -notmatch '^[0-9]+(\.[0-9]+){1,3}$') { throw "版本号格式不对：$ReleaseVersion（应形如 0.6.0）" }
 if ($PublicBaseUrl -notmatch '^https?://') { throw "PublicBaseUrl 不合法：$PublicBaseUrl" }
 
@@ -166,14 +169,14 @@ try {
         else {
             $versionParts[0]
         }
-        # 命名里已经带平台字样（零境V0.6PC… / 零境V0.6安卓…），所以不能再写死
+        # 命名里已经带游戏短名和平台字样（零境V0.6PC… / 幻杀V0.1安卓…），所以不能再写死
         # "零境V0.6基础碎片*"；安卓还多一个"安装包"片，重建时也要带上，否则清单少一个包。
-        $packagePattern = "零境V${displayVersion}*基础碎片*.zip"
+        $packagePattern = "${GameShortName}V${displayVersion}*基础碎片*.zip"
         $baseFiles = @(Get-ChildItem -LiteralPath $fragmentRoot -File -Filter $packagePattern |
             Sort-Object Name)
         $installerFiles = @()
         if ($ProductSegment -like '*-android') {
-            $installerPattern = "零境V${displayVersion}*安装包*.zip"
+            $installerPattern = "${GameShortName}V${displayVersion}*安装包*.zip"
             $installerFiles = @(Get-ChildItem -LiteralPath $fragmentRoot -File -Filter $installerPattern |
                 Sort-Object Name)
             if ($installerFiles.Count -gt 1) {

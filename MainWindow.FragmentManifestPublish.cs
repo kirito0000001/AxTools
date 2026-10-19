@@ -18,9 +18,11 @@ public sealed partial class MainWindow
 {
     private void AttachFragmentManifestPublishHandler()
     {
-        // 两个页共用同一个脚本，靠 -ProductSegment 区分 PC / 安卓。
+        // 所有支持碎片的页面共用同一个脚本，靠 -ProductSegment / -GameShortName 区分零境/幻杀、PC/安卓。
         CrossingVoidPcPage.FragmentManifestPublishRequested += ToolPage_FragmentManifestPublishRequested;
         CrossingVoidAndroidPage.FragmentManifestPublishRequested += ToolPage_FragmentManifestPublishRequested;
+        FantasyProjectPcPage.FragmentManifestPublishRequested += ToolPage_FragmentManifestPublishRequested;
+        FantasyAndroidPage.FragmentManifestPublishRequested += ToolPage_FragmentManifestPublishRequested;
     }
 
     private async void ToolPage_FragmentManifestPublishRequested(object? sender, EventArgs args)
@@ -81,7 +83,7 @@ public sealed partial class MainWindow
             "Publishing",
             "Games",
             "Publish-GameFragmentManifest.ps1");
-        var taskTitle = $"发布零境{viewModel.FragmentPlatformLabel}碎片清单";
+        var taskTitle = $"发布{viewModel.FragmentGameShortName}{viewModel.FragmentPlatformLabel}碎片清单";
         var definition = new AxTaskDefinition(
             $"game-fragment-manifest-publish-{Guid.NewGuid():N}",
             taskTitle,
@@ -90,7 +92,8 @@ public sealed partial class MainWindow
             {
                 "-FragmentDirectory", outputDirectory,
                 "-ReleaseVersion", gameVersion,
-                "-ProductSegment", viewModel.FragmentProductSegment
+                "-ProductSegment", viewModel.FragmentProductSegment,
+                "-GameShortName", viewModel.FragmentGameShortName
             });
 
         _activeHostedTaskId = definition.Id;

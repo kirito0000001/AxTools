@@ -11,12 +11,16 @@ public static class CrossingVoidAndroidFragmentGenerator
         string gameDirectory,
         string version,
         string archiveNamePrefix,
-        string productKey = CrossingVoidAndroidObbSidecar.ProductKey) =>
+        string productKey = CrossingVoidAndroidObbSidecar.ProductKey,
+        string versionMarkerFileName = CrossingVoidVersionMarker.FileName,
+        string obbSidecarFileName = CrossingVoidAndroidObbSidecar.FileName) =>
         CrossingVoidAndroidFragmentPlanner.Build(
             gameDirectory,
             version,
             archiveNamePrefix,
-            productKey: productKey);
+            productKey: productKey,
+            versionMarkerFileName: versionMarkerFileName,
+            obbSidecarFileName: obbSidecarFileName);
 
     public static CrossingVoidFragmentResult Execute(
         CrossingVoidAndroidFragmentPlan plan,
@@ -47,9 +51,17 @@ public static class CrossingVoidAndroidFragmentGenerator
         string archiveNamePrefix,
         Action<CrossingVoidFragmentProgress>? onProgress = null,
         CancellationToken cancellationToken = default,
-        string productKey = CrossingVoidAndroidObbSidecar.ProductKey)
+        string productKey = CrossingVoidAndroidObbSidecar.ProductKey,
+        string versionMarkerFileName = CrossingVoidVersionMarker.FileName,
+        string obbSidecarFileName = CrossingVoidAndroidObbSidecar.FileName)
     {
-        var plan = BuildPlan(gameDirectory, version, archiveNamePrefix, productKey);
+        var plan = BuildPlan(
+            gameDirectory,
+            version,
+            archiveNamePrefix,
+            productKey,
+            versionMarkerFileName,
+            obbSidecarFileName);
         return Execute(plan, outputDirectory, onProgress, cancellationToken);
     }
 

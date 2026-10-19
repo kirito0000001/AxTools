@@ -1,3 +1,4 @@
+using AxTools.Core.Catalog;
 using AxTools.Core.Models;
 using AxTools.Core.Services;
 
@@ -17,24 +18,24 @@ public sealed partial class ToolPageViewModel
 
     // ==================== 《生成碎片》 ====================
     //
-    // 「碎片制作」是 ToolPage 里的独立页签；当前只有零境的两个工具页支持：
-    //   · TFAC平台页（PC 产物）      → 《零境碎片生成》
-    //   · 平台-零境-安卓（安卓产物）  → 《碎片生成》
-    // 页签本身是模板级的，以后幻杀/火影接上 profile 后，只要 HasFragmentGeneration 为 true，
-    // 同一页签会自动出现，不需要再复制 XAML。
+    // 「碎片制作」是 ToolPage 里的独立页签；支持哪些页面由 GameProfileCatalog 决定。
+    // 现在零境 PC/安卓、幻杀 PC/安卓各一条；以后火影接上 profile 后自动出现。
+
+    /// <summary>当前页对应的游戏档案；非碎片页返回 null。</summary>
+    private GameProfile? FragmentProfile => GameProfileCatalog.FindByToolKey(Descriptor.Key);
 
     /// <summary>这个工具页有没有《生成碎片》。</summary>
-    public bool HasFragmentGeneration =>
-        Descriptor.Key is ManagedToolKey.CrossingVoidPc or ManagedToolKey.CrossingVoidAndroid;
+    public bool HasFragmentGeneration => FragmentProfile is not null;
 
-    private bool IsAndroidFragmentPage => Descriptor.Key is ManagedToolKey.CrossingVoidAndroid;
+    private bool IsAndroidFragmentPage =>
+        FragmentProfile is { } profile && Descriptor.Key == profile.AndroidToolKey;
 
     /// <summary>包名/发布用的平台字样：<c>PC</c> / <c>安卓</c>。</summary>
     public string FragmentPlatformLabel => IsAndroidFragmentPage ? "安卓" : "PC";
 
-    /// <summary>下载站上的产品段：PC 是 <c>crossingvoid</c>，安卓是 <c>crossingvoid-android</c>。</summary>
+    /// <summary>下载站上的产品段：零境 <c>crossingvoid</c>，幻杀 <c>fantasyproject</c>；安卓加 -android。</summary>
     public string FragmentProductSegment =>
-        IsAndroidFragmentPage ? "crossingvoid-android" : "crossingvoid";
+        FragmentProfile?.ProductSegmentFor(IsAndroidFragmentPage) ?? string.Empty;
 
     /// <summary>
     /// 版本标记/旁车用的渠道：游戏包发布是 Test 就写 test，其余一律 stable
@@ -44,26 +45,32 @@ public sealed partial class ToolPageViewModel
         CrossingVoidVersionMarker.NormalizeChannel(_gamePublishPaths?.GamePublishChannel);
 
     /// <summary>安卓旁车里的 productKey；PC 用不到，但保持同一份口径。</summary>
-    public string FragmentProductKey =>
-        CrossingVoidAndroidObbSidecar.BuildProductKey(FragmentProductSegment, FragmentChannel);
+    public string FragmentProductKey => FragmentProfile is null
+        ? string.Empty
+        : CrossingVoidAndroidObbSidecar.BuildProductKey(FragmentProductSegment, FragmentChannel);
 
-    public string FragmentGenerationActionText => IsAndroidFragmentPage ? "碎片生成" : "零境碎片生成";
+    /// <summary>包名前缀里的游戏短名：零境 / 幻杀。</summary>
+    public string FragmentGameShortName => FragmentProfile?.ShortName ?? "零境";
+
+    public string FragmentGenerationActionText =>
+        IsAndroidFragmentPage ? "碎片生成" : $"{FragmentGameShortName}碎片生成";
 
     /// <summary>
-    /// 碎片里版本标记和包名用的游戏版本 —— 读**游戏包发布**那份（<c>CrossingVoid</c>），
-    /// 不是启动器自己的 <c>PublishVersion</c>（那是 1.4.x，和游戏 0.6.x 不是一回事）。
+    /// 碎片里版本标记和包名用的游戏版本 —— 读**当前游戏包发布**那份，
+    /// 不是启动器自己的 <c>PublishVersion</c>（那是启动器版本，和游戏版本不是一回事）。
     /// </summary>
     public string FragmentGameVersion =>
         _gamePublishPaths?.GamePublishVersion?.Trim() ?? string.Empty;
 
     /// <summary>
-    /// 基础碎片的名字前缀，例如 <c>零境V0.6PC</c> / <c>零境V0.6安卓</c>
+    /// 基础碎片的名字前缀，例如 <c>零境V0.6PC</c> / <c>幻杀V0.1安卓</c>
     /// （版本只取主/次版，补丁版本不混进基础碎片）。
     /// </summary>
     public string FragmentArchiveNamePrefix =>
         CrossingVoidFragmentPlanner.BuildArchiveNamePrefix(
             FragmentGameVersion,
-            FragmentPlatformLabel);
+            FragmentPlatformLabel,
+            FragmentGameShortName);
 
     public string FragmentGenerationDescription =>
         IsAndroidFragmentPage
@@ -74,10 +81,10 @@ public sealed partial class ToolPageViewModel
               "全部解压到同一个游戏安装目录即可，不需要合并。生成前会清空输出目录。";
 
     /// <summary>
-    /// 碎片从哪个目录生成 —— **直接复用「服务器 → 零境交错」那份游戏包目录**
-    /// （PC / 安卓各记一个），不在碎片区再填一遍。
+    /// 碎片从哪个目录生成 —— **直接复用「服务器 → 当前游戏」那份游戏包目录**
+    /// （PC / 安卓各记一个），不在碎片制作里再填一遍。
     ///
-    /// TFAC平台页和安卓页本来都不显示"游戏包发布"那一区，所以这份引用是注入进来的：
+    /// 启动器页本来都不显示"游戏包发布"那一区，所以这份引用是注入进来的：
     /// PC 页读 PC 那份、安卓页读安卓那份，用户在服务器那边选过一次，两边就一直是同一个源。
     /// </summary>
     public string FragmentGameDirectory => _gamePublishPaths is null
@@ -87,7 +94,7 @@ public sealed partial class ToolPageViewModel
             : _gamePublishPaths.GamePackageRoot;
 
     public string FragmentSourceText => string.IsNullOrWhiteSpace(FragmentGameDirectory)
-        ? "还没有游戏包目录 —— 先到「服务器 → 零境交错」的游戏包发布里选一次。"
+        ? $"还没有游戏包目录 —— 先到「服务器 → {FragmentProfile?.DisplayName ?? "零境交错"}」的游戏包发布里选一次。"
         : FragmentGameDirectory;
 
     public string FragmentOutputDirectory
@@ -243,6 +250,10 @@ public sealed partial class ToolPageViewModel
         OnPropertyChanged(nameof(FragmentSourceText));
         OnPropertyChanged(nameof(FragmentOutputDirectory));
         OnPropertyChanged(nameof(FragmentGameVersion));
+        OnPropertyChanged(nameof(FragmentProductSegment));
+        OnPropertyChanged(nameof(FragmentGameShortName));
+        OnPropertyChanged(nameof(FragmentPlatformLabel));
+        OnPropertyChanged(nameof(FragmentGenerationActionText));
         OnPropertyChanged(nameof(FragmentArchiveNamePrefix));
         OnPropertyChanged(nameof(FragmentChannel));
         OnPropertyChanged(nameof(FragmentProductKey));
@@ -254,7 +265,10 @@ public sealed partial class ToolPageViewModel
     /// <summary>默认落在 D 盘（用户指定的位置）；D 盘不在就退到游戏包目录旁边，至少同一块盘。</summary>
     private string DefaultFragmentOutputDirectory()
     {
-        var folderName = IsAndroidFragmentPage ? "零境交错安卓碎片" : "零境交错PC碎片";
+        var profile = FragmentProfile;
+        var folderName = profile is null
+            ? (IsAndroidFragmentPage ? "零境交错安卓碎片" : "零境交错PC碎片")
+            : (IsAndroidFragmentPage ? profile.AndroidFragmentDirectoryName : profile.PcFragmentDirectoryName);
         const string preferredRoot = @"D:\";
         if (Directory.Exists(preferredRoot))
         {

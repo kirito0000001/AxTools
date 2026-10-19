@@ -79,6 +79,9 @@
                 <NavigationViewItem x:Name="CrossingVoidAndroidNavItem" Content="平台-零境-安卓" Tag="CrossingVoidAndroid">
                     <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidAndroid.png" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem x:Name="FantasyProjectPcNavItem" Content="平台-幻杀-PC" Tag="FantasyProjectPc">
+                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/FantasyProjectPc.png" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem x:Name="FantasyAndroidNavItem" Content="平台-幻杀-安卓" Tag="FantasyAndroid">
                     <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/FantasyProjectPc.png" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
@@ -101,6 +104,7 @@
                     <views:ToolPage x:Name="CrossingVoidZDToolPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="CrossingVoidPcPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="CrossingVoidAndroidPage" Visibility="Collapsed" />
+                    <views:ToolPage x:Name="FantasyProjectPcPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="FantasyAndroidPage" Visibility="Collapsed" />
                     <!-- 三个游戏包发布页只在启动时实例化一次，随后由 MainWindow 交给服务器页
                          （ServerAliyunPage.AttachGamePublishPanel）挂到对应游戏的页签卡片里。 -->

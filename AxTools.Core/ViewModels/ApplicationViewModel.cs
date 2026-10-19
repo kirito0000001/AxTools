@@ -59,10 +59,18 @@ public sealed class ApplicationViewModel : ObservableObject
                     var gamePaths = settings.ManagedTools[item.StableKey];
                     return new CrossingVoidGamePublishState(gamePaths, gamePaths);
                 });
-        // 零境的 PC 页和安卓页上都有《生成碎片》，它的"源文件"就直接用「服务器 → 零境交错」
-        // 那份游戏包目录（PC / 安卓各记一个）—— 用户已经在那儿选过一次，不在碎片区再填一遍。
-        var gamePublishPaths = settings.ManagedTools[ManagedToolCatalog.All
-            .Single(item => item.Key == ManagedToolKey.CrossingVoidGame).StableKey];
+        // 每个游戏包发布页和它对应的 PC/安卓碎片页共用同一份 ManagedToolPaths：
+        // 零境 PC/安卓读 CrossingVoidGame，幻杀 PC/安卓读 FantasyGame。
+        // 这样碎片从哪个目录生成、用哪个版本，不需要在页面里再填一遍。
+        var gamePublishPathsByToolKey = new Dictionary<ManagedToolKey, ManagedToolPaths>();
+        foreach (var profile in GameProfileCatalog.All)
+        {
+            var gameDescriptor = ManagedToolCatalog.All.Single(item => item.Key == profile.GameToolKey);
+            var gamePaths = settings.ManagedTools[gameDescriptor.StableKey];
+            gamePublishPathsByToolKey[profile.PcToolKey] = gamePaths;
+            gamePublishPathsByToolKey[profile.AndroidToolKey] = gamePaths;
+        }
+
         Tools = ManagedToolCatalog.All
             .Select(descriptor => new ToolPageViewModel(
                 descriptor,
@@ -75,10 +83,7 @@ public sealed class ApplicationViewModel : ObservableObject
                 isRunnerAvailable: TaskRunner is not null,
                 publishedVersionService: publishedVersionService,
                 gamePublishState: gamePublishStates.GetValueOrDefault(descriptor.Key),
-                gamePublishPaths: descriptor.Key is
-                    ManagedToolKey.CrossingVoidPc or ManagedToolKey.CrossingVoidAndroid
-                        ? gamePublishPaths
-                        : null))
+                gamePublishPaths: gamePublishPathsByToolKey.GetValueOrDefault(descriptor.Key)))
             .ToArray();
         CrossingVoidPackage = new CrossingVoidPackageViewModel(
             settings.CrossingVoidPackage,

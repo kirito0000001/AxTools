@@ -1,3 +1,4 @@
+using AxTools.Core.Catalog;
 using AxTools.Core.Models;
 using AxTools.Core.Services;
 using AxTools.Core.ViewModels;
@@ -12,10 +13,10 @@ namespace AxTools;
 /// <summary>
 /// 《生成碎片》：把打包产物切成玩家可以直接从网盘/群里拿的碎片。
 ///
-/// 两种形态共用同一套切片规则：
-///   · PC：扫打包目录 → 按体积切片，每片一个独立的 <c>零境V0.6PC基础碎片NNN.zip</c>（默认 1 GiB 一片）；
-///   · 安卓：读 OBB 中央目录 + 主 APK → 第 1 片是 <c>零境V0.6安卓安装包.zip</c>
-///     （APK + 版本标记 + obb.json），后面是 <c>零境V0.6安卓基础碎片NNN.zip</c>（OBB 条目）。
+/// 支持哪些工具页由 <see cref="GameProfileCatalog"/> 决定；零境/幻杀的 PC 与安卓页共用这一套流程：
+///   · PC：扫打包目录 → 按体积切片，每片一个独立的 <c>幻杀V0.1PC基础碎片NNN.zip</c>（默认 1 GiB 一片）；
+///   · 安卓：读 OBB 中央目录 + 主 APK → 第 1 片是 <c>幻杀V0.1安卓安装包.zip</c>
+///     （APK + 版本标记 + obb.json），后面是 <c>幻杀V0.1安卓基础碎片NNN.zip</c>（OBB 条目）。
 ///
 /// 这条链路**不走 PowerShell**（不像其它工具动作那样交给 AxTaskRunner）：
 /// 分组规则和落盘都在 Core 里、能单独测，打包只是薄薄一层起 bz.exe。
@@ -33,8 +34,12 @@ public sealed partial class MainWindow
     {
         CrossingVoidPcPage.FragmentGenerationRequested += ToolPage_FragmentGenerationRequested;
         CrossingVoidAndroidPage.FragmentGenerationRequested += ToolPage_FragmentGenerationRequested;
+        FantasyProjectPcPage.FragmentGenerationRequested += ToolPage_FragmentGenerationRequested;
+        FantasyAndroidPage.FragmentGenerationRequested += ToolPage_FragmentGenerationRequested;
         CrossingVoidPcPage.FragmentPathSelectionRequested += ToolPage_FragmentPathSelectionRequested;
         CrossingVoidAndroidPage.FragmentPathSelectionRequested += ToolPage_FragmentPathSelectionRequested;
+        FantasyProjectPcPage.FragmentPathSelectionRequested += ToolPage_FragmentPathSelectionRequested;
+        FantasyAndroidPage.FragmentPathSelectionRequested += ToolPage_FragmentPathSelectionRequested;
 
         // 《发布碎片清单》是另一条链路（PowerShell + sftp），接线和实现都在 MainWindow.FragmentManifestPublish.cs。
         AttachFragmentManifestPublishHandler();
@@ -73,8 +78,14 @@ public sealed partial class MainWindow
             return;
         }
 
+        var profile = GameProfileCatalog.FindByToolKey(viewModel.Descriptor.Key);
+        if (profile is null)
+        {
+            return;
+        }
+
         var actionText = viewModel.FragmentGenerationActionText;
-        var isAndroid = viewModel.FragmentPlatformLabel == "安卓";
+        var isAndroid = viewModel.Descriptor.Key == profile.AndroidToolKey;
         var archiveNamePrefix = viewModel.FragmentArchiveNamePrefix;
         var gameVersion = viewModel.FragmentGameVersion;
         var gameDirectory = viewModel.FragmentGameDirectory;
@@ -82,7 +93,7 @@ public sealed partial class MainWindow
         {
             await ShowMessageDialogAsync(
                 $"无法{actionText}",
-                "还没有可用的游戏包目录。先到「服务器 → 零境交错」的游戏包发布里选一次，这里就跟着用了。");
+                $"还没有可用的游戏包目录。先到「服务器 → {profile.DisplayName}」的游戏包发布里选一次，这里就跟着用了。");
             return;
         }
 
@@ -97,11 +108,11 @@ public sealed partial class MainWindow
         {
             await ShowMessageDialogAsync(
                 $"无法{actionText}",
-                "游戏包发布里还没有版本号。先到「服务器 → 零境交错」填好版本，碎片里的版本标记要用它。");
+                $"游戏包发布里还没有版本号。先到「服务器 → {profile.DisplayName}」填好版本，碎片里的版本标记要用它。");
             return;
         }
 
-        // 版本标记：PC 走 crossingvoid，安卓走 crossingvoid-android；打包根里本来没有这个文件。
+        // 版本标记：产品段/平台/标记文件名都由 profile 决定；打包根里本来没有这个文件。
         CrossingVoidVersionMarkerResult? versionMarker = null;
         try
         {
@@ -124,7 +135,8 @@ public sealed partial class MainWindow
                 viewModel.FragmentChannel,
                 httpClient,
                 CancellationToken.None,
-                productSegment: viewModel.FragmentProductSegment);
+                productSegment: viewModel.FragmentProductSegment,
+                markerFileName: profile.VersionMarkerFileName);
             _viewModel.LogService.Write(
                 LogKind.Info,
                 versionMarker.Action switch
@@ -163,7 +175,9 @@ public sealed partial class MainWindow
                     gameDirectory,
                     gameVersion,
                     archiveNamePrefix,
-                    viewModel.FragmentProductKey);
+                    viewModel.FragmentProductKey,
+                    profile.VersionMarkerFileName,
+                    profile.ObbSidecarFileName);
             }
             else
             {
@@ -239,7 +253,7 @@ public sealed partial class MainWindow
         {
             content.Children.Add(CreateDialogLine(
                 "版本标记",
-                $"{CrossingVoidVersionMarker.FileName}（{versionMarker.Version}）"));
+                $"{profile.VersionMarkerFileName}（{versionMarker.Version}）"));
         }
 
         content.Children.Add(CreateDialogLine(

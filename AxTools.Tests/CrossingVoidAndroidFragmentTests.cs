@@ -145,6 +145,47 @@ public sealed class CrossingVoidAndroidFragmentTests
     }
 
     [Fact]
+    public void UsesTheGameSpecificMarkerAndSidecarNames()
+    {
+        var root = CreateAndroidPackage(
+            "android-game-names",
+            ("CrossingVoid/Content/Paks/a.ucas", "ucas"));
+        try
+        {
+            File.Delete(Path.Combine(root, CrossingVoidVersionMarker.FileName));
+            File.WriteAllBytes(
+                Path.Combine(root, "FantasyProject.version.json"),
+                CrossingVoidVersionMarker.BuildBytes(
+                    "0.1.0",
+                    CrossingVoidVersionMarker.AndroidPlatform,
+                    CrossingVoidVersionMarker.StableChannel));
+
+            var plan = CrossingVoidAndroidFragmentPlanner.Build(
+                root,
+                "0.1.0",
+                "幻杀V0.1安卓",
+                productKey: "fantasyproject-game",
+                versionMarkerFileName: "FantasyProject.version.json",
+                obbSidecarFileName: "FantasyProject.obb.json");
+
+            Assert.Equal("幻杀V0.1安卓安装包.zip", plan.Installer.ArchiveName);
+            Assert.Equal(
+                new[] { ApkName, "FantasyProject.version.json", "FantasyProject.obb.json" },
+                plan.Installer.Entries.Select(entry => entry.Path));
+            Assert.Equal("幻杀V0.1安卓基础碎片001.zip", plan.Slices[1].ArchiveName);
+
+            using var sidecar = JsonDocument.Parse(plan.ObbSidecarBytes);
+            Assert.Equal(
+                "fantasyproject-game",
+                sidecar.RootElement.GetProperty("productKey").GetString());
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SplitsBaseEntriesBySizeButNeverMergesTheInstaller()
     {
         var root = CreateAndroidPackage(

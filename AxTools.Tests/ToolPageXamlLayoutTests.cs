@@ -20,6 +20,7 @@ public sealed class ToolPageXamlLayoutTests
             ["FantasyToolsNavItem"] = ("工具-幻杀卡牌", "FantasyTools.png"),
             ["CrossingVoidPcNavItem"] = ("TFAC启动平台", "CrossingVoidPc.png"),
             ["CrossingVoidAndroidNavItem"] = ("平台-零境-安卓", "CrossingVoidAndroid.png"),
+            ["FantasyProjectPcNavItem"] = ("平台-幻杀-PC", "FantasyProjectPc.png"),
             ["FantasyAndroidNavItem"] = ("平台-幻杀-安卓", "FantasyProjectPc.png")
         };
 
@@ -176,7 +177,8 @@ public sealed class ToolPageXamlLayoutTests
         var pc = names.IndexOf("CrossingVoidPcNavItem");
         var android = names.IndexOf("CrossingVoidAndroidNavItem");
         Assert.Equal(pc + 1, android);
-        Assert.DoesNotContain("FantasyProjectPcNavItem", names);
+        Assert.Contains("FantasyProjectPcNavItem", names);
+        Assert.Contains("FantasyAndroidNavItem", names);
         Assert.DoesNotContain("CrossingVoidPackagePage", names);
     }
 

@@ -118,8 +118,9 @@ public static class CrossingVoidVersionMarker
     }
 
     /// <summary>
-    /// 确保 <paramref name="gameDirectory"/> 根下有这一版的 <see cref="FileName"/>。
+    /// 确保 <paramref name="gameDirectory"/> 根下有这一版的版本标记。
     /// 已经存在且字节与发布脚本一致就复用；否则先尝试从下载站取，取不到再按发布脚本的格式本地生成。
+    /// <paramref name="markerFileName"/> 是游戏自己的标记名（零境 / 幻杀不同），留空用零境默认名。
     /// </summary>
     public static async Task<CrossingVoidVersionMarkerResult> EnsureAsync(
         string gameDirectory,
@@ -129,7 +130,8 @@ public static class CrossingVoidVersionMarker
         HttpClient httpClient,
         CancellationToken cancellationToken = default,
         string productSegment = "crossingvoid",
-        string? downloadBase = null)
+        string? downloadBase = null,
+        string markerFileName = FileName)
     {
         if (string.IsNullOrWhiteSpace(gameDirectory) || !Directory.Exists(gameDirectory))
         {
@@ -142,6 +144,7 @@ public static class CrossingVoidVersionMarker
         }
 
         ArgumentException.ThrowIfNullOrWhiteSpace(platform);
+        ValidateMarkerFileName(markerFileName);
         var effectiveChannel = NormalizeChannel(channel);
         var expectedBytes = BuildBytes(version, platform, effectiveChannel);
 
@@ -152,7 +155,7 @@ public static class CrossingVoidVersionMarker
             throw new InvalidOperationException($"产品段名不合法：{productSegment}");
         }
 
-        var target = Path.Combine(gameDirectory, FileName);
+        var target = Path.Combine(gameDirectory, markerFileName);
         if (File.Exists(target) && File.ReadAllBytes(target).AsSpan().SequenceEqual(expectedBytes))
         {
             return new CrossingVoidVersionMarkerResult(
@@ -165,7 +168,7 @@ public static class CrossingVoidVersionMarker
         var baseUrl = string.IsNullOrWhiteSpace(downloadBase)
             ? DownloadBase
             : downloadBase.TrimEnd('/');
-        var url = $"{baseUrl}/{productSegment}/{Uri.EscapeDataString(version)}/{FileName}";
+        var url = $"{baseUrl}/{productSegment}/{Uri.EscapeDataString(version)}/{Uri.EscapeDataString(markerFileName)}";
         string? warning = null;
         try
         {
@@ -198,6 +201,16 @@ public static class CrossingVoidVersionMarker
             version,
             CrossingVoidVersionMarkerAction.Generated,
             warning);
+    }
+
+    private static void ValidateMarkerFileName(string markerFileName)
+    {
+        if (string.IsNullOrWhiteSpace(markerFileName) ||
+            !string.Equals(Path.GetFileName(markerFileName), markerFileName, StringComparison.Ordinal) ||
+            markerFileName is "." or "..")
+        {
+            throw new ArgumentException("版本标记文件名不合法。", nameof(markerFileName));
+        }
     }
 
     private static void Write(string path, byte[] bytes)
