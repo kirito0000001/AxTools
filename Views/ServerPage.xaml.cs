@@ -1023,26 +1023,27 @@ public sealed partial class ServerPage : UserControl
         report.AppendLine($"源目录：{source}");
         report.AppendLine();
         var sync = import.Sync;
+        var changes = import.Changes ?? [];
         report.AppendLine(
             $"镜像结果：新增 {sync?.AddedFiles ?? 0} 个 · 更新 {sync?.UpdatedFiles ?? 0} 个 · " +
             $"删除 {sync?.RemovedFiles ?? 0} 个（{FormatSize(sync?.RemovedBytes ?? 0)}）");
         report.AppendLine();
-        if (import.Changes.Count == 0)
+        if (changes.Count == 0)
         {
             report.AppendLine("没有检测到任何差异：服务器上跑的就是这份构建。");
         }
         else
         {
-            report.AppendLine($"变更 {import.Changes.Count} 项：");
-            foreach (var change in import.Changes.Take(60))
+            report.AppendLine($"变更 {changes.Count} 项：");
+            foreach (var change in changes.Take(60))
             {
                 var size = change.Kind == "removed" ? "-" : FormatSize(change.Bytes);
                 report.AppendLine($"[{change.Kind,-8}] {size,10}  {change.Path}");
             }
 
-            if (import.Changes.Count > 60)
+            if (changes.Count > 60)
             {
-                report.AppendLine($"… 其余 {import.Changes.Count - 60} 项省略");
+                report.AppendLine($"… 其余 {changes.Count - 60} 项省略");
             }
         }
 

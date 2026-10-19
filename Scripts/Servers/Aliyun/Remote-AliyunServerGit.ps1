@@ -95,7 +95,8 @@ function Get-AxProgramInstances {
 function Get-AxProgramRoot {
     param([string]$Key)
     $config = Import-PowerShellDataFile -LiteralPath $ConfigPath
-    $instances = Get-AxProgramInstances -Key $Key
+    # 单实例程序（幻杀/火影）这里会返回单个字符串；不包 @() 后面用索引会取到字符。
+    $instances = @(Get-AxProgramInstances -Key $Key)
     $entry = $config.Servers | Where-Object { $instances -contains [string]$_.Name } | Select-Object -First 1
     if ($null -eq $entry) { throw "no watchdog entry found for program: $Key" }
 
@@ -536,7 +537,7 @@ function Invoke-AxStatus {
 
     $config = Get-AxServerConfig
     $instances = @()
-    foreach ($name in (Get-AxProgramInstances -Key $Key)) {
+    foreach ($name in @(Get-AxProgramInstances -Key $Key)) {
         $entry = Get-AxEntry -Config $config -InstanceName $name
         $processes = Get-AxProcessesForServer -ServerEntry $entry
         $port = [int]$entry.Port
@@ -572,7 +573,9 @@ function Invoke-AxSwitchTo {
 
     $deployedBefore = Get-AxRef -Repo $repo -RefName 'refs/heads/deployed'
     $config = Get-AxServerConfig
-    $instances = Get-AxProgramInstances -Key $Key
+    # 必须 @()：单实例程序返回一个字符串，后面 $instances[$index] 会变成取第一个字符（F），
+    # 健康检查就会报 unknown instance: F。零境有两个实例所以之前没暴露。
+    $instances = @(Get-AxProgramInstances -Key $Key)
     $maintenanceOn = @()
     $report = [ordered]@{
         program          = $Key
@@ -727,7 +730,7 @@ function Invoke-AxRecover {
     $root = Get-AxProgramRoot -Key $Key
     $repo = Get-AxRepoPath -Key $Key
     $config = Get-AxServerConfig
-    $instances = Get-AxProgramInstances -Key $Key
+    $instances = @(Get-AxProgramInstances -Key $Key)
     $deployed = Get-AxRef -Repo $repo -RefName 'refs/heads/deployed'
     if ([string]::IsNullOrWhiteSpace($deployed)) {
         throw "deployed ref not found; initialization is required before recovery: $repo"
