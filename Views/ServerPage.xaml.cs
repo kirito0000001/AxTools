@@ -84,8 +84,19 @@ public sealed partial class ServerPage : UserControl
         BusyRing.IsActive = busy;
         BusyText.Text = message;
         BusyPanel.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+
+        // 动作区盖一层不可点击的遮罩：只设 IsHitTestVisible 时按钮看起来仍可点，
+        // 用户会以为没响应而反复点击。遮罩 + 进度条让“正在处理”一眼可见。
+        ActionBusyRing.IsActive = busy;
+        ActionBusyText.Text = message;
+        ActionBusyProgressBar.IsIndeterminate = true;
+        ActionBusyProgressBar.Value = 0;
+        ActionBusyOverlay.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         ActionPanelHost.IsHitTestVisible = !busy;
-        ActionPanelHost.Opacity = busy ? 0.6 : 1;
+        ActionPanelHost.Opacity = busy ? 0.55 : 1;
+        TargetSelector.IsEnabled = !busy;
+        GamePublishPanelHost.IsHitTestVisible = !busy;
+        GamePublishPanelHost.Opacity = busy ? 0.55 : 1;
         RefreshButton.IsEnabled = !busy;
 
         // 耗时动作同时驱动 AxTools 底部那条全局进度条。
@@ -898,7 +909,8 @@ public sealed partial class ServerPage : UserControl
         string title,
         Func<Task<T>> operation,
         Func<T, bool>? succeeded = null,
-        Func<T, string>? outcome = null)
+        Func<T, string>? outcome = null,
+        string? busyMessage = null)
         where T : class
     {
         if (_isBusy)
@@ -907,7 +919,7 @@ public sealed partial class ServerPage : UserControl
         }
 
         _isBusy = true;
-        SetBusy(true, $"正在执行：{title}…");
+        SetBusy(true, string.IsNullOrWhiteSpace(busyMessage) ? $"正在执行：{title}…" : busyMessage);
         // 脚本会用 ::axtools 报阶段和百分比；不接这条线，进度条就只能停在"正在准备…"。
         var updateService = viewModel.HasUpdateService ? viewModel.UpdateService : null;
         if (updateService is not null)
@@ -960,7 +972,8 @@ public sealed partial class ServerPage : UserControl
     {
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (ViewModel?.GlobalProgress is not { } progress)
+            // 操作结束后可能还有排队的脚本事件；不挡掉会把已经 Hidden 的进度条重新点亮。
+            if (!_isBusy || ViewModel?.GlobalProgress is not { } progress)
             {
                 return;
             }
@@ -968,12 +981,14 @@ public sealed partial class ServerPage : UserControl
             switch (taskEvent.Type)
             {
                 case AxTaskEventType.Progress:
+                    ApplyBusyProgress(taskEvent);
                     progress.Report(new ProgressUpdate(
                         taskEvent.Message ?? "正在执行…",
                         taskEvent.Percent ?? progress.Percent,
                         taskEvent.Detail));
                     break;
                 case AxTaskEventType.Stage:
+                    ApplyBusyProgress(taskEvent);
                     progress.Report(new ProgressUpdate(
                         taskEvent.Message ?? "正在执行…",
                         taskEvent.Percent ?? progress.Percent,
@@ -987,6 +1002,26 @@ public sealed partial class ServerPage : UserControl
                     break;
             }
         });
+    }
+
+    /// <summary>把脚本阶段同步到服务器页里的遮罩进度条和文字。</summary>
+    private void ApplyBusyProgress(AxTaskEvent taskEvent)
+    {
+        if (!string.IsNullOrWhiteSpace(taskEvent.Message))
+        {
+            BusyText.Text = taskEvent.Message;
+            ActionBusyText.Text = taskEvent.Message;
+        }
+
+        if (taskEvent.Percent is { } percent)
+        {
+            ActionBusyProgressBar.IsIndeterminate = false;
+            ActionBusyProgressBar.Value = Math.Clamp(percent, 0, 100);
+        }
+        else
+        {
+            ActionBusyProgressBar.IsIndeterminate = true;
+        }
     }
 
     private async Task ImportBuildAsync(ServerPageViewModel viewModel, ServerProgramProfile profile)
@@ -1013,13 +1048,17 @@ public sealed partial class ServerPage : UserControl
         var import = await RunUpdateOperationAsync(
             viewModel,
             $"{profile.DisplayName} · 导入新构建",
-            () => viewModel.UpdateService.ImportBuildAsync(profile, source, null, CancellationToken.None));
+            () => viewModel.UpdateService.ImportBuildAsync(profile, source, null, CancellationToken.None),
+            busyMessage: "正在导入新构建（只改本机仓库）；完成后会弹出提交确认…");
         if (import is null)
         {
+            await RefreshUpdateSectionAsync(viewModel, profile);
             return;
         }
 
         var report = new StringBuilder();
+        report.AppendLine("导入完成。下面是准备提交到本机 Git 的变更；点「提交」后才会进入推送。");
+        report.AppendLine();
         report.AppendLine($"源目录：{source}");
         report.AppendLine();
         var sync = import.Sync;
@@ -1051,7 +1090,7 @@ public sealed partial class ServerPage : UserControl
         // 差异清单同时写进输出日志：弹窗可以随手关掉，日志留着能回看、能复制
         viewModel.Log?.Write(LogKind.Info, $"{profile.DisplayName} · 导入新构建 差异清单：{Environment.NewLine}{report}");
         var message = await ShowCommitDialogAsync(
-            $"{profile.DisplayName} · 确认导入",
+            $"{profile.DisplayName} · 导入完成，确认提交",
             report.ToString(),
             defaultMessage);
         if (string.IsNullOrWhiteSpace(message))
@@ -1064,9 +1103,11 @@ public sealed partial class ServerPage : UserControl
         var commit = await RunUpdateOperationAsync(
             viewModel,
             $"{profile.DisplayName} · 提交",
-            () => viewModel.UpdateService.CommitAsync(profile, message, null, CancellationToken.None));
+            () => viewModel.UpdateService.CommitAsync(profile, message, null, CancellationToken.None),
+            busyMessage: "正在提交到本机仓库…");
         if (commit is null)
         {
+            await RefreshUpdateSectionAsync(viewModel, profile);
             return;
         }
 
@@ -1095,17 +1136,19 @@ public sealed partial class ServerPage : UserControl
         var status = await RunUpdateOperationAsync(
             viewModel,
             $"{profile.DisplayName} · 推送新版本",
-            () => viewModel.UpdateService.PushAsync(profile, null, CancellationToken.None));
+            () => viewModel.UpdateService.PushAsync(profile, null, CancellationToken.None),
+            busyMessage: "正在推送到服务器；服务端仍在运行，完成后还需要切换最新版本…");
         if (status is null)
         {
+            await RefreshUpdateSectionAsync(viewModel, profile);
             return;
         }
 
         await RefreshUpdateSectionAsync(viewModel, profile);
         await ShowTextAsync(
-            $"{profile.DisplayName} · 推送完成",
+            $"{profile.DisplayName} · 推送完成，下一步：切换最新版本",
             string.Empty,
-            "服务器已收到新版本，服务端仍在运行。确认无误后点「应用并重启」。" + Environment.NewLine +
+            "服务器已收到新版本，服务端仍在运行。确认无误后点「切换最新版本」。" + Environment.NewLine +
             $"本机领先 {status.Ahead} 个提交。");
     }
 
@@ -1120,7 +1163,7 @@ public sealed partial class ServerPage : UserControl
 
         var confirmed = await ShowConfirmAsync(
             $"{profile.DisplayName} · 切换最新版本",
-            "将执行：暂挂看门狗 → 停止服务端 → 切换到最新版本 → 启动 → 健康检查 180 秒 → 恢复看门狗。" +
+            "将执行：暂挂看门狗 → 停止服务端 → 切换到最新版本 → 启动 → 健康检查最长 420 秒（7 分钟） → 恢复看门狗。" +
             Environment.NewLine + Environment.NewLine +
             $"受影响实例：{string.Join("、", profile.InstanceNames)}" +
             Environment.NewLine +
@@ -1138,9 +1181,11 @@ public sealed partial class ServerPage : UserControl
             $"{profile.DisplayName} · 切换最新版本",
             () => viewModel.UpdateService.ApplyAsync(profile, CancellationToken.None),
             succeeded: result => result.Success,
-            outcome: result => result.Describe());
+            outcome: result => result.Describe(),
+            busyMessage: "正在切换版本并重启；健康检查最长 7 分钟，请不要重复操作…");
         if (report is null)
         {
+            await RefreshUpdateSectionAsync(viewModel, profile);
             return;
         }
 
@@ -1176,9 +1221,11 @@ public sealed partial class ServerPage : UserControl
             $"{profile.DisplayName} · 回退上个版本",
             () => viewModel.UpdateService.RollbackAsync(profile, CancellationToken.None),
             succeeded: result => result.Success,
-            outcome: result => result.Describe());
+            outcome: result => result.Describe(),
+            busyMessage: "正在回退版本并重启；健康检查最长 7 分钟，请不要重复操作…");
         if (report is null)
         {
+            await RefreshUpdateSectionAsync(viewModel, profile);
             return;
         }
 
@@ -1192,7 +1239,8 @@ public sealed partial class ServerPage : UserControl
         var preview = await RunUpdateOperationAsync(
             viewModel,
             $"{profile.DisplayName} · 查看待更新内容",
-            () => viewModel.UpdateService.PreviewAsync(profile, null, CancellationToken.None));
+            () => viewModel.UpdateService.PreviewAsync(profile, null, CancellationToken.None),
+            busyMessage: "正在读取本机仓库的提交与差异…");
         if (preview is null)
         {
             return;
