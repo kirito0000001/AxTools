@@ -40,6 +40,17 @@ if ($ProductSegment -notmatch '^[A-Za-z0-9._-]+$') { throw "产品目录名不�
 if ($ReleaseVersion -notmatch '^[0-9]+(\.[0-9]+){1,3}$') { throw "版本号格式不对：$ReleaseVersion（应形如 0.6.0）" }
 if ($PublicBaseUrl -notmatch '^https?://') { throw "PublicBaseUrl 不合法：$PublicBaseUrl" }
 
+# 服务器是公网机器，SSH 常年被扫描/暴力尝试，偶尔会出现连接被拖住、密码提示挂起。
+# 统一加 BatchMode（绝不等待交互输入）+ 连接/握手超时 + 保活，避免整个发布任务无限挂起。
+$script:SshConnectionOptions = @(
+    '-o', 'BatchMode=yes',
+    '-o', 'ConnectTimeout=15',
+    '-o', 'ConnectionAttempts=3',
+    '-o', 'ServerAliveInterval=10',
+    '-o', 'ServerAliveCountMax=3'
+)
+$script:NetworkAttempts = 3
+
 function Assert-NotCancelled {
     if (Test-AxTaskCancellation) {
         throw [OperationCanceledException]::new('用户已停止碎片发布。')
@@ -57,21 +68,36 @@ function Format-Bytes {
 function Invoke-Ssh {
     param([Parameter(Mandatory)][string]$Command)
 
-    $previous = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        $output = & ssh $FileSyncTarget $Command 2>&1
-        $code = $LASTEXITCODE
-    }
-    finally {
-        $ErrorActionPreference = $previous
+    $attempts = $script:NetworkAttempts
+    $sshOptions = $script:SshConnectionOptions
+    $lastError = $null
+    for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+        Assert-NotCancelled
+        $previous = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $output = & ssh @sshOptions $FileSyncTarget $Command 2>&1
+            $code = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previous
+        }
+
+        $lines = @($output | ForEach-Object { [string]$_ })
+        if ($code -eq 0) {
+            return $lines
+        }
+
+        $lastError = "服务端命令失败（退出码 {0}）：{1}`n{2}" -f `
+            $code, $Command, (($lines | Out-String).Trim())
+        if ($attempt -lt $attempts) {
+            Write-Output ("SSH 失败，{0} 秒后重试（{1}/{2}）：{3}" -f `
+                (2 * $attempt), $attempt, $attempts, $Command)
+            Start-Sleep -Seconds (2 * $attempt)
+        }
     }
 
-    $lines = @($output | ForEach-Object { [string]$_ })
-    if ($code -ne 0) {
-        throw ("服务端命令失败（退出码 {0}）：{1}`n{2}" -f $code, $Command, (($lines | Out-String).Trim()))
-    }
-    return $lines
+    throw $lastError
 }
 
 function Invoke-SftpBatch {
@@ -80,23 +106,39 @@ function Invoke-SftpBatch {
         [string]$Detail = ''
     )
 
+    $attempts = $script:NetworkAttempts
+    $sshOptions = $script:SshConnectionOptions
     $batchFile = Join-Path ([IO.Path]::GetTempPath()) ("axtools-fragments-sftp-" + [guid]::NewGuid().ToString('N') + ".txt")
     [IO.File]::WriteAllText($batchFile, ($Commands -join "`n"), [Text.UTF8Encoding]::new($false))
+    $shown = if ([string]::IsNullOrWhiteSpace($Detail)) { 'sftp' } else { $Detail }
     try {
-        $previous = $ErrorActionPreference
-        $ErrorActionPreference = 'Continue'
-        try {
-            $output = & sftp -q -b $batchFile $FileSyncTarget 2>&1
-            $code = $LASTEXITCODE
-        }
-        finally {
-            $ErrorActionPreference = $previous
+        $lastError = $null
+        for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+            Assert-NotCancelled
+            $previous = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            try {
+                $output = & sftp -q @sshOptions -b $batchFile $FileSyncTarget 2>&1
+                $code = $LASTEXITCODE
+            }
+            finally {
+                $ErrorActionPreference = $previous
+            }
+
+            if ($code -eq 0) {
+                return
+            }
+
+            $lastError = "sftp 失败（退出码 {0}）：{1}`n{2}" -f `
+                $code, $shown, (($output | ForEach-Object { [string]$_ } | Out-String).Trim())
+            if ($attempt -lt $attempts) {
+                Write-Output ("SFTP 失败，{0} 秒后重试（{1}/{2}）：{3}" -f `
+                    (2 * $attempt), $attempt, $attempts, $shown)
+                Start-Sleep -Seconds (2 * $attempt)
+            }
         }
 
-        if ($code -ne 0) {
-            $shown = if ([string]::IsNullOrWhiteSpace($Detail)) { 'sftp' } else { $Detail }
-            throw ("sftp 失败（退出码 {0}）：{1}`n{2}" -f $code, $shown, (($output | ForEach-Object { [string]$_ } | Out-String).Trim()))
-        }
+        throw $lastError
     }
     finally {
         Remove-Item -LiteralPath $batchFile -Force -ErrorAction SilentlyContinue
@@ -330,9 +372,26 @@ try {
     if (-not $SkipVerify) {
         Assert-NotCancelled
         Write-AxTaskProgress -Stage 'verify' -Percent 95 -Message '正在校验公网碎片清单'
-        $cacheBuster = [DateTimeOffset]::Now.ToUnixTimeSeconds()
-        $response = Invoke-WebRequest -Uri "${publicFragmentsUrl}?t=$cacheBuster" -UseBasicParsing -TimeoutSec 30
-        $online = $response.Content | ConvertFrom-Json
+        $online = $null
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            Assert-NotCancelled
+            try {
+                $cacheBuster = [DateTimeOffset]::Now.ToUnixTimeSeconds() + $attempt
+                $response = Invoke-WebRequest -Uri "${publicFragmentsUrl}?t=$cacheBuster" -UseBasicParsing -TimeoutSec 30
+                $online = $response.Content | ConvertFrom-Json
+                break
+            }
+            catch {
+                if ($attempt -ge 3) {
+                    throw
+                }
+
+                Write-Output ("公网校验失败，{0} 秒后重试（{1}/3）：{2}" -f `
+                    (2 * $attempt), $attempt, $_.Exception.Message)
+                Start-Sleep -Seconds (2 * $attempt)
+            }
+        }
+
         if ([string]$online.version -ne $ReleaseVersion) {
             throw "公网 fragments.json 版本不符：$($online.version)"
         }
