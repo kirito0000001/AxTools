@@ -42,6 +42,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
         _paths = paths;
         _gamePublishPaths = gamePublishPaths;
         _fragmentGameOptions = fragmentGameOptions ?? Array.Empty<FragmentGameOption>();
+        _selectedFragmentGame = _fragmentGameOptions.Count > 0 ? _fragmentGameOptions[0] : null;
         _adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
         _isRunnerAvailable = isRunnerAvailable;
         _publishedVersionService = publishedVersionService ?? new PublishedVersionService(
