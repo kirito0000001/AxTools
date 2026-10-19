@@ -71,6 +71,18 @@ public sealed class ApplicationViewModel : ObservableObject
             gamePublishPathsByToolKey[profile.AndroidToolKey] = gamePaths;
         }
 
+        // TFAC 页的「碎片制作」用下拉切换 PC 游戏，所以这里把零境/幻杀的游戏包路径都给它；
+        // 其它页不显示下拉，仍只拿自己那一条。
+        var fragmentGameOptions = GameProfileCatalog.All
+            .Select(profile =>
+            {
+                var gameDescriptor = ManagedToolCatalog.All.Single(item => item.Key == profile.GameToolKey);
+                return new FragmentGameOption(
+                    profile,
+                    settings.ManagedTools[gameDescriptor.StableKey]);
+            })
+            .ToArray();
+
         Tools = ManagedToolCatalog.All
             .Select(descriptor => new ToolPageViewModel(
                 descriptor,
@@ -83,7 +95,10 @@ public sealed class ApplicationViewModel : ObservableObject
                 isRunnerAvailable: TaskRunner is not null,
                 publishedVersionService: publishedVersionService,
                 gamePublishState: gamePublishStates.GetValueOrDefault(descriptor.Key),
-                gamePublishPaths: gamePublishPathsByToolKey.GetValueOrDefault(descriptor.Key)))
+                gamePublishPaths: gamePublishPathsByToolKey.GetValueOrDefault(descriptor.Key),
+                fragmentGameOptions: descriptor.Key == ManagedToolKey.CrossingVoidPc
+                    ? fragmentGameOptions
+                    : null))
             .ToArray();
         CrossingVoidPackage = new CrossingVoidPackageViewModel(
             settings.CrossingVoidPackage,

@@ -352,6 +352,14 @@
 
                 <Border x:Name="FragmentPanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="18">
                     <StackPanel x:Name="FragmentGenerationSection" Spacing="12">
+                        <ComboBox
+                            x:Name="FragmentGameSelector"
+                            Header="游戏"
+                            HorizontalAlignment="Stretch"
+                            ItemsSource="{Binding FragmentGameOptions}"
+                            SelectedItem="{Binding SelectedFragmentGame, Mode=TwoWay}"
+                            DisplayMemberPath="DisplayName"
+                            Visibility="{Binding HasFragmentGameSelection, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         <TextBlock
                             Text="{Binding FragmentGenerationDescription}"
                             Style="{StaticResource SubtleTextStyle}"

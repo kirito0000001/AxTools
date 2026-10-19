@@ -28,7 +28,7 @@ public sealed partial class MainWindow
         {
             "CrossingVoidGame" or "FantasyGame" or "NarutoGame" => "ServerAliyun",
             "FantasyTools" or "GalExcleTools" or "CrossingVoidZDTool" or "CrossingVoidPc" or
-                "CrossingVoidAndroid" or "FantasyProjectPc" or "FantasyAndroid" or "ServerAliyun" or "Settings" => tag,
+                "CrossingVoidAndroid" or "FantasyAndroid" or "ServerAliyun" or "Settings" => tag,
             _ => "AxTools"
         };
         FrameworkElement visiblePage = normalizedTag switch
@@ -38,7 +38,6 @@ public sealed partial class MainWindow
             "CrossingVoidZDTool" => CrossingVoidZDToolPage,
             "CrossingVoidPc" => CrossingVoidPcPage,
             "CrossingVoidAndroid" => CrossingVoidAndroidPage,
-            "FantasyProjectPc" => FantasyProjectPcPage,
             "FantasyAndroid" => FantasyAndroidPage,
             "ServerAliyun" => ServerAliyunPage,
             "Settings" => GlobalSettingsPage,
@@ -51,7 +50,6 @@ public sealed partial class MainWindow
         CrossingVoidZDToolPage.Visibility = visiblePage == CrossingVoidZDToolPage ? Visibility.Visible : Visibility.Collapsed;
         CrossingVoidPcPage.Visibility = visiblePage == CrossingVoidPcPage ? Visibility.Visible : Visibility.Collapsed;
         CrossingVoidAndroidPage.Visibility = visiblePage == CrossingVoidAndroidPage ? Visibility.Visible : Visibility.Collapsed;
-        FantasyProjectPcPage.Visibility = visiblePage == FantasyProjectPcPage ? Visibility.Visible : Visibility.Collapsed;
         FantasyAndroidPage.Visibility = visiblePage == FantasyAndroidPage ? Visibility.Visible : Visibility.Collapsed;
         ServerAliyunPage.Visibility = visiblePage == ServerAliyunPage ? Visibility.Visible : Visibility.Collapsed;
         GlobalSettingsPage.Visibility = visiblePage == GlobalSettingsPage ? Visibility.Visible : Visibility.Collapsed;
@@ -73,7 +71,6 @@ public sealed partial class MainWindow
             "CrossingVoidZDTool" => CrossingVoidZDToolNavItem,
             "CrossingVoidPc" => CrossingVoidPcNavItem,
             "CrossingVoidAndroid" => CrossingVoidAndroidNavItem,
-            "FantasyProjectPc" => FantasyProjectPcNavItem,
             "FantasyAndroid" => FantasyAndroidNavItem,
             "ServerAliyun" => ServerAliyunNavItem,
             "Settings" => SettingsNavItem,

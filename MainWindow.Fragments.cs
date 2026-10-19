@@ -34,11 +34,9 @@ public sealed partial class MainWindow
     {
         CrossingVoidPcPage.FragmentGenerationRequested += ToolPage_FragmentGenerationRequested;
         CrossingVoidAndroidPage.FragmentGenerationRequested += ToolPage_FragmentGenerationRequested;
-        FantasyProjectPcPage.FragmentGenerationRequested += ToolPage_FragmentGenerationRequested;
         FantasyAndroidPage.FragmentGenerationRequested += ToolPage_FragmentGenerationRequested;
         CrossingVoidPcPage.FragmentPathSelectionRequested += ToolPage_FragmentPathSelectionRequested;
         CrossingVoidAndroidPage.FragmentPathSelectionRequested += ToolPage_FragmentPathSelectionRequested;
-        FantasyProjectPcPage.FragmentPathSelectionRequested += ToolPage_FragmentPathSelectionRequested;
         FantasyAndroidPage.FragmentPathSelectionRequested += ToolPage_FragmentPathSelectionRequested;
 
         // 《发布碎片清单》是另一条链路（PowerShell + sftp），接线和实现都在 MainWindow.FragmentManifestPublish.cs。
@@ -78,14 +76,14 @@ public sealed partial class MainWindow
             return;
         }
 
-        var profile = GameProfileCatalog.FindByToolKey(viewModel.Descriptor.Key);
+        var profile = viewModel.ActiveFragmentProfile;
         if (profile is null)
         {
             return;
         }
 
         var actionText = viewModel.FragmentGenerationActionText;
-        var isAndroid = viewModel.Descriptor.Key == profile.AndroidToolKey;
+        var isAndroid = viewModel.FragmentPlatformLabel == "安卓";
         var archiveNamePrefix = viewModel.FragmentArchiveNamePrefix;
         var gameVersion = viewModel.FragmentGameVersion;
         var gameDirectory = viewModel.FragmentGameDirectory;

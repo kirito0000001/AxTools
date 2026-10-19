@@ -487,34 +487,47 @@ public sealed class ToolPageViewModelTests : IDisposable
     }
 
     [Fact]
-    public void FantasyPages_ExposeTheSameFragmentTabWithTheirOwnProfile()
+    public void TfacFragmentTab_CanSwitchBetweenZeroAndFantasyPc()
     {
-        var fantasyGamePaths = new ManagedToolPaths
+        var zeroPaths = new ManagedToolPaths
+        {
+            GamePublishVersion = "0.6.0",
+            GamePackageRoot = @"F:\DaBaoV\Crossingvoid\Windows",
+            GamePackageRootAndroid = @"F:\DaBaoV\Crossingvoid\Android"
+        };
+        var fantasyPaths = new ManagedToolPaths
         {
             GamePublishVersion = "0.1.0",
             GamePackageRoot = @"F:\DaBaoV\Fantasy\Windows",
             GamePackageRootAndroid = @"F:\DaBaoV\Fantasy\Android"
         };
-        var pc = new ToolPageViewModel(
-            GetDescriptor(ManagedToolKey.FantasyProjectPc),
+        var options = new[]
+        {
+            new FragmentGameOption(GameProfileCatalog.CrossingVoid, zeroPaths),
+            new FragmentGameOption(GameProfileCatalog.Fantasy, fantasyPaths)
+        };
+        var viewModel = new ToolPageViewModel(
+            GetDescriptor(ManagedToolKey.CrossingVoidPc),
             new ManagedToolPaths(),
-            new FantasyProjectPcAdapter(Path.Combine(_root, "Scripts")),
-            gamePublishPaths: fantasyGamePaths);
-        var android = new ToolPageViewModel(
-            GetDescriptor(ManagedToolKey.FantasyAndroid),
-            new ManagedToolPaths(),
-            new FantasyAndroidAdapter(Path.Combine(_root, "Scripts")),
-            gamePublishPaths: fantasyGamePaths);
+            new CrossingVoidPcAdapter(Path.Combine(_root, "Scripts")),
+            gamePublishPaths: zeroPaths,
+            fragmentGameOptions: options);
 
-        Assert.True(pc.HasFragmentGeneration);
-        Assert.True(android.HasFragmentGeneration);
-        Assert.Equal("fantasyproject", pc.FragmentProductSegment);
-        Assert.Equal("fantasyproject-android", android.FragmentProductSegment);
-        Assert.Equal("幻杀V0.1PC", pc.FragmentArchiveNamePrefix);
-        Assert.Equal("幻杀V0.1安卓", android.FragmentArchiveNamePrefix);
-        Assert.Equal("幻杀碎片生成", pc.FragmentGenerationActionText);
-        Assert.Equal(@"F:\DaBaoV\Fantasy\Windows", pc.FragmentGameDirectory);
-        Assert.Equal(@"F:\DaBaoV\Fantasy\Android", android.FragmentGameDirectory);
+        Assert.True(viewModel.HasFragmentGeneration);
+        Assert.True(viewModel.HasFragmentGameSelection);
+        Assert.Same(options[0], viewModel.SelectedFragmentGame);
+        Assert.Equal("crossingvoid", viewModel.FragmentProductSegment);
+        Assert.Equal("零境V0.6PC", viewModel.FragmentArchiveNamePrefix);
+        Assert.Equal(@"F:\DaBaoV\Crossingvoid\Windows", viewModel.FragmentGameDirectory);
+        Assert.Equal("零境碎片生成", viewModel.FragmentGenerationActionText);
+
+        viewModel.SelectedFragmentGame = options[1];
+
+        Assert.Same(options[1], viewModel.SelectedFragmentGame);
+        Assert.Equal("fantasyproject", viewModel.FragmentProductSegment);
+        Assert.Equal("幻杀V0.1PC", viewModel.FragmentArchiveNamePrefix);
+        Assert.Equal(@"F:\DaBaoV\Fantasy\Windows", viewModel.FragmentGameDirectory);
+        Assert.Equal("幻杀碎片生成", viewModel.FragmentGenerationActionText);
     }
 
     [Fact]

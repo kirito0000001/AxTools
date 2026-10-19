@@ -10,6 +10,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
 {
     private readonly ManagedToolPaths _paths;
     private readonly ManagedToolPaths? _gamePublishPaths;
+    private readonly IReadOnlyList<FragmentGameOption> _fragmentGameOptions;
     private readonly IManagedToolAdapter _adapter;
     private readonly bool _isRunnerAvailable;
     private readonly Func<bool> _pendingPackageAvailable;
@@ -34,11 +35,13 @@ public sealed partial class ToolPageViewModel : ObservableObject
         Func<bool>? pendingPackageAvailable = null,
         PublishedVersionService? publishedVersionService = null,
         CrossingVoidGamePublishState? gamePublishState = null,
-        ManagedToolPaths? gamePublishPaths = null)
+        ManagedToolPaths? gamePublishPaths = null,
+        IReadOnlyList<FragmentGameOption>? fragmentGameOptions = null)
     {
         Descriptor = descriptor;
         _paths = paths;
         _gamePublishPaths = gamePublishPaths;
+        _fragmentGameOptions = fragmentGameOptions ?? Array.Empty<FragmentGameOption>();
         _adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
         _isRunnerAvailable = isRunnerAvailable;
         _publishedVersionService = publishedVersionService ?? new PublishedVersionService(

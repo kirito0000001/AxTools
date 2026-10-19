@@ -15,14 +15,51 @@ public sealed partial class ToolPageViewModel
     private bool _isFragmentRunning;
     private bool _isFragmentPreparing;
     private string _fragmentLastResultText = "尚未生成碎片。";
+    private FragmentGameOption? _selectedFragmentGame;
 
     // ==================== 《生成碎片》 ====================
     //
     // 「碎片制作」是 ToolPage 里的独立页签；支持哪些页面由 GameProfileCatalog 决定。
-    // 现在零境 PC/安卓、幻杀 PC/安卓各一条；以后火影接上 profile 后自动出现。
+    // 零境 PC / 幻杀 PC 共用 TFAC 页面，用下拉切换游戏；安卓页各自只有一个游戏，不显示下拉。
 
-    /// <summary>当前页对应的游戏档案；非碎片页返回 null。</summary>
-    private GameProfile? FragmentProfile => GameProfileCatalog.FindByToolKey(Descriptor.Key);
+    /// <summary>TFAC 页面可选的 PC 游戏；安卓/其它页面为空。</summary>
+    public IReadOnlyList<FragmentGameOption> FragmentGameOptions => _fragmentGameOptions;
+
+    public bool HasFragmentGameSelection => _fragmentGameOptions.Count > 0;
+
+    /// <summary>TFAC 碎片制作里当前选中的游戏。默认第一项（零境）。</summary>
+    public FragmentGameOption? SelectedFragmentGame
+    {
+        get => _selectedFragmentGame ?? _fragmentGameOptions.FirstOrDefault();
+        set
+        {
+            if (value is not null && !_fragmentGameOptions.Contains(value))
+            {
+                return;
+            }
+
+            if (SetProperty(ref _selectedFragmentGame, value))
+            {
+                OnPropertyChanged(nameof(ActiveFragmentProfile));
+                RefreshFragmentBindings();
+            }
+        }
+    }
+
+    /// <summary>当前页/当前选中游戏对应的游戏档案；MainWindow 生成碎片时用它取标记名/旁车名。</summary>
+    public GameProfile? ActiveFragmentProfile => FragmentProfile;
+
+    /// <summary>当前游戏档案；非碎片页返回 null。</summary>
+    private GameProfile? FragmentProfile =>
+        SelectedFragmentGame?.Profile ?? GameProfileCatalog.FindByToolKey(Descriptor.Key);
+
+    /// <summary>当前选中游戏的发布路径（版本、渠道、PC/安卓包目录）。</summary>
+    private ManagedToolPaths? FragmentGamePaths =>
+        SelectedFragmentGame?.Paths ?? _gamePublishPaths;
+
+    /// <summary>碎片输出目录存在哪份设置：有下拉时按选中的游戏各存各的，否则仍用当前页。</summary>
+    private ManagedToolPaths FragmentOutputPaths =>
+        SelectedFragmentGame?.Paths ?? _paths;
 
     /// <summary>这个工具页有没有《生成碎片》。</summary>
     public bool HasFragmentGeneration => FragmentProfile is not null;
@@ -42,7 +79,7 @@ public sealed partial class ToolPageViewModel
     /// （发布脚本只认这两个值；test 的 productKey 还会多一个 <c>-test</c> 后缀）。
     /// </summary>
     public string FragmentChannel =>
-        CrossingVoidVersionMarker.NormalizeChannel(_gamePublishPaths?.GamePublishChannel);
+        CrossingVoidVersionMarker.NormalizeChannel(FragmentGamePaths?.GamePublishChannel);
 
     /// <summary>安卓旁车里的 productKey；PC 用不到，但保持同一份口径。</summary>
     public string FragmentProductKey => FragmentProfile is null
@@ -60,7 +97,7 @@ public sealed partial class ToolPageViewModel
     /// 不是启动器自己的 <c>PublishVersion</c>（那是启动器版本，和游戏版本不是一回事）。
     /// </summary>
     public string FragmentGameVersion =>
-        _gamePublishPaths?.GamePublishVersion?.Trim() ?? string.Empty;
+        FragmentGamePaths?.GamePublishVersion?.Trim() ?? string.Empty;
 
     /// <summary>
     /// 基础碎片的名字前缀，例如 <c>零境V0.6PC</c> / <c>幻杀V0.1安卓</c>
@@ -87,11 +124,11 @@ public sealed partial class ToolPageViewModel
     /// 启动器页本来都不显示"游戏包发布"那一区，所以这份引用是注入进来的：
     /// PC 页读 PC 那份、安卓页读安卓那份，用户在服务器那边选过一次，两边就一直是同一个源。
     /// </summary>
-    public string FragmentGameDirectory => _gamePublishPaths is null
+    public string FragmentGameDirectory => FragmentGamePaths is null
         ? string.Empty
         : IsAndroidFragmentPage
-            ? _gamePublishPaths.GamePackageRootAndroid
-            : _gamePublishPaths.GamePackageRoot;
+            ? FragmentGamePaths.GamePackageRootAndroid
+            : FragmentGamePaths.GamePackageRoot;
 
     public string FragmentSourceText => string.IsNullOrWhiteSpace(FragmentGameDirectory)
         ? $"还没有游戏包目录 —— 先到「服务器 → {FragmentProfile?.DisplayName ?? "零境交错"}」的游戏包发布里选一次。"
@@ -99,16 +136,21 @@ public sealed partial class ToolPageViewModel
 
     public string FragmentOutputDirectory
     {
-        get => string.IsNullOrWhiteSpace(_paths.FragmentOutputDirectory)
-            ? DefaultFragmentOutputDirectory()
-            : _paths.FragmentOutputDirectory;
+        get
+        {
+            var paths = FragmentOutputPaths;
+            return string.IsNullOrWhiteSpace(paths.FragmentOutputDirectory)
+                ? DefaultFragmentOutputDirectory()
+                : paths.FragmentOutputDirectory;
+        }
         set
         {
+            var paths = FragmentOutputPaths;
             var normalized = value?.Trim() ?? string.Empty;
             if (SetProperty(
-                _paths.FragmentOutputDirectory,
+                paths.FragmentOutputDirectory,
                 normalized,
-                _paths,
+                paths,
                 static (model, newValue) => model.FragmentOutputDirectory = newValue))
             {
                 OnPropertyChanged(nameof(CanGenerateFragments));
@@ -246,6 +288,7 @@ public sealed partial class ToolPageViewModel
     /// <summary>游戏包目录在别处（服务器页）被选过之后，把这一块跟着刷新一下。</summary>
     public void RefreshFragmentBindings()
     {
+        OnPropertyChanged(nameof(ActiveFragmentProfile));
         OnPropertyChanged(nameof(FragmentGameDirectory));
         OnPropertyChanged(nameof(FragmentSourceText));
         OnPropertyChanged(nameof(FragmentOutputDirectory));

@@ -21,7 +21,6 @@ public sealed partial class MainWindow
         // 所有支持碎片的页面共用同一个脚本，靠 -ProductSegment / -GameShortName 区分零境/幻杀、PC/安卓。
         CrossingVoidPcPage.FragmentManifestPublishRequested += ToolPage_FragmentManifestPublishRequested;
         CrossingVoidAndroidPage.FragmentManifestPublishRequested += ToolPage_FragmentManifestPublishRequested;
-        FantasyProjectPcPage.FragmentManifestPublishRequested += ToolPage_FragmentManifestPublishRequested;
         FantasyAndroidPage.FragmentManifestPublishRequested += ToolPage_FragmentManifestPublishRequested;
     }
 
