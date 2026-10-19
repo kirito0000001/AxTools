@@ -21,6 +21,7 @@ public static class ServerProgramCatalog
             "零境交错",
             "零境交错",
             "crossingvoid",
+            "CrossingVoidServer.exe",
             ["CrossingVoid-Login", "CrossingVoid-Main"],
             "登录大厅与主界面大厅共用同一份目录，更新或回退会一起重启。"),
         new ServerProgramProfile(
@@ -28,6 +29,7 @@ public static class ServerProgramCatalog
             "火影BP",
             "火影BP",
             "narutobp",
+            "NarutoBPServer.exe",
             ["NarutoBP"],
             "玩家创建的房间是同名进程派生的实例，切换时会一起结束。"),
         new ServerProgramProfile(
@@ -35,6 +37,7 @@ public static class ServerProgramCatalog
             "幻杀",
             "幻杀",
             "fantasyproject",
+            "FantasyProjectServer.exe",
             ["FantasyProject"],
             "玩家创建的房间是同名进程派生的实例，切换时会一起结束。")
     ];

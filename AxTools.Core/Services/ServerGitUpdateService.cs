@@ -85,6 +85,17 @@ public sealed class ServerGitUpdateService(
             timeoutSeconds: 600,
             cancellationToken);
 
+    /// <summary>把服务器从“停着 / 卡在维护模式”救回来（对齐 deployed → 启动 → 健康检查）。</summary>
+    public async Task<ServerGitSwitchReport> RecoverAsync(
+        ServerProgramProfile profile,
+        CancellationToken cancellationToken) =>
+        await RunRemoteAsync<ServerGitSwitchReport>(
+            "recover",
+            profile,
+            commitMessage: string.Empty,
+            timeoutSeconds: 600,
+            cancellationToken);
+
     public async Task<ServerGitLocalStatus> ReadLocalStatusAsync(
         ServerProgramProfile profile,
         string? localRoot,
@@ -207,6 +218,7 @@ public sealed class ServerGitUpdateService(
         "bootstrap" => "初始化仓库",
         "apply" => "切换最新版本",
         "rollback" => "回退上个版本",
+        "recover" => "恢复服务端",
         "import" => "导入新构建",
         "commit" => "提交",
         "push" => "推送",
@@ -363,7 +375,12 @@ public sealed class ServerGitSwitchReport
 
     public string Describe()
     {
-        var verb = Action == "rollback" ? "回退" : "应用";
+        var verb = Action switch
+        {
+            "rollback" => "回退",
+            "recover" => "恢复",
+            _ => "应用"
+        };
         var target = Target?.Describe() ?? "未知版本";
         if (!Success)
         {

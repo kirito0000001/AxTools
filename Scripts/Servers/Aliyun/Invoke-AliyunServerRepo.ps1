@@ -340,12 +340,37 @@ function Invoke-AxLocalAction {
                     -Percent 2 `
                     -Message '正在推送到服务器裸仓库…' `
                     -Detail '这一步只更新服务器上的仓库，不会重启服务端；上传量取决于这次改了多少文件。'
-                $pushExitCode = Invoke-AxGitWithProgress `
-                    -Arguments @('-C', $LocalRepoPath, 'push', '--progress', 'origin', 'HEAD:main') `
-                    -Stage 'push' `
-                    -PercentFrom 2 `
-                    -PercentTo 92 `
-                    -Message '正在上传到服务器：'
+                $previousSshCommand = $env:GIT_SSH_COMMAND
+                try {
+                    # 网络抖动时 git push 容易以 128 直接退出；加 keepalive，并给一次自动重试。
+                    $env:GIT_SSH_COMMAND = 'ssh -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3'
+                    $pushExitCode = 1
+                    for ($attempt = 1; $attempt -le 2; $attempt++) {
+                        $pushExitCode = Invoke-AxGitWithProgress `
+                            -Arguments @('-C', $LocalRepoPath, 'push', '--progress', 'origin', 'HEAD:main') `
+                            -Stage 'push' `
+                            -PercentFrom 2 `
+                            -PercentTo 92 `
+                            -Message '正在上传到服务器：'
+                        if ($pushExitCode -eq 0) { break }
+                        if ($attempt -lt 2) {
+                            Write-AxTaskProgress `
+                                -Stage 'push' `
+                                -Percent 5 `
+                                -Message '推送失败，3 秒后自动重试一次…' `
+                                -Detail "git push 退出码 $pushExitCode"
+                            Start-Sleep -Seconds 3
+                        }
+                    }
+                }
+                finally {
+                    if ($null -eq $previousSshCommand) {
+                        Remove-Item Env:GIT_SSH_COMMAND -ErrorAction SilentlyContinue
+                    }
+                    else {
+                        $env:GIT_SSH_COMMAND = $previousSshCommand
+                    }
+                }
                 if ($pushExitCode -ne 0) {
                     throw "推送失败，退出码 $pushExitCode（具体报错见上面的输出）。"
                 }

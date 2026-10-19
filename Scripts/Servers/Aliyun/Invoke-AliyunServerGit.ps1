@@ -154,6 +154,8 @@ $remoteCommand = "powershell -NoProfile -EncodedCommand $encoded"
 $run = Invoke-AxRemoteProcess -ExecutableName 'ssh.exe' -Arguments @(
     '-o', 'BatchMode=yes',
     '-o', 'ConnectTimeout=15',
+    '-o', 'ServerAliveInterval=10',
+    '-o', 'ServerAliveCountMax=3',
     $SshTarget,
     $remoteCommand
 ) -TimeoutMilliseconds (($TimeoutSeconds + 30) * 1000)

@@ -6,6 +6,7 @@ public sealed record ServerProgramProfile(
     string DisplayName,
     string LocalFolderName,
     string RepositoryName,
+    string ServerExecutableName,
     IReadOnlyList<string> InstanceNames,
     string UpdateNote)
 {

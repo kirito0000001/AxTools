@@ -490,6 +490,11 @@ public sealed partial class ServerPage : UserControl
             "\uE7A7",
             () => RollbackAsync(viewModel, profile),
             isEnabled: state.CanRollback));
+        buttons.Children.Add(CreateActionButton(
+            "恢复服务端",
+            "\uE777",
+            () => RecoverAsync(viewModel, profile),
+            isEnabled: state.Remote is { Initialized: true }));
         buttons.Children.Add(CreateActionButton("查看待更新内容", "\uE8A5", () => PreviewAsync(viewModel, profile)));
         host.Children.Add(buttons);
 
@@ -903,6 +908,29 @@ public sealed partial class ServerPage : UserControl
         return folder?.Path;
     }
 
+    /// <summary>导入前先确认是服务端构建，避免把客户端目录当作服务端镜像进 Git。</summary>
+    private static bool IsValidServerBuildDirectory(string source, ServerProgramProfile profile)
+    {
+        try
+        {
+            var root = Path.GetFullPath(source).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var localRepo = Path.GetFullPath(ServerProgramCatalog.GetLocalRepoPath(profile))
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (string.Equals(root, localRepo, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return Directory.Exists(Path.Combine(root, "Engine")) &&
+                File.Exists(Path.Combine(root, profile.ServerExecutableName));
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>耗时动作统一走这里：显示进度、锁住动作区、写日志、失败弹详情。</summary>
     private async Task<T?> RunUpdateOperationAsync<T>(
         ServerPageViewModel viewModel,
@@ -1034,6 +1062,7 @@ public sealed partial class ServerPage : UserControl
         // 记住过、而且目录还在 → 直接用（省一次翻目录）；否则弹文件夹选择。
         // 想换目录：点卡片上那行「导入目录：…（点这里更换）」。
         var source = viewModel.GetImportSource(profile.Key);
+        var rememberSource = false;
         if (string.IsNullOrWhiteSpace(source) || !Directory.Exists(source))
         {
             source = await PickFolderAsync();
@@ -1042,6 +1071,22 @@ public sealed partial class ServerPage : UserControl
                 return;
             }
 
+            rememberSource = true;
+        }
+
+        if (!IsValidServerBuildDirectory(source, profile))
+        {
+            await ShowTextAsync(
+                $"{profile.DisplayName} · 源目录不像服务端构建",
+                string.Empty,
+                $"选中的目录：{source}{Environment.NewLine}{Environment.NewLine}" +
+                $"这里看不到 {profile.ServerExecutableName} 或 Engine\\ 目录。" +
+                $"{Environment.NewLine}请选择 WindowsServer 构建目录，而不是客户端或空目录。");
+            return;
+        }
+
+        if (rememberSource)
+        {
             await viewModel.RememberImportSourceAsync(profile.Key, source, CancellationToken.None);
         }
 
@@ -1165,6 +1210,10 @@ public sealed partial class ServerPage : UserControl
             $"{profile.DisplayName} · 切换最新版本",
             "将执行：暂挂看门狗 → 停止服务端 → 切换到最新版本 → 启动 → 健康检查最长 420 秒（7 分钟） → 恢复看门狗。" +
             Environment.NewLine + Environment.NewLine +
+            $"目标版本：{viewModel.GetUpdateState(profile.Key)?.Remote?.Main?.Describe() ?? "最新版本"}" +
+            Environment.NewLine +
+            $"当前版本：{viewModel.GetUpdateState(profile.Key)?.Remote?.Deployed?.Describe() ?? "未知"}" +
+            Environment.NewLine + Environment.NewLine +
             $"受影响实例：{string.Join("、", profile.InstanceNames)}" +
             Environment.NewLine +
             "切换期间玩家会掉线（玩家创建的房间也会一起结束）。" +
@@ -1205,6 +1254,10 @@ public sealed partial class ServerPage : UserControl
             $"{profile.DisplayName} · 回退上个版本",
             "将把服务器切回上一个版本，流程与更新相同：暂挂看门狗 → 停服 → 切换 → 启动 → 健康检查。" +
             Environment.NewLine + Environment.NewLine +
+            $"目标版本：{viewModel.GetUpdateState(profile.Key)?.Remote?.Previous?.Describe() ?? "上一个版本"}" +
+            Environment.NewLine +
+            $"当前版本：{viewModel.GetUpdateState(profile.Key)?.Remote?.Deployed?.Describe() ?? "未知"}" +
+            Environment.NewLine + Environment.NewLine +
             $"受影响实例：{string.Join("、", profile.InstanceNames)}" +
             Environment.NewLine +
             "最新版本不会被删除，仍然留在服务器上，随时可以再切回去。" +
@@ -1232,6 +1285,49 @@ public sealed partial class ServerPage : UserControl
         await RefreshUpdateSectionAsync(viewModel, profile);
         await RefreshAsync();
         await ShowTextAsync($"{profile.DisplayName} · 回退结果", string.Empty, report.Describe());
+    }
+
+    private async Task RecoverAsync(ServerPageViewModel viewModel, ServerProgramProfile profile)
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        var state = viewModel.GetUpdateState(profile.Key);
+        var confirmed = await ShowConfirmAsync(
+            $"{profile.DisplayName} · 恢复服务端",
+            "用于切换失败、服务端停在维护模式或进程没起来的情况。" +
+            Environment.NewLine + Environment.NewLine +
+            "将强制对齐到当前 deployed 版本，重新启动并做健康检查，成功后解除维护模式；不会切到最新版本。" +
+            Environment.NewLine + Environment.NewLine +
+            $"目标版本：{state?.Remote?.Deployed?.Describe() ?? "当前部署版本"}" +
+            Environment.NewLine +
+            $"受影响实例：{string.Join("、", profile.InstanceNames)}" +
+            Environment.NewLine +
+            "恢复期间玩家会掉线。确定继续吗？",
+            "开始恢复");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var report = await RunUpdateOperationAsync(
+            viewModel,
+            $"{profile.DisplayName} · 恢复服务端",
+            () => viewModel.UpdateService.RecoverAsync(profile, CancellationToken.None),
+            succeeded: result => result.Success,
+            outcome: result => result.Describe(),
+            busyMessage: "正在恢复服务端；对齐部署版本并等待健康检查，最长 7 分钟…");
+        if (report is null)
+        {
+            await RefreshUpdateSectionAsync(viewModel, profile);
+            return;
+        }
+
+        await RefreshUpdateSectionAsync(viewModel, profile);
+        await RefreshAsync();
+        await ShowTextAsync($"{profile.DisplayName} · 恢复结果", string.Empty, report.Describe());
     }
 
     private async Task PreviewAsync(ServerPageViewModel viewModel, ServerProgramProfile profile)
