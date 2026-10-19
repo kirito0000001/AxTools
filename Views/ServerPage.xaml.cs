@@ -21,6 +21,7 @@ public sealed partial class ServerPage : UserControl
     private DispatcherQueueTimer? _timer;
     private bool _isRefreshing;
     private bool _isBusy;
+    private CancellationTokenSource? _updateCancellation;
 
     /// <summary>当前页签里「服务端更新」小节的宿主，异步回填时用来判断是否仍然是同一份。</summary>
     private StackPanel? _updateHost;
@@ -79,7 +80,7 @@ public sealed partial class ServerPage : UserControl
     private ServerPageViewModel? ViewModel => DataContext as ServerPageViewModel;
 
     /// <summary>耗时操作期间显示进度并锁住动作区，避免连点造成并发操作。</summary>
-    private void SetBusy(bool busy, string message)
+    private void SetBusy(bool busy, string message, bool canCancel = false)
     {
         BusyRing.IsActive = busy;
         BusyText.Text = message;
@@ -109,13 +110,32 @@ public sealed partial class ServerPage : UserControl
         {
             progress.Start("服务器", message);
             progress.IsIndeterminate = true;
-            progress.SetCancellationMode(AxTaskCancellationMode.Locked, message);
+            // 切换/回退/恢复会动服务端进程，不能中途杀脚本；只有本机导入等操作才给取消。
+            progress.SetCancellationMode(
+                canCancel ? AxTaskCancellationMode.Cancel : AxTaskCancellationMode.Locked,
+                message);
         }
         else
         {
             progress.Complete("服务器", string.IsNullOrWhiteSpace(message) ? "已完成" : message);
             progress.Hide();
         }
+    }
+
+    /// <summary>全局进度条的取消按钮会调到这里；只在当前操作明确可取消时生效。</summary>
+    internal bool TryCancelActiveUpdate()
+    {
+        if (_updateCancellation is null || _updateCancellation.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        var cancellation = _updateCancellation;
+        cancellation.Cancel();
+        BusyText.Text = "正在取消…";
+        ActionBusyText.Text = "正在取消，等待脚本退出…";
+        ActionBusyProgressBar.IsIndeterminate = true;
+        return true;
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e) =>
@@ -940,10 +960,11 @@ public sealed partial class ServerPage : UserControl
     private async Task<T?> RunUpdateOperationAsync<T>(
         ServerPageViewModel viewModel,
         string title,
-        Func<Task<T>> operation,
+        Func<CancellationToken, Task<T>> operation,
         Func<T, bool>? succeeded = null,
         Func<T, string>? outcome = null,
-        string? busyMessage = null)
+        string? busyMessage = null,
+        bool canCancel = false)
         where T : class
     {
         if (_isBusy)
@@ -951,8 +972,13 @@ public sealed partial class ServerPage : UserControl
             return null;
         }
 
+        using var cancellation = new CancellationTokenSource();
+        _updateCancellation = canCancel ? cancellation : null;
         _isBusy = true;
-        SetBusy(true, string.IsNullOrWhiteSpace(busyMessage) ? $"正在执行：{title}…" : busyMessage);
+        SetBusy(
+            true,
+            string.IsNullOrWhiteSpace(busyMessage) ? $"正在执行：{title}…" : busyMessage,
+            canCancel);
         // 脚本会用 ::axtools 报阶段和百分比；不接这条线，进度条就只能停在"正在准备…"。
         var updateService = viewModel.HasUpdateService ? viewModel.UpdateService : null;
         if (updateService is not null)
@@ -962,7 +988,7 @@ public sealed partial class ServerPage : UserControl
 
         try
         {
-            var result = await operation();
+            var result = await operation(cancellation.Token);
             if (succeeded is null || succeeded(result))
             {
                 viewModel.Log?.Write(LogKind.User, $"{title}已完成。");
@@ -978,6 +1004,11 @@ public sealed partial class ServerPage : UserControl
 
             return result;
         }
+        catch (OperationCanceledException)
+        {
+            viewModel.Log?.Write(LogKind.User, $"{title}已取消。");
+            return null;
+        }
         catch (Exception exception)
         {
             // 失败只写日志，不弹窗 —— 输出日志区本来就有这条（带完整堆栈），
@@ -987,6 +1018,11 @@ public sealed partial class ServerPage : UserControl
         }
         finally
         {
+            if (ReferenceEquals(_updateCancellation, cancellation))
+            {
+                _updateCancellation = null;
+            }
+
             if (updateService is not null)
             {
                 updateService.EventSink = null;
@@ -1098,8 +1134,9 @@ public sealed partial class ServerPage : UserControl
         var import = await RunUpdateOperationAsync(
             viewModel,
             $"{profile.DisplayName} · 导入新构建",
-            () => viewModel.UpdateService.ImportBuildAsync(profile, source, null, CancellationToken.None),
-            busyMessage: "正在导入新构建（只改本机仓库）；完成后会弹出提交确认…");
+            ct => viewModel.UpdateService.ImportBuildAsync(profile, source, null, ct),
+            busyMessage: "正在导入新构建（只改本机仓库）；完成后会弹出提交确认…",
+            canCancel: true);
         if (import is null)
         {
             await RefreshUpdateSectionAsync(viewModel, profile);
@@ -1153,8 +1190,9 @@ public sealed partial class ServerPage : UserControl
         var commit = await RunUpdateOperationAsync(
             viewModel,
             $"{profile.DisplayName} · 提交",
-            () => viewModel.UpdateService.CommitAsync(profile, message, null, CancellationToken.None),
-            busyMessage: "正在提交到本机仓库…");
+            ct => viewModel.UpdateService.CommitAsync(profile, message, null, ct),
+            busyMessage: "正在提交到本机仓库…",
+            canCancel: true);
         if (commit is null)
         {
             await RefreshUpdateSectionAsync(viewModel, profile);
@@ -1186,8 +1224,9 @@ public sealed partial class ServerPage : UserControl
         var status = await RunUpdateOperationAsync(
             viewModel,
             $"{profile.DisplayName} · 推送新版本",
-            () => viewModel.UpdateService.PushAsync(profile, null, CancellationToken.None),
-            busyMessage: "正在推送到服务器；服务端仍在运行，完成后还需要切换最新版本…");
+            ct => viewModel.UpdateService.PushAsync(profile, null, ct),
+            busyMessage: "正在推送到服务器；服务端仍在运行，完成后还需要切换最新版本…",
+            canCancel: true);
         if (status is null)
         {
             await RefreshUpdateSectionAsync(viewModel, profile);
@@ -1233,10 +1272,11 @@ public sealed partial class ServerPage : UserControl
         var report = await RunUpdateOperationAsync(
             viewModel,
             $"{profile.DisplayName} · 切换最新版本",
-            () => viewModel.UpdateService.ApplyAsync(profile, CancellationToken.None),
+            ct => viewModel.UpdateService.ApplyAsync(profile, ct),
             succeeded: result => result.Success,
             outcome: result => result.Describe(),
-            busyMessage: "正在切换版本并重启；健康检查最长 7 分钟，请不要重复操作…");
+            busyMessage: "正在切换版本并重启；健康检查最长 7 分钟，请不要重复操作…",
+            canCancel: false);
         if (report is null)
         {
             await RefreshUpdateSectionAsync(viewModel, profile);
@@ -1277,10 +1317,11 @@ public sealed partial class ServerPage : UserControl
         var report = await RunUpdateOperationAsync(
             viewModel,
             $"{profile.DisplayName} · 回退上个版本",
-            () => viewModel.UpdateService.RollbackAsync(profile, CancellationToken.None),
+            ct => viewModel.UpdateService.RollbackAsync(profile, ct),
             succeeded: result => result.Success,
             outcome: result => result.Describe(),
-            busyMessage: "正在回退版本并重启；健康检查最长 7 分钟，请不要重复操作…");
+            busyMessage: "正在回退版本并重启；健康检查最长 7 分钟，请不要重复操作…",
+            canCancel: false);
         if (report is null)
         {
             await RefreshUpdateSectionAsync(viewModel, profile);
@@ -1320,10 +1361,11 @@ public sealed partial class ServerPage : UserControl
         var report = await RunUpdateOperationAsync(
             viewModel,
             $"{profile.DisplayName} · 恢复服务端",
-            () => viewModel.UpdateService.RecoverAsync(profile, CancellationToken.None),
+            ct => viewModel.UpdateService.RecoverAsync(profile, ct),
             succeeded: result => result.Success,
             outcome: result => result.Describe(),
-            busyMessage: "正在恢复服务端；对齐部署版本并等待健康检查，最长 7 分钟…");
+            busyMessage: "正在恢复服务端；对齐部署版本并等待健康检查，最长 7 分钟…",
+            canCancel: false);
         if (report is null)
         {
             await RefreshUpdateSectionAsync(viewModel, profile);
@@ -1358,8 +1400,9 @@ public sealed partial class ServerPage : UserControl
         var result = await RunUpdateOperationAsync(
             viewModel,
             $"{profile.DisplayName} · 清理本地仓库",
-            () => viewModel.UpdateService.CleanupLocalRepoAsync(profile, null, CancellationToken.None),
-            busyMessage: "正在清理本地 .git（reflog + gc），不动工作树和 Saved…");
+            ct => viewModel.UpdateService.CleanupLocalRepoAsync(profile, null, ct),
+            busyMessage: "正在清理本地 .git（reflog + gc），不动工作树和 Saved…",
+            canCancel: true);
         if (result is null)
         {
             await RefreshUpdateSectionAsync(viewModel, profile);
@@ -1386,8 +1429,9 @@ public sealed partial class ServerPage : UserControl
         var preview = await RunUpdateOperationAsync(
             viewModel,
             $"{profile.DisplayName} · 查看待更新内容",
-            () => viewModel.UpdateService.PreviewAsync(profile, null, CancellationToken.None),
-            busyMessage: "正在读取本机仓库的提交与差异…");
+            ct => viewModel.UpdateService.PreviewAsync(profile, null, ct),
+            busyMessage: "正在读取本机仓库的提交与差异…",
+            canCancel: true);
         if (preview is null)
         {
             return;

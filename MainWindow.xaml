@@ -264,14 +264,23 @@
                     <Button
                         Width="86"
                         Height="86"
+                        Padding="0,0,0,6"
                         HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
                         VerticalAlignment="Stretch"
+                        VerticalContentAlignment="Bottom"
                         Background="Transparent"
                         BorderThickness="0"
                         IsEnabled="{Binding CanCancel}"
                         Click="CancelGlobalTaskButton_Click"
                         AutomationProperties.Name="{Binding CancelLabel}"
-                        ToolTipService.ToolTip="{Binding CancelLabel}" />
+                        ToolTipService.ToolTip="{Binding CancelLabel}">
+                        <TextBlock
+                            Text="取消"
+                            FontSize="12"
+                            Foreground="{ThemeResource GlobalProgressSecondaryTextBrush}"
+                            Visibility="{Binding CanCancel, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </Button>
                 </Grid>
             </Grid>
         </Border>

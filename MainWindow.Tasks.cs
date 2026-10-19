@@ -187,6 +187,14 @@ public sealed partial class MainWindow
 
     private void CancelGlobalTaskButton_Click(object sender, RoutedEventArgs e)
     {
+        // 服务器页的长任务不走 AxTaskRunner，但同样要吃全局进度条上的取消按钮。
+        if (ServerAliyunPage.TryCancelActiveUpdate())
+        {
+            _viewModel.GlobalProgress.MarkStopRequested();
+            _viewModel.LogService.Write(LogKind.User, "用户请求取消服务器更新操作。");
+            return;
+        }
+
         if (_activeOperationCancellation is not null &&
             _activeHostedTaskKind is (
                 HostedTaskKind.ProjectRootMigration or

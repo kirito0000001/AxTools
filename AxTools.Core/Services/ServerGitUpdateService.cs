@@ -303,6 +303,11 @@ public sealed class ServerGitUpdateService(
                 },
                 cancellationToken);
 
+            if (result.CancellationRequested || cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException("操作已取消。", cancellationToken);
+            }
+
             if (result.ExitCode != 0 || !File.Exists(outputPath))
             {
                 string detail;
