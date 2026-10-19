@@ -862,6 +862,62 @@ function Invoke-FileSyncSsh {
     return $lines
 }
 
+# 这条香港线路的 sftp 会在 ~1.1 MB 处 broken pipe（2026-10-19 实测），
+# 但 scp -O（旧协议）能完整上传。所有大文件改走这个函数，失败重试 3 次。
+function Invoke-FileSyncScp {
+    param(
+        [Parameter(Mandatory)][string]$LocalPath,
+        [Parameter(Mandatory)][string]$RemotePath,
+        [string]$Detail = ''
+    )
+
+    $target = '{0}:{1}' -f $FileSyncTarget, $RemotePath
+    # Windows PowerShell 5.1 调 scp 时，中文目录（F:\DaBaoV\下载站）按 ANSI 传参会乱码，
+    # 所以切到源文件所在目录，只把 ASCII 文件名交给 scp。
+    $sourceDirectory = Split-Path -Parent $LocalPath
+    $sourceName = Split-Path -Leaf $LocalPath
+    $lastError = ''
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $previous = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        Push-Location -LiteralPath $sourceDirectory
+        try {
+            $output = & scp -O -q -o BatchMode=yes -o ConnectTimeout=15 `
+                -o ServerAliveInterval=10 -o ServerAliveCountMax=3 $sourceName $target 2>&1
+            $code = $LASTEXITCODE
+        }
+        finally {
+            Pop-Location
+            $ErrorActionPreference = $previous
+        }
+
+        if ($code -eq 0) { return }
+        $lastError = (($output | ForEach-Object { [string]$_ } | Out-String).Trim())
+        if ($attempt -lt 3) { Start-Sleep -Seconds (2 * $attempt) }
+    }
+
+    $shown = if ([string]::IsNullOrWhiteSpace($Detail)) { $RemotePath } else { $Detail }
+    throw ("scp 上传失败：{0}`n{1}" -f $shown, $lastError)
+}
+
+# 远端已完成的文件大小表：只用于跳过上次中断前已经传完的文件。
+# .axtmp 不参与跳过，半截临时文件会在这次重新覆盖。
+function Get-RemoteFileSizeMap {
+    param([Parameter(Mandatory)][string]$VersionRoot)
+
+    $map = @{}
+    $lines = Invoke-FileSyncSsh `
+        -Command ("if [ -d '{0}' ]; then cd '{0}' && find . -type f ! -name '*.axtmp' -printf '%P\t%s\n'; fi" -f $VersionRoot) `
+        -Detail '读取远端已完成文件大小'
+    foreach ($line in $lines) {
+        $parts = ([string]$line) -split "`t", 2
+        if ($parts.Count -ne 2) { continue }
+        $size = [int64]0
+        if ([int64]::TryParse($parts[1], [ref]$size)) { $map[$parts[0]] = $size }
+    }
+    return $map
+}
+
 function Get-OnlinePublishedVersion {
     $cacheBuster = [DateTimeOffset]::Now.ToUnixTimeSeconds()
     try {
@@ -951,75 +1007,88 @@ function Invoke-FileSyncPublish {
         }
     }
 
-    # 2) 传变化的文件 + 清单：先传临时名，再原子改名（启动器不会读到半截文件）
+    # 2) 传变化的文件 + 清单：SCP 到临时名，最后原子改名（启动器不会读到半截文件）
+    #    不能用 sftp -b：这条香港线路在 1.1 MB 左右会 broken pipe；scp -O 稳定。
     $versionRoot = "/srv/downloads/games/$ProductSegment/$ReleaseVersion"
     $manifestRemote = "/srv/downloads/games/$ProductSegment/manifests/$ReleaseVersion.json"
-    $batch = [System.Collections.Generic.List[string]]::new()
-    $pairs = [System.Collections.Generic.List[object]]::new()
-    $madeDirs = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $manifestTemp = "$manifestRemote.axtmp"
 
-    # 前缀 - 表示"失败也继续"（目录已存在是正常情况）
-    $batch.Add("-mkdir $versionRoot")
-    $batch.Add("-mkdir /srv/downloads/games/$ProductSegment/manifests")
-    # sftp 的 mkdir 只建一层（不像 mkdir -p），所以中间层要按层级补齐
-    $pendingDirs = [System.Collections.Generic.List[string]]::new()
+    # 目录一次建好；game-file-sync.sh prepare 通常已经建了，重复 mkdir -p 无害。
+    $remoteDirs = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    [void]$remoteDirs.Add("/srv/downloads/games/$ProductSegment/manifests")
     foreach ($file in $changed) {
         $directory = Split-Path -Parent ([string]$file.path)
         while (-not [string]::IsNullOrWhiteSpace($directory)) {
-            $candidate = "$versionRoot/$($directory -replace '\\', '/')"
-            if (-not $madeDirs.Contains($candidate)) {
-                $madeDirs.Add($candidate)
-                $pendingDirs.Add($candidate)
-            }
+            [void]$remoteDirs.Add("$versionRoot/$($directory -replace '\\', '/')")
             $directory = Split-Path -Parent $directory
         }
     }
-    foreach ($remoteDir in ($pendingDirs | Sort-Object Length)) {
-        $batch.Add("-mkdir `"$remoteDir`"")
-    }
+    $mkdirCommand = "mkdir -p " + (($remoteDirs | ForEach-Object { "'" + $_ + "'" }) -join ' ')
+    [void](Invoke-FileSyncSsh -Command $mkdirCommand -Detail '创建远端目录')
+
+    $remoteSizes = Get-RemoteFileSizeMap -VersionRoot $versionRoot
+    $pairs = [System.Collections.Generic.List[object]]::new()
+    $renameCommands = [System.Collections.Generic.List[string]]::new()
+    $bytesDone = [int64]0
+    $fileIndex = 0
     foreach ($file in $changed) {
+        $fileIndex++
         $relativePath = ([string]$file.path) -replace '/', '\'
         $localPath = Join-Path $VersionDirectory $relativePath
         if (-not (Test-Path -LiteralPath $localPath -PathType Leaf)) {
             throw "清单里有文件但暂存目录里没有：$localPath"
         }
+
         $remotePath = "$versionRoot/$([string]$file.path)"
-        $tempPath = "$remotePath.axtmp"
-        $batch.Add(("put `"{0}`" `"{1}`"" -f $localPath, $tempPath))
-        $batch.Add(("rename `"{0}`" `"{1}`"" -f $tempPath, $remotePath))
-        $pairs.Add([pscustomobject]@{
+        $size = [int64](Get-Item -LiteralPath $localPath).Length
+        $pair = [pscustomobject]@{
             Relative = [string]$file.path
             Sha256   = ([string]$file.sha256).ToLowerInvariant()
-        })
-    }
-    $manifestTemp = "$manifestRemote.axtmp"
-    $batch.Add(("put `"{0}`" `"{1}`"" -f $ManifestPath, $manifestTemp))
-    $batch.Add(("rename `"{0}`" `"{1}`"" -f $manifestTemp, $manifestRemote))
+        }
+        $pairs.Add($pair)
 
-    $batchFile = Join-Path ([IO.Path]::GetTempPath()) ("axtools-sftp-" + [guid]::NewGuid().ToString('N') + ".txt")
-    [IO.File]::WriteAllText($batchFile, ($batch -join "`n"), [Text.UTF8Encoding]::new($false))
-    try {
+        if ($remoteSizes.ContainsKey([string]$file.path) -and [int64]$remoteSizes[[string]$file.path] -eq $size) {
+            $bytesDone += $size
+            $percent = 60 + [int](33 * $bytesDone / [Math]::Max(1, $changedBytes))
+            Write-AxTaskProgress `
+                -Stage 'push' `
+                -Percent ([Math]::Min(93, $percent)) `
+                -Message ("正在上传 {0}/{1}：已存在，跳过 {2}" -f $fileIndex, $changed.Count, $file.path) `
+                -Detail $remotePath
+            continue
+        }
+
+        $tempPath = "$remotePath.axtmp"
         Write-AxTaskProgress `
             -Stage 'push' `
-            -Percent 60 `
-            -Message ("正在上传 {0} 个文件 / {1}（清单最后写）" -f $changed.Count, (Format-Size -Bytes $changedBytes)) `
-            -Detail ("sftp → {0}" -f $FileSyncTarget)
-        $previous = $ErrorActionPreference
-        $ErrorActionPreference = 'Continue'
-        try {
-            $sftpOutput = & sftp -q -b $batchFile $FileSyncTarget 2>&1
-            $sftpCode = $LASTEXITCODE
-        }
-        finally {
-            $ErrorActionPreference = $previous
-        }
-        if ($sftpCode -ne 0) {
-            throw ("sftp 上传失败（退出码 {0}）：`n{1}" -f $sftpCode, (($sftpOutput | ForEach-Object { [string]$_ } | Out-String).Trim()))
-        }
+            -Percent ([Math]::Min(93, 60 + [int](33 * $bytesDone / [Math]::Max(1, $changedBytes)))) `
+            -Message ("正在上传 {0}/{1}：{2}（{3}）" -f $fileIndex, $changed.Count, $file.path, (Format-Size -Bytes $size)) `
+            -Detail $remotePath
+        Invoke-FileSyncScp -LocalPath $localPath -RemotePath $tempPath -Detail $file.path
+        $renameCommands.Add(("mv -f -- '{0}' '{1}'" -f $tempPath, $remotePath))
+
+        $bytesDone += $size
+        $percent = 60 + [int](33 * $bytesDone / [Math]::Max(1, $changedBytes))
+        Write-AxTaskProgress `
+            -Stage 'push' `
+            -Percent ([Math]::Min(93, $percent)) `
+            -Message ("已上传 {0}/{1}：{2}" -f $fileIndex, $changed.Count, $file.path) `
+            -Detail ("累计 {0} / {1}" -f (Format-Size -Bytes $bytesDone), (Format-Size -Bytes $changedBytes))
     }
-    finally {
-        Remove-Item -LiteralPath $batchFile -Force -ErrorAction SilentlyContinue
+
+    # 清单最后传，和文件一起改名；清单没落位前启动器不会认为这一版可用。
+    Write-AxTaskProgress -Stage 'push' -Percent 93 -Message '正在上传清单（最后一步）' -Detail $manifestRemote
+    Invoke-FileSyncScp -LocalPath $ManifestPath -RemotePath $manifestTemp -Detail 'fragments manifest'
+    $renameCommands.Add(("mv -f -- '{0}' '{1}'" -f $manifestTemp, $manifestRemote))
+
+    if ($renameCommands.Count -gt 0) {
+        [void](Invoke-FileSyncSsh -Command ($renameCommands -join ' && ') -Detail '原子改名')
     }
+    Write-AxTaskProgress `
+        -Stage 'push' `
+        -Percent 94 `
+        -Message ("上传完成：{0} 个文件 / {1}" -f $changed.Count, (Format-Size -Bytes $changedBytes)) `
+        -Detail $versionRoot
 
     # 3) 服务端收尾：归档上一版 → 树里只留当前版 → 写 latest.json
     $finalizeResult = Invoke-FileSyncSsh `
