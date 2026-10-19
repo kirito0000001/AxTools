@@ -369,6 +369,8 @@ try {
     }
 
     # 4) 公网校验：清单能读到，且条目与本地一致（zip 本身不在服务器上，不查包）
+    # 这一步是只读复核；服务端写入已经成功，不能因为本机 PowerShell 偶发 TLS 失败把整次发布判失败。
+    $verifyWarning = $null
     if (-not $SkipVerify) {
         Assert-NotCancelled
         Write-AxTaskProgress -Stage 'verify' -Percent 95 -Message '正在校验公网碎片清单'
@@ -383,7 +385,9 @@ try {
             }
             catch {
                 if ($attempt -ge 3) {
-                    throw
+                    $verifyWarning = "公网校验未完成（{0}）；服务端清单已写入" -f $_.Exception.Message
+                    Write-Output $verifyWarning
+                    break
                 }
 
                 Write-Output ("公网校验失败，{0} 秒后重试（{1}/3）：{2}" -f `
@@ -392,30 +396,33 @@ try {
             }
         }
 
-        if ([string]$online.version -ne $ReleaseVersion) {
-            throw "公网 fragments.json 版本不符：$($online.version)"
-        }
+        if ($null -ne $online) {
+            if ([string]$online.version -ne $ReleaseVersion) {
+                throw "公网 fragments.json 版本不符：$($online.version)"
+            }
 
-        $onlineFragments = @($online.fragments)
-        if ($onlineFragments.Count -ne $entries.Count) {
-            throw ("公网 fragments.json 包数不符：{0} / {1}" -f $onlineFragments.Count, $entries.Count)
-        }
+            $onlineFragments = @($online.fragments)
+            if ($onlineFragments.Count -ne $entries.Count) {
+                throw ("公网 fragments.json 包数不符：{0} / {1}" -f $onlineFragments.Count, $entries.Count)
+            }
 
-        for ($fragmentIndex = 0; $fragmentIndex -lt $entries.Count; $fragmentIndex++) {
-            $entry = $entries[$fragmentIndex]
-            $onlineEntry = $onlineFragments[$fragmentIndex]
-            if ([string]$onlineEntry.fileName -ne $entry.Name -or
-                [int64]$onlineEntry.sizeBytes -ne $entry.Size) {
-                throw ("公网清单条目不符：本地 {0} / 公网 {1}（{2} 字节）" -f `
-                    $entry.Name, $onlineEntry.fileName, $onlineEntry.sizeBytes)
+            for ($fragmentIndex = 0; $fragmentIndex -lt $entries.Count; $fragmentIndex++) {
+                $entry = $entries[$fragmentIndex]
+                $onlineEntry = $onlineFragments[$fragmentIndex]
+                if ([string]$onlineEntry.fileName -ne $entry.Name -or
+                    [int64]$onlineEntry.sizeBytes -ne $entry.Size) {
+                    throw ("公网清单条目不符：本地 {0} / 公网 {1}（{2} 字节）" -f `
+                        $entry.Name, $onlineEntry.fileName, $onlineEntry.sizeBytes)
+                }
             }
         }
     }
 
     $rebuildNote = if ($manifestRebuilt) { '（按现有包重建）' } else { '' }
+    $verifyNote = if ([string]::IsNullOrWhiteSpace($verifyWarning)) { '' } else { " · $verifyWarning" }
     Write-AxTaskResult -Status 'success' -ExitCode 0 -Message (
-        "碎片清单已发布{0}：{1} · {2} 个包 / {3} · {4}" -f `
-            $rebuildNote, $ReleaseVersion, $entries.Count, (Format-Bytes $totalBytes), $publicFragmentsUrl)
+        "碎片清单已发布{0}：{1} · {2} 个包 / {3} · {4}{5}" -f `
+            $rebuildNote, $ReleaseVersion, $entries.Count, (Format-Bytes $totalBytes), $publicFragmentsUrl, $verifyNote)
     exit 0
 }
 catch [OperationCanceledException] {
