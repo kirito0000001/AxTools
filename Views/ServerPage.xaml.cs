@@ -12,6 +12,7 @@ using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
 using Windows.UI;
 using WinRT.Interop;
+using IOPath = System.IO.Path;
 
 namespace AxTools.Views;
 
@@ -938,16 +939,16 @@ public sealed partial class ServerPage : UserControl
     {
         try
         {
-            var root = Path.GetFullPath(source).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var localRepo = Path.GetFullPath(ServerProgramCatalog.GetLocalRepoPath(profile))
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var root = IOPath.GetFullPath(source).TrimEnd(IOPath.DirectorySeparatorChar, IOPath.AltDirectorySeparatorChar);
+            var localRepo = IOPath.GetFullPath(ServerProgramCatalog.GetLocalRepoPath(profile))
+                .TrimEnd(IOPath.DirectorySeparatorChar, IOPath.AltDirectorySeparatorChar);
             if (string.Equals(root, localRepo, StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
 
-            return Directory.Exists(Path.Combine(root, "Engine")) &&
-                File.Exists(Path.Combine(root, profile.ServerExecutableName));
+            return Directory.Exists(IOPath.Combine(root, "Engine")) &&
+                File.Exists(IOPath.Combine(root, profile.ServerExecutableName));
         }
         catch (Exception exception) when (
             exception is ArgumentException or NotSupportedException or PathTooLongException)
