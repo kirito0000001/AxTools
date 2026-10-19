@@ -18,8 +18,9 @@ public sealed partial class MainWindow
 {
     private void AttachFragmentManifestPublishHandler()
     {
-        // 安卓碎片还没做 OBB 拆解，暂时只给 PC 页接发布入口。
+        // 两个页共用同一个脚本，靠 -ProductSegment 区分 PC / 安卓。
         CrossingVoidPcPage.FragmentManifestPublishRequested += ToolPage_FragmentManifestPublishRequested;
+        CrossingVoidAndroidPage.FragmentManifestPublishRequested += ToolPage_FragmentManifestPublishRequested;
     }
 
     private async void ToolPage_FragmentManifestPublishRequested(object? sender, EventArgs args)
@@ -80,14 +81,16 @@ public sealed partial class MainWindow
             "Publishing",
             "Games",
             "Publish-GameFragmentManifest.ps1");
+        var taskTitle = $"发布零境{viewModel.FragmentPlatformLabel}碎片清单";
         var definition = new AxTaskDefinition(
             $"game-fragment-manifest-publish-{Guid.NewGuid():N}",
-            "发布零境碎片清单",
+            taskTitle,
             scriptPath,
             new[]
             {
                 "-FragmentDirectory", outputDirectory,
-                "-ReleaseVersion", gameVersion
+                "-ReleaseVersion", gameVersion,
+                "-ProductSegment", viewModel.FragmentProductSegment
             });
 
         _activeHostedTaskId = definition.Id;
@@ -96,9 +99,9 @@ public sealed partial class MainWindow
         {
             _viewModel.LogService.Write(
                 LogKind.User,
-                $"开始发布碎片清单：{outputDirectory}（版本 {gameVersion}）");
+                $"开始发布碎片清单：{outputDirectory}（版本 {gameVersion} · 产品段 {viewModel.FragmentProductSegment}）");
             viewModel.BeginFragmentManifestPublishing();
-            _viewModel.GlobalProgress.Start("发布零境碎片清单", "正在检查碎片清单...");
+            _viewModel.GlobalProgress.Start(taskTitle, "正在检查碎片清单...");
             _viewModel.GlobalProgress.SetCancellationMode(
                 AxTaskCancellationMode.Stop,
                 "可以停止；清单是原子写入的，停止不会留下半截文件。");

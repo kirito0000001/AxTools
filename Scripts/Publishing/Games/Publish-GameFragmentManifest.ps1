@@ -124,9 +124,23 @@ try {
         else {
             $versionParts[0]
         }
-        $packagePattern = "零境V${displayVersion}基础碎片*.zip"
-        $packageFiles = @(Get-ChildItem -LiteralPath $fragmentRoot -File -Filter $packagePattern |
+        # 命名里已经带平台字样（零境V0.6PC… / 零境V0.6安卓…），所以不能再写死
+        # "零境V0.6基础碎片*"；安卓还多一个"安装包"片，重建时也要带上，否则清单少一个包。
+        $packagePattern = "零境V${displayVersion}*基础碎片*.zip"
+        $baseFiles = @(Get-ChildItem -LiteralPath $fragmentRoot -File -Filter $packagePattern |
             Sort-Object Name)
+        $installerFiles = @()
+        if ($ProductSegment -like '*-android') {
+            $installerPattern = "零境V${displayVersion}*安装包*.zip"
+            $installerFiles = @(Get-ChildItem -LiteralPath $fragmentRoot -File -Filter $installerPattern |
+                Sort-Object Name)
+            if ($installerFiles.Count -gt 1) {
+                throw "碎片目录里有多个安卓安装包，无法确定用哪个：$($installerFiles.Name -join '; ')"
+            }
+        }
+
+        # 安装包排在基础碎片前面，和《生成碎片》写出来的清单顺序一致。
+        $packageFiles = @($installerFiles) + @($baseFiles)
         if ($packageFiles.Count -eq 0) {
             throw "碎片目录里没有 fragments.json，也没有匹配 $packagePattern 的碎片包：$fragmentRoot"
         }
