@@ -75,18 +75,22 @@ public class CrossingVoidFragmentExecutorTests
             Assert.Equal(CrossingVoidArchiveCompression.Store, videoCall.Compression);
 
             // 其余：一个包，装剩下的两个（内部保持相对路径）
-            Assert.Equal(Path.Combine(output, "其余文件.zip"), result.RemainderArchivePath);
-            var remainderCall = archiver.Calls.Single(call => call.ArchivePath == result.RemainderArchivePath);
+            var groups = result.Groups!;
+            Assert.Equal(CrossingVoidFragmentLayout.ThreeGroups, result.Layout);
+            var remainderArchivePath = Path.Combine(
+                output,
+                CrossingVoidFragmentExecutor.RemainderArchiveName);
+            var remainderCall = archiver.Calls.Single(call => call.ArchivePath == remainderArchivePath);
             Assert.Equal(
                 new[] { "CrossingVoid.exe", "Engine/Config/StagedBuild.ini" },
                 remainderCall.Paths);
             // 其余文件走标准档（不开极限：实测只多省 0.0%~0.3%，不值那点 CPU）
             Assert.Equal(CrossingVoidArchiveCompression.Standard, remainderCall.Compression);
 
-            Assert.Equal(1, result.ChunkFiles);
-            Assert.Equal(5, result.ChunkBytes);
-            Assert.Equal(1, result.VideoArchives);
-            Assert.Equal(2, result.RemainderFiles);
+            Assert.Equal(1, groups.Chunks.Count);
+            Assert.Equal(5, groups.ChunkBytes);
+            Assert.Equal(1, groups.Videos.Count);
+            Assert.Equal(2, groups.Remainder.Count);
             Assert.Equal(2, archiver.Calls.Count);
             // 只有 chunk 会散件落盘，别的文件不许跑出来
             Assert.False(File.Exists(Path.Combine(output, "CrossingVoid.exe")));
@@ -115,9 +119,8 @@ public class CrossingVoidFragmentExecutorTests
             var archiver = new RecordingArchiver();
             var result = new CrossingVoidFragmentExecutor(archiver).Execute(game, output, plan);
 
-            Assert.Null(result.RemainderArchivePath);
+            Assert.Empty(result.Groups!.Remainder);
             Assert.Empty(archiver.Calls);
-            Assert.Equal(0, result.RemainderFiles);
             Assert.True(File.Exists(Path.Combine(output, "CrossingVoid", "Content", "Paks", "pakchunk0-Windows.ucas")));
         }
         finally

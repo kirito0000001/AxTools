@@ -33,33 +33,54 @@ public interface ICrossingVoidArchiver
         CrossingVoidArchiveCompression compression);
 }
 
+/// <summary>《生成碎片》的产物形态。</summary>
+public enum CrossingVoidFragmentLayout
+{
+    /// <summary>
+    /// 按类型分三组：分片散件 + 影片逐个压包 + 其余一个包。
+    /// 安卓暂时走这条（它的散件在 OBB 里，等 OBB 拆解做完再切到 <see cref="SizeSlices"/>）。
+    /// </summary>
+    ThreeGroups,
+
+    /// <summary>按体积切片：每片一个独立的 <c>基础碎片NNN.zip</c>（PC 走这条）。</summary>
+    SizeSlices,
+}
+
+/// <summary>切片模式下落成的一个压缩包（<see cref="ArchiveBytes"/> 是压缩后的真实大小）。</summary>
+public sealed record CrossingVoidFragmentArchive(
+    string ArchivePath,
+    int FileCount,
+    long SourceBytes,
+    long ArchiveBytes);
+
 /// <summary>《生成碎片》的执行结果。</summary>
 public sealed record CrossingVoidFragmentResult(
     string OutputDirectory,
-    int ChunkFiles,
-    long ChunkBytes,
-    int VideoArchives,
-    long VideoBytes,
-    string? RemainderArchivePath,
-    int RemainderFiles,
-    long RemainderBytes)
+    CrossingVoidFragmentLayout Layout,
+    IReadOnlyList<CrossingVoidFragmentArchive> Archives,
+    CrossingVoidFragmentPlan? Groups)
 {
-    public int ArchiveCount => VideoArchives + (RemainderArchivePath is null ? 0 : 1);
+    public int ArchiveCount => Archives.Count;
+
+    public long ArchiveBytes => Archives.Sum(archive => archive.ArchiveBytes);
 }
 
 /// <summary>《生成碎片》推进过程中回给界面的一个快照。</summary>
 public sealed record CrossingVoidFragmentProgress(string Stage, string Message, int Percent);
 
 /// <summary>
-/// 《生成碎片》的落盘执行：chunk 拷成保持目录树的散件、影片每个单独压一个包、其余打成一个包。
+/// 《生成碎片》的落盘执行，两种模式：
+///   · <see cref="ExecuteSizeSlices"/>（PC）：每片打成一个独立的 <c>基础碎片NNN.zip</c>；
+///   · <see cref="Execute"/>（安卓暂时）：chunk 拷成散件、影片逐个压包、其余合成一个包。
 ///
-/// 分类规则在 <see cref="CrossingVoidFragmentPlanner"/>，这里只管落盘；
+/// 分组规则在 <see cref="CrossingVoidFragmentPlanner"/>，这里只管落盘；
 /// 打包走 <see cref="ICrossingVoidArchiver"/>，所以本类不依赖 Bandizip、可以单独被测。
 ///
-/// **只覆盖、不删除**：重复执行是幂等的（残留的旧文件不会影响导入 —— 导入按清单校验）。
+/// 旧的三组模式是**只覆盖、不删除**；切片模式由调用方在生成前清空输出目录
+/// （<see cref="CrossingVoidFragmentOutputCleaner"/>），这里不碰清空逻辑。
 ///
-/// 进度按 0~100 报，权重是故意这么分的：chunk 拷贝占 4~55（按字节，拷贝最大的 ucas 时进度也在动）、
-/// 影片打包 55~85（按包数）、其余包 85~98。落盘结束停在 98，最后那 2 分留给调用方收尾。
+/// 进度按 0~100 报：三组模式是 chunk 4~55、影片 55~85、其余 85~98；
+/// 切片模式是 5~98（按片数）。落盘结束停在 98，最后那 2 分留给调用方收尾。
 /// </summary>
 public sealed class CrossingVoidFragmentExecutor
 {
@@ -150,8 +171,6 @@ public sealed class CrossingVoidFragmentExecutor
             Report(onProgress, "video", $"影片已打包 {plan.Videos.Count} 个。", 85);
         }
 
-        string? remainderArchivePath = null;
-        long remainderBytes = 0;
         if (plan.Remainder.Count > 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -160,13 +179,12 @@ public sealed class CrossingVoidFragmentExecutor
                 "remainder",
                 $"正在压缩其余文件 {plan.Remainder.Count} 个…",
                 88);
-            remainderArchivePath = Path.Combine(outputDirectory, RemainderArchiveName);
+            var remainderArchivePath = Path.Combine(outputDirectory, RemainderArchiveName);
             archiver.CreateArchive(
                 remainderArchivePath,
                 gameDirectory,
                 plan.Remainder.Select(entry => entry.Path).ToList(),
                 CrossingVoidArchiveCompression.Standard);
-            remainderBytes = plan.RemainderBytes;
         }
         else
         {
@@ -176,14 +194,87 @@ public sealed class CrossingVoidFragmentExecutor
 
         return new CrossingVoidFragmentResult(
             outputDirectory,
-            plan.Chunks.Count,
-            plan.ChunkBytes,
-            plan.Videos.Count,
-            plan.VideoBytes,
-            remainderArchivePath,
-            plan.Remainder.Count,
-            remainderBytes);
+            CrossingVoidFragmentLayout.ThreeGroups,
+            [],
+            plan);
     }
+
+    /// <summary>
+    /// 按大小切片落盘：每一片单独调用打包器生成 <c>基础碎片NNN.zip</c>。
+    ///
+    /// 不在本方法里清空输出目录：清空是破坏性操作，由调用方在确认弹窗之后做
+    /// （<see cref="CrossingVoidFragmentOutputCleaner"/>）。这里只负责打包，方便单独测。
+    ///
+    /// 进度按片数报：5~98。单片压缩期间 Bandizip 不吐进度，只能一片一片往前推。
+    /// </summary>
+    public CrossingVoidFragmentResult ExecuteSizeSlices(
+        string gameDirectory,
+        string outputDirectory,
+        CrossingVoidFragmentSizePlan plan,
+        Action<CrossingVoidFragmentProgress>? onProgress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (string.IsNullOrWhiteSpace(gameDirectory))
+        {
+            throw new ArgumentException("游戏包目录不能为空。", nameof(gameDirectory));
+        }
+
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            throw new ArgumentException("碎片输出目录不能为空。", nameof(outputDirectory));
+        }
+
+        if (!Directory.Exists(gameDirectory))
+        {
+            throw new DirectoryNotFoundException($"游戏包目录不存在：{gameDirectory}");
+        }
+
+        if (plan.Slices.Count == 0)
+        {
+            throw new InvalidOperationException("没有可分片的文件。");
+        }
+
+        Directory.CreateDirectory(outputDirectory);
+
+        var archives = new List<CrossingVoidFragmentArchive>(plan.Slices.Count);
+        for (var index = 0; index < plan.Slices.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var slice = plan.Slices[index];
+            var archivePath = Path.Combine(outputDirectory, slice.ArchiveName);
+            Report(
+                onProgress,
+                "slice",
+                $"正在压缩基础碎片 {index + 1} / {plan.Slices.Count}（{FormatBytes(slice.SourceBytes)}）…",
+                SlicePercent(index, plan.Slices.Count));
+            archiver.CreateArchive(
+                archivePath,
+                gameDirectory,
+                slice.Files.Select(file => file.Path).ToList(),
+                CrossingVoidArchiveCompression.Standard);
+
+            archives.Add(new CrossingVoidFragmentArchive(
+                archivePath,
+                slice.Files.Count,
+                slice.SourceBytes,
+                new FileInfo(archivePath).Length));
+            Report(
+                onProgress,
+                "slice",
+                $"已生成基础碎片 {index + 1} / {plan.Slices.Count}（{Path.GetFileName(archivePath)}）。",
+                SlicePercent(index + 1, plan.Slices.Count));
+        }
+
+        return new CrossingVoidFragmentResult(
+            outputDirectory,
+            CrossingVoidFragmentLayout.SizeSlices,
+            archives,
+            null);
+    }
+
+    private static int SlicePercent(int completed, int total) =>
+        total <= 0 ? 98 : Math.Clamp(5 + (int)(93.0 * completed / total), 5, 98);
 
     private static int VideoPercent(int index, int total) =>
         total <= 0 ? 85 : 55 + (int)(30.0 * index / total);

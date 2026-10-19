@@ -80,6 +80,16 @@ public sealed class CrossingVoidPackageInspector
             return true;
         }
 
+        // 发布内核（Publish-GameDownloadRelease.ps1）排除了这个调试清单，碎片必须跟它一致，
+        // 否则 PC 的"其余文件包/基础碎片"里会多出一个发布时根本不存在的东西。
+        if (string.Equals(
+            Path.GetFileName(relativePath),
+            "Manifest_DebugFiles_Win64.txt",
+            StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
         var segments = relativePath.Split(
             [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
             StringSplitOptions.RemoveEmptyEntries);

@@ -50,6 +50,7 @@ public sealed class CrossingVoidFragmentGenerationTests
             WriteFile(game, @"CrossingVoid.exe", "exe");
             // 下面这些发布脚本都会排除，碎片也不能带上
             WriteFile(game, @"CrossingVoid\Binaries\Win64\CrossingVoid.pdb", "pdb");
+            WriteFile(game, @"Manifest_DebugFiles_Win64.txt", "debug");
             WriteFile(game, @"_download\pakchunk0-Windows.ucas.part", "partial");
             WriteFile(game, @"Saved\Logs\CrossingVoid.log", "log");
             WriteFile(game, @"Saved\Crashes\crash.dmp", "dump");

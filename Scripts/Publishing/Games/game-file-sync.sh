@@ -73,9 +73,15 @@ finalize)
   done
 
   # 4) latest.json：给启动器和 AxTools 读"线上最新版"（原子写）
+  #    碎片清单若已随这一版上传（fragments/<版本>.json 存在），带上 fragmentsUrl；
+  #    否则不写这个字段。这样碎片发布和游戏包发布互不覆盖。
+  FRAG_FIELD=""
+  if [ -f "$BASE/fragments/$VER.json" ]; then
+    FRAG_FIELD=$(printf ',"fragmentsUrl":"https://dl.crossingvoid.top/games/%s/fragments/%s.json"' "$SEG" "$VER")
+  fi
   TMP="$BASE/latest.json.tmp.$$"
-  printf "{\"schemaVersion\":1,\"productSegment\":\"%s\",\"version\":\"%s\",\"manifestUrl\":\"https://dl.crossingvoid.top/games/%s/manifests/%s.json\",\"generatedAt\":\"%s\"}\n" \
-    "$SEG" "$VER" "$SEG" "$VER" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$TMP"
+  printf "{\"schemaVersion\":1,\"productSegment\":\"%s\",\"version\":\"%s\",\"manifestUrl\":\"https://dl.crossingvoid.top/games/%s/manifests/%s.json\",\"generatedAt\":\"%s\"%s}\n" \
+    "$SEG" "$VER" "$SEG" "$VER" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$FRAG_FIELD" > "$TMP"
   mv "$TMP" "$BASE/latest.json"
   echo "已更新：games/$SEG/latest.json → $VER"
   echo "体积：$([ -d "$BASE" ] && du -sh "$BASE" | cut -f1)  归档：$([ -d "$ARC" ] && du -sh "$ARC" | cut -f1 || echo 无)  磁盘剩余：$(df -h /srv | tail -1 | awk "{print \$4}")"

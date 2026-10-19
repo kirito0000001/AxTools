@@ -6,7 +6,7 @@ using AxTools.Core.Services;
 
 namespace AxTools.Core.ViewModels;
 
-public sealed class ToolPageViewModel : ObservableObject
+public sealed partial class ToolPageViewModel : ObservableObject
 {
     private readonly ManagedToolPaths _paths;
     private readonly ManagedToolPaths? _gamePublishPaths;
@@ -17,8 +17,6 @@ public sealed class ToolPageViewModel : ObservableObject
     private readonly CrossingVoidGamePublishState? _gamePublishState;
     private bool _isRunning;
     private string _lastResultText = "尚未执行任务。";
-    private bool _isFragmentRunning;
-    private string _fragmentLastResultText = "尚未生成碎片。";
     private string _launcherPublishedVersionText = "尚未检查线上发布版本。";
     private string _launcherVersionCheckStatus = "进入发布页后将自动检查。";
     private bool _isLauncherVersionChecking;
@@ -547,150 +545,6 @@ public sealed class ToolPageViewModel : ObservableObject
     internal bool IsAndroidPlatform => _paths.GamePublishPlatform is "Android";
 
     internal string PlatformLabel => IsAndroidPlatform ? "安卓" : "PC";
-
-    // ==================== 《生成碎片》 ====================
-    //
-    // 只有零境的两个工具页有这一块：
-    //   · TFAC平台页（PC 产物）      → 《零境碎片生成》
-    //   · 平台-零境-安卓（安卓产物）  → 《碎片生成》
-    // TFAC 那个按钮必须带"零境"：那个页面以后还要放别的游戏，不写清楚就分不出是谁的。
-    // 安卓页自己就是零境专用的，所以不用重复。
-
-    /// <summary>这个工具页有没有《生成碎片》。</summary>
-    public bool HasFragmentGeneration =>
-        Descriptor.Key is ManagedToolKey.CrossingVoidPc or ManagedToolKey.CrossingVoidAndroid;
-
-    private bool IsAndroidFragmentPage => Descriptor.Key is ManagedToolKey.CrossingVoidAndroid;
-
-    public string FragmentGenerationActionText => IsAndroidFragmentPage ? "碎片生成" : "零境碎片生成";
-
-    public string FragmentGenerationTitle => $"{FragmentGenerationActionText}";
-
-    public string FragmentGenerationDescription =>
-        "把打包产物拆成三份：分片散件（保持目录树）+ 影片各一个压缩包 + 其余文件一个压缩包。" +
-        "分片不压缩是因为它本身已经是压过的；影片不压缩是因为再压一遍只省 0.0%。" +
-        "生成完自己发到网盘或群里就行。";
-
-    /// <summary>
-    /// 碎片从哪个目录生成 —— **直接复用「服务器 → 零境交错」那份游戏包目录**
-    /// （PC / 安卓各记一个），不在碎片区再填一遍。
-    ///
-    /// TFAC平台页和安卓页本来都不显示"游戏包发布"那一区，所以这份引用是注入进来的：
-    /// PC 页读 PC 那份、安卓页读安卓那份，用户在服务器那边选过一次，两边就一直是同一个源。
-    /// </summary>
-    public string FragmentGameDirectory => _gamePublishPaths is null
-        ? string.Empty
-        : IsAndroidFragmentPage
-            ? _gamePublishPaths.GamePackageRootAndroid
-            : _gamePublishPaths.GamePackageRoot;
-
-    public string FragmentSourceText => string.IsNullOrWhiteSpace(FragmentGameDirectory)
-        ? "还没有游戏包目录 —— 先到「服务器 → 零境交错」的游戏包发布里选一次。"
-        : FragmentGameDirectory;
-
-    public string FragmentOutputDirectory
-    {
-        get => string.IsNullOrWhiteSpace(_paths.FragmentOutputDirectory)
-            ? DefaultFragmentOutputDirectory()
-            : _paths.FragmentOutputDirectory;
-        set
-        {
-            var normalized = value?.Trim() ?? string.Empty;
-            if (SetProperty(
-                _paths.FragmentOutputDirectory,
-                normalized,
-                _paths,
-                static (model, newValue) => model.FragmentOutputDirectory = newValue))
-            {
-                OnPropertyChanged(nameof(CanGenerateFragments));
-            }
-        }
-    }
-
-    public string FragmentLastResultText
-    {
-        get => _fragmentLastResultText;
-        private set => SetProperty(ref _fragmentLastResultText, value);
-    }
-
-    public bool IsFragmentRunning
-    {
-        get => _isFragmentRunning;
-        private set
-        {
-            if (SetProperty(ref _isFragmentRunning, value))
-            {
-                OnPropertyChanged(nameof(CanGenerateFragments));
-            }
-        }
-    }
-
-    public bool CanGenerateFragments =>
-        HasFragmentGeneration &&
-        !IsFragmentRunning &&
-        !IsRunning &&
-        !string.IsNullOrWhiteSpace(FragmentGameDirectory) &&
-        !string.IsNullOrWhiteSpace(FragmentOutputDirectory);
-
-    public void BeginFragmentGeneration()
-    {
-        IsFragmentRunning = true;
-        FragmentLastResultText = "正在生成碎片…";
-    }
-
-    /// <summary>任务推进时把阶段文字推到页面上（百分比走全局进度条）。</summary>
-    public void ReportFragmentProgress(CrossingVoidFragmentProgress progress)
-    {
-        ArgumentNullException.ThrowIfNull(progress);
-        FragmentLastResultText = progress.Message;
-    }
-
-    public void CompleteFragmentGeneration(string resultText)
-    {
-        IsFragmentRunning = false;
-        FragmentLastResultText = string.IsNullOrWhiteSpace(resultText) ? "已结束。" : resultText;
-    }
-
-    /// <summary>游戏包目录在别处（服务器页）被选过之后，把这一块跟着刷新一下。</summary>
-    public void RefreshFragmentBindings()
-    {
-        OnPropertyChanged(nameof(FragmentGameDirectory));
-        OnPropertyChanged(nameof(FragmentSourceText));
-        OnPropertyChanged(nameof(FragmentOutputDirectory));
-        OnPropertyChanged(nameof(CanGenerateFragments));
-    }
-
-    /// <summary>默认落在 D 盘（用户指定的位置）；D 盘不在就退到游戏包目录旁边，至少同一块盘。</summary>
-    private string DefaultFragmentOutputDirectory()
-    {
-        var folderName = IsAndroidFragmentPage ? "零境交错安卓碎片" : "零境交错PC碎片";
-        const string preferredRoot = @"D:\";
-        if (Directory.Exists(preferredRoot))
-        {
-            return Path.Combine(preferredRoot, folderName);
-        }
-
-        var gameDirectory = FragmentGameDirectory;
-        if (!string.IsNullOrWhiteSpace(gameDirectory))
-        {
-            try
-            {
-                var fullPath = Path.GetFullPath(gameDirectory).TrimEnd(Path.DirectorySeparatorChar);
-                var parent = Path.GetDirectoryName(fullPath);
-                if (!string.IsNullOrWhiteSpace(parent))
-                {
-                    return Path.Combine(parent, folderName);
-                }
-            }
-            catch (Exception exception) when (
-                exception is ArgumentException or NotSupportedException or PathTooLongException)
-            {
-                // 目录格式坏了就落到临时目录，反正下面还会让用户改。
-            }
-        }
-
-        return Path.Combine(Path.GetTempPath(), folderName);
-    }
 
     public bool HasValidSourceRoot =>
         !string.IsNullOrWhiteSpace(SourceRoot) && Directory.Exists(SourceRoot);

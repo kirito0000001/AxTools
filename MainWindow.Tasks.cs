@@ -330,5 +330,6 @@ public sealed partial class MainWindow
         ,Release
         ,ProjectClone
         ,GameFragments
+        ,GameFragmentManifestPublish
     }
 }

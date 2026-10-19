@@ -384,17 +384,32 @@
                                     <FontIcon Glyph="&#xE8B7;" />
                                 </Button>
                             </Grid>
-                            <Button
-                                x:Name="GenerateFragmentsButton"
-                                HorizontalAlignment="Left"
-                                IsEnabled="{Binding CanGenerateFragments}"
-                                Click="GenerateFragments_Click"
-                                Style="{StaticResource AccentButtonStyle}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <SymbolIcon Symbol="Save" />
-                                    <TextBlock Text="{Binding FragmentGenerationActionText}" />
-                                </StackPanel>
-                            </Button>
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button
+                                    x:Name="GenerateFragmentsButton"
+                                    HorizontalAlignment="Left"
+                                    IsEnabled="{Binding CanGenerateFragments}"
+                                    Click="GenerateFragments_Click"
+                                    Style="{StaticResource AccentButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <SymbolIcon Symbol="Save" />
+                                        <TextBlock Text="{Binding FragmentGenerationActionText}" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    x:Name="PublishFragmentManifestButton"
+                                    HorizontalAlignment="Left"
+                                    IsEnabled="{Binding CanPublishFragmentManifest}"
+                                    Visibility="{Binding HasFragmentManifestPublishing, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                    Click="PublishFragmentManifest_Click"
+                                    Style="{StaticResource PrimaryToolButtonStyle}"
+                                    ToolTipService.ToolTip="把 fragments.json 传到下载站并更新 latest.json（碎片包走网盘/群，不上传）">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <SymbolIcon Symbol="Upload" />
+                                        <TextBlock Text="发布碎片清单" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
                             <TextBlock
                                 Text="{Binding FragmentLastResultText}"
                                 Style="{StaticResource SubtleTextStyle}"
