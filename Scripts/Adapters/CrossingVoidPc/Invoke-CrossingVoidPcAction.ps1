@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory)]
     [ValidateSet('CheckEnvironment','RunDevelopment','ForceBuildAndRun','BuildFrontend','TestFrontend','TestRust','RunRelease','SetVersion','BuildLauncherPackage','ValidatePackage','UploadDryRun','Upload','PublishDryRun','Publish')]
@@ -189,17 +189,32 @@ function Assert-CrossingPublicVersion {
     $observed = ''
     $lastError = ''
     Write-AxTaskProgress -Stage 'public-version' -Percent 99 -Message "正在确认 PC 启动器公网版本 $ExpectedVersion..."
+    # 2026-10-19 起更新链改走「Gitee Release 资产 + 站点静态清单」：
+    # 核验读站点镜像的扁平清单（客户端首选那份），不再读阿里云那条会签 OSS 的接口。
+    $manifestUris = @(
+        'https://www.crossingvoid.top/manifests/launcher/pc-installer-latest.json',
+        'https://www.crossingvoid.top/manifests/launcher/pc-latest.json'
+    )
     for ($attempt = 1; $attempt -le 5; $attempt++) {
-        try {
-            $uri = "https://www.crossingvoid.top/api/toolbox-updates/tauri/crossingvoid-launcher-pc/windows/x86_64/0.0.0?t=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
-            $response = Invoke-RestMethod -Uri $uri -Headers @{ 'Cache-Control'='no-cache'; 'User-Agent'='AxTools-PublishVerify/1.0' } -TimeoutSec 20
-            $observed = ([string]$response.version).Trim()
-            if ([string]::Equals($observed, $ExpectedVersion, [StringComparison]::OrdinalIgnoreCase)) {
-                return
+        foreach ($manifestUri in $manifestUris) {
+            try {
+                # 注意：`"$manifestUri?t="` 会把 `?` 吞进变量名（PowerShell 变量名允许 `?`），
+                # 拼出来是 `?t=...` → Invalid URI: The hostname could not be parsed。必须用 `${}`。
+                $uri = "${manifestUri}?t=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
+                $response = Invoke-RestMethod -Uri $uri -Headers @{ 'Cache-Control'='no-cache'; 'User-Agent'='AxTools-PublishVerify/1.0' } -TimeoutSec 20
+                $candidate = if (![string]::IsNullOrWhiteSpace([string]$response.versionName)) {
+                    [string]$response.versionName
+                } else {
+                    [string]$response.version
+                }
+                $observed = $candidate.Trim()
+                if ([string]::Equals($observed, $ExpectedVersion, [StringComparison]::OrdinalIgnoreCase)) {
+                    return
+                }
             }
-        }
-        catch {
-            $lastError = $_.Exception.Message
+            catch {
+                $lastError = $_.Exception.Message
+            }
         }
         if ($attempt -lt 5) { Start-Sleep -Seconds 2 }
     }

@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
@@ -25,10 +25,14 @@ foreach ($forbiddenText in @('BuildGameChunks', 'UploadGameChunks', 'PublishGame
         throw "Crossing PC 适配入口仍残留游戏分包入口：$forbiddenText"
     }
 }
-foreach ($requiredText in @('Assert-CrossingPublicVersion', 'api/toolbox-updates/tauri/crossingvoid-launcher-pc', '期望：$ExpectedVersion')) {
+foreach ($requiredText in @('Assert-CrossingPublicVersion', 'manifests/launcher/pc-installer-latest.json', 'manifests/launcher/pc-latest.json', '期望：$ExpectedVersion')) {
     if (!$source.Contains($requiredText, [StringComparison]::Ordinal)) {
         throw "Crossing PC 适配入口缺少发布后公网版本核验：$requiredText"
     }
+}
+# 2026-10-19 更新链切到 Gitee 资产 + 站点静态清单；不准再回到会签 OSS 的旧接口。
+if ($source.Contains('api/toolbox-updates/tauri/crossingvoid-launcher-pc', [StringComparison]::Ordinal)) {
+    throw 'Crossing PC 适配入口还在读阿里云 OSS 签名接口，应改成站点静态清单。'
 }
 foreach ($requiredText in @('$checkpoint = Test-CrossingPublishCheckpoint', 'if ($checkpoint.IsValid)', 'checkpoint-invalid')) {
     if (!$source.Contains($requiredText, [StringComparison]::Ordinal)) {
@@ -41,17 +45,24 @@ if ($source.Contains('if (Test-CrossingPublishCheckpoint)', [StringComparison]::
 if ($source.Contains('Write-Output $_.Exception.Message', [StringComparison]::Ordinal)) {
     throw 'Crossing PC 适配器不应把最终异常重复写成普通 Info 日志。'
 }
+# 2026-10-19：OSS 兼容发布降级为 Gitee 发布脚本里的 -WithOssCompat 登录式开关，不再是默认链路。
+# 旧的"服务器快照容错合同"（重试 / BatchMode / cleanup-skipped）随 OSS 路径一起退役；
+# 这里改守两件事：默认链路不再要求 OSS 脚本，Gitee 发布脚本把新链路做全。
+if ($source.Contains('Publish-LauncherUpdaterPackage.ps1', [StringComparison]::Ordinal)) {
+    throw 'Crossing PC 适配入口不应再默认引用已退役的 OSS 兼容发布脚本。'
+}
+$giteePublisherPath = 'D:\UnrealMap\CrossingVoidinitiator-PC\Scripts\Publish-LauncherGiteePackage.ps1'
+$giteePublisherSource = if (Test-Path -LiteralPath $giteePublisherPath -PathType Leaf) {
+    Get-Content -LiteralPath $giteePublisherPath -Raw -Encoding UTF8
+} else { '' }
 foreach ($requiredText in @(
-    'for ($attempt = 1; $attempt -le 3; $attempt++)',
-    '-o BatchMode=yes -o ConnectTimeout=10',
-    '2> $stderrPath',
-    'Remove-Item -LiteralPath $stderrPath',
-    '$serverSnapshotAvailable = $false',
-    'server-snapshot-unavailable',
-    'cleanup-skipped',
-    '-and $serverSnapshotAvailable')) {
-    if (!$publisherSource.Contains($requiredText, [StringComparison]::Ordinal)) {
-        throw "PC 发布脚本缺少服务器快照容错合同：$requiredText"
+    'New-LauncherInstallerManifest',
+    'launcher/pc-installer-latest.json',
+    'Publish-WebsiteMirrorFile',
+    'pc-installer-latest.json',
+    'if ($WithOssCompat)')) {
+    if (!$giteePublisherSource.Contains($requiredText, [StringComparison]::Ordinal)) {
+        throw "PC 发布脚本缺少 Gitee 链路合同：$requiredText"
     }
 }
 # 游戏产物目录的隔离已经跟着游戏发布一起搬走了，这里只剩启动器自己的 Launcher 目录。

@@ -134,7 +134,7 @@ public sealed class PublishedVersionServiceTests
 
         Assert.Equal("1.1.1", result.Version);
         Assert.Equal(
-            "https://www.crossingvoid.top/api/toolbox-updates/tauri/crossingvoid-launcher-pc/windows/x86_64/0.0.0",
+            "https://www.crossingvoid.top/manifests/launcher/pc-installer-latest.json",
             handler.Requests.Single().AbsoluteUri);
     }
 

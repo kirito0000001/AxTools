@@ -29,11 +29,7 @@ public sealed class PublishedVersionService
     {
         return key switch
         {
-            ManagedToolKey.CrossingVoidPc => await ReadManifestAsync(
-                $"{OfficialSiteBase}/api/toolbox-updates/tauri/crossingvoid-launcher-pc/windows/x86_64/0.0.0",
-                "官网 PC 启动器更新接口",
-                ["version"],
-                cancellationToken),
+            ManagedToolKey.CrossingVoidPc => await CheckCrossingVoidPcLauncherAsync(cancellationToken),
             ManagedToolKey.CrossingVoidAndroid => await CheckCrossingVoidAndroidLauncherAsync(
                 channel,
                 cancellationToken),
@@ -68,6 +64,29 @@ public sealed class PublishedVersionService
         };
     }
 
+    /// <summary>
+    /// 零境 PC 启动器：读站点静态清单。首选扁平清单（客户端首选那份），没镜像时退回 Tauri 清单。
+    /// </summary>
+    private async Task<PublishedVersionResult> CheckCrossingVoidPcLauncherAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await ReadManifestAsync(
+                $"{OfficialSiteBase}/manifests/launcher/pc-installer-latest.json",
+                "官网 PC 启动器扁平清单",
+                ["versionName"],
+                cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            return await ReadManifestAsync(
+                $"{OfficialSiteBase}/manifests/launcher/pc-latest.json",
+                "官网 PC 启动器 Tauri 清单",
+                ["version"],
+                cancellationToken);
+        }
+    }
     private async Task<PublishedVersionResult> CheckCrossingVoidAndroidLauncherAsync(
         string channel,
         CancellationToken cancellationToken)
