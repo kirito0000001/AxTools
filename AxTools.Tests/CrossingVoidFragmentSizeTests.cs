@@ -132,18 +132,27 @@ public sealed class CrossingVoidFragmentSizeTests
             maxSliceBytes: 2,
             archiveNamePrefix: CrossingVoidFragmentPlanner.BuildArchiveNamePrefix("0.6.0"));
 
-        Assert.Equal("零境V0.6基础碎片001.zip", plan.Slices[0].ArchiveName);
-        Assert.Equal("零境V0.6基础碎片002.zip", plan.Slices[1].ArchiveName);
+        Assert.Equal("零境V0.6PC基础碎片001.zip", plan.Slices[0].ArchiveName);
+        Assert.Equal("零境V0.6PC基础碎片002.zip", plan.Slices[1].ArchiveName);
     }
 
     [Theory]
-    [InlineData("0.6.0", "零境V0.6")]
-    [InlineData("0.6", "零境V0.6")]
-    [InlineData("1.2.3.4", "零境V1.2")]
-    [InlineData("1", "零境V1")]
-    [InlineData("", "零境V")]
+    [InlineData("0.6.0", "零境V0.6PC")]
+    [InlineData("0.6", "零境V0.6PC")]
+    [InlineData("1.2.3.4", "零境V1.2PC")]
+    [InlineData("1", "零境V1PC")]
+    [InlineData("", "零境VPC")]
     public void ArchiveNamePrefixKeepsOnlyMajorAndMinorVersion(string version, string expected) =>
         Assert.Equal(expected, CrossingVoidFragmentPlanner.BuildArchiveNamePrefix(version));
+
+    [Theory]
+    [InlineData("0.6.0", "PC", "零境V0.6PC")]
+    [InlineData("0.6.0", "安卓", "零境V0.6安卓")]
+    public void ArchiveNamePrefixCarriesThePlatformLabel(
+        string version,
+        string platformLabel,
+        string expected) =>
+        Assert.Equal(expected, CrossingVoidFragmentPlanner.BuildArchiveNamePrefix(version, platformLabel));
 
     [Fact]
     public void ReplacesIllegalCharactersInTheArchiveNamePrefix()
@@ -152,7 +161,7 @@ public sealed class CrossingVoidFragmentSizeTests
             new (string, long)[] { ("a.bin", 1) },
             archiveNamePrefix: "零境 0.6/0:");
 
-        Assert.Equal("零境-0.6-0--基础碎片001.zip", plan.Slices[0].ArchiveName);
+        Assert.Equal("零境-0.6-0-基础碎片001.zip", plan.Slices[0].ArchiveName);
     }
 
     // ---------- 落盘 ----------
@@ -181,8 +190,6 @@ public sealed class CrossingVoidFragmentSizeTests
             var result = new CrossingVoidFragmentExecutor(archiver)
                 .ExecuteSizeSlices(game, output, plan);
 
-            Assert.Equal(CrossingVoidFragmentLayout.SizeSlices, result.Layout);
-            Assert.Null(result.Groups);
             Assert.Equal(2, result.Archives.Count);
             Assert.Equal("基础碎片001.zip", Path.GetFileName(result.Archives[0].ArchivePath));
             Assert.Equal("基础碎片002.zip", Path.GetFileName(result.Archives[1].ArchivePath));
@@ -195,6 +202,25 @@ public sealed class CrossingVoidFragmentSizeTests
         finally
         {
             Directory.Delete(game, recursive: true);
+            Directory.Delete(output, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RejectsAMissingGameDirectory()
+    {
+        var output = NewTempDirectory("missing-game");
+        try
+        {
+            var plan = CrossingVoidFragmentPlanner.PlanBySize(
+                new (string, long)[] { ("a.bin", 1) });
+            var executor = new CrossingVoidFragmentExecutor(new RecordingArchiver());
+
+            Assert.Throws<DirectoryNotFoundException>(() =>
+                executor.ExecuteSizeSlices(Path.Combine(output, "没有这个目录"), output, plan));
+        }
+        finally
+        {
             Directory.Delete(output, recursive: true);
         }
     }

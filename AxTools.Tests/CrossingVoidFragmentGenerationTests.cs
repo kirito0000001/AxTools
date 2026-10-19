@@ -76,7 +76,7 @@ public sealed class CrossingVoidFragmentGenerationTests
     }
 
     [Fact]
-    public void PlanFromAScannedDirectorySplitsIntoTheThreeGroups()
+    public void PlanFromAScannedDirectoryUsesSizeSlices()
     {
         var game = Directory.CreateDirectory(
             Path.Combine(Path.GetTempPath(), $"axtools-fragplan-{Guid.NewGuid():N}")).FullName;
@@ -87,12 +87,12 @@ public sealed class CrossingVoidFragmentGenerationTests
             WriteFile(game, @"CrossingVoid\Content\Movies\Login_1.mp4", "video");
             WriteFile(game, @"CrossingVoid.exe", "exe");
 
-            var plan = CrossingVoidFragmentGenerator.BuildPlan(game);
+            var plan = CrossingVoidFragmentGenerator.BuildSizePlan(game, "零境V0.6PC");
 
-            Assert.Equal(2, plan.Chunks.Count);
-            Assert.Single(plan.Videos);
-            Assert.Single(plan.Remainder);
+            // 四个小文件都在 1 GiB 以内，按体积切片只应该有一片。
+            Assert.Single(plan.Slices);
             Assert.Equal(4, plan.TotalCount);
+            Assert.Equal("零境V0.6PC基础碎片001.zip", plan.Slices[0].ArchiveName);
         }
         finally
         {

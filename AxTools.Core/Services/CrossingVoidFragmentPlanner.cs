@@ -3,25 +3,14 @@ using AxTools.Core.Models;
 namespace AxTools.Core.Services;
 
 /// <summary>
-/// 《生成碎片》的判定规则，有两条路：
-///   · <see cref="PlanBySize"/>：按体积切片（PC 用，默认 1 GiB 一片）；
-///   · <see cref="Plan"/>：按类型分三组（安卓暂时用）。
+/// 《生成碎片》的切片规则：把文件按路径排序后顺序装箱，每片不超过上限。
 ///
-/// 为什么不按文件名写死：用户明确说过"之后会重新分配 chunk"，所以三组判定只看**路径**，
-/// 不看 `pakchunkN` 这种具体名字 —— 只要还在 `Content/Paks` 里、还是 pak/ucas/utoc，就算 chunk。
-///
-/// 纯函数、不碰磁盘：真正落盘（拷 chunk、调 Bandizip 打包）由调用方做，
-/// 这样规则可以先被测试钉住。
+/// 纯函数、不碰磁盘：PC 的磁盘文件和安卓的 OBB 条目都先变成 (path, size)，
+/// 规则先被测试钉住，落盘由各自的执行器做。
 /// </summary>
 public static class CrossingVoidFragmentPlanner
 {
-    private static readonly string[] ChunkExtensions = [".pak", ".ucas", ".utoc"];
-    private static readonly string[] VideoExtensions = [".mp4"];
-
-    private const string PaksSegment = "/Content/Paks/";
-    private const string MoviesSegment = "/Content/Movies/";
-
-    /// <summary>按大小切片时每片的默认上限：1024 MiB（用户拍板的口径，按压缩前原始体积算）。</summary>
+    /// <summary>按大小切片时每片的默认上限：1024 MiB（按压缩前原始体积算）。</summary>
     public const long DefaultSliceBytes = 1024L * 1024 * 1024;
 
     /// <summary>
@@ -34,29 +23,30 @@ public static class CrossingVoidFragmentPlanner
     private const int ArchiveFixedArgumentLength = 512;
 
     /// <summary>
-    /// 基础碎片的文件名前缀：<c>零境V0.6</c>（后面直接接 <c>基础碎片001</c>，不加分隔符）。
+    /// 基础碎片的文件名前缀：<c>零境V0.6PC</c> / <c>零境V0.6安卓</c>
+    /// （后面直接接 <c>基础碎片001</c>，不加分隔符）。
     ///
     /// 只取主/次版本：0.0.x 是补丁，补丁之后单独出包，不混进基础碎片；
-    /// 名字里也不放短横线/空格 —— 有些平台对文件名挑字符，<c>零境V0.6基础碎片001.zip</c> 最稳。
+    /// 名字里也不放短横线/空格 —— 有些平台对文件名挑字符。
     /// </summary>
-    public static string BuildArchiveNamePrefix(string version)
+    public static string BuildArchiveNamePrefix(string version, string platformLabel = "PC")
     {
         var normalized = version?.Trim() ?? string.Empty;
         if (normalized.Length == 0)
         {
-            return "零境V";
+            return $"零境V{platformLabel}";
         }
 
         var segments = normalized.Split('.', StringSplitOptions.RemoveEmptyEntries);
         if (segments.Length == 0)
         {
-            return "零境V";
+            return $"零境V{platformLabel}";
         }
 
         var display = segments.Length >= 2
             ? $"{segments[0]}.{segments[1]}"
             : segments[0];
-        return $"零境V{display}";
+        return $"零境V{display}{platformLabel}";
     }
 
     /// <summary>
@@ -68,7 +58,7 @@ public static class CrossingVoidFragmentPlanner
     /// 单个文件超过上限时不切开（没法切），它自己占一片，并记进 <c>OversizedFiles</c>。
     /// </summary>
     /// <param name="archiveNamePrefix">
-    /// 压缩包名前缀，PC 传 <c>零境交错-0.6.0-</c>；空串时就是 <c>基础碎片001.zip</c>。
+    /// 压缩包名前缀，例如 <c>零境V0.6PC</c>；空串时就是 <c>基础碎片001.zip</c>。
     /// 前缀里的非法文件名字符会被替换成 <c>-</c>。
     /// </param>
     public static CrossingVoidFragmentSizePlan PlanBySize(
@@ -153,58 +143,5 @@ public static class CrossingVoidFragmentPlanner
             .Select(character =>
                 invalid.Contains(character) || character is '/' or '\\' or ' ' ? '-' : character)
             .ToArray());
-    }
-
-    public static CrossingVoidFragmentKind Classify(string path)
-    {
-        var normalized = path.Replace('\\', '/').Trim();
-        if (normalized.Length == 0)
-        {
-            return CrossingVoidFragmentKind.Remainder;
-        }
-
-        var extension = Path.GetExtension(normalized);
-
-        if (normalized.Contains(PaksSegment, StringComparison.OrdinalIgnoreCase)
-            && ChunkExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
-        {
-            return CrossingVoidFragmentKind.Chunk;
-        }
-
-        if (normalized.Contains(MoviesSegment, StringComparison.OrdinalIgnoreCase)
-            && VideoExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
-        {
-            return CrossingVoidFragmentKind.Video;
-        }
-
-        return CrossingVoidFragmentKind.Remainder;
-    }
-
-    /// <summary>把清单里的 <c>files[]</c>（path + sizeBytes）分类成三组。</summary>
-    public static CrossingVoidFragmentPlan Plan(IEnumerable<(string Path, long SizeBytes)> files)
-    {
-        var chunks = new List<CrossingVoidFragmentEntry>();
-        var videos = new List<CrossingVoidFragmentEntry>();
-        var remainder = new List<CrossingVoidFragmentEntry>();
-
-        foreach (var (path, sizeBytes) in files)
-        {
-            var kind = Classify(path);
-            var entry = new CrossingVoidFragmentEntry(path, sizeBytes, kind);
-            switch (kind)
-            {
-                case CrossingVoidFragmentKind.Chunk:
-                    chunks.Add(entry);
-                    break;
-                case CrossingVoidFragmentKind.Video:
-                    videos.Add(entry);
-                    break;
-                default:
-                    remainder.Add(entry);
-                    break;
-            }
-        }
-
-        return new CrossingVoidFragmentPlan(chunks, videos, remainder);
     }
 }

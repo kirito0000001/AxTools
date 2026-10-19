@@ -19,9 +19,9 @@ public sealed class CrossingVoidFragmentManifestTests
             var archives = new[]
             {
                 new CrossingVoidFragmentArchive(
-                    Path.Combine(root, "零境V0.6基础碎片001.zip"), 40, 1_000_000_000, 862_273_823),
+                    Path.Combine(root, "零境V0.6PC基础碎片001.zip"), 40, 1_000_000_000, 862_273_823),
                 new CrossingVoidFragmentArchive(
-                    Path.Combine(root, "零境V0.6基础碎片002.zip"), 75, 900_000_000, 807_000_000),
+                    Path.Combine(root, "零境V0.6PC基础碎片002.zip"), 75, 900_000_000, 807_000_000),
             };
 
             var path = CrossingVoidFragmentManifestWriter.Write(root, "0.6.0", archives);
@@ -35,12 +35,12 @@ public sealed class CrossingVoidFragmentManifestTests
 
             var fragments = manifest.GetProperty("fragments");
             Assert.Equal(2, fragments.GetArrayLength());
-            Assert.Equal("零境V0.6基础碎片001.zip", fragments[0].GetProperty("fileName").GetString());
+            Assert.Equal("零境V0.6PC基础碎片001.zip", fragments[0].GetProperty("fileName").GetString());
             Assert.Equal(862_273_823L, fragments[0].GetProperty("sizeBytes").GetInt64());
             Assert.Equal(40, fragments[0].GetProperty("fileCount").GetInt32());
 
             // 中文包名保持原样，不变成 \u96f6\u5883...
-            Assert.Contains("零境V0.6基础碎片001.zip", json);
+            Assert.Contains("零境V0.6PC基础碎片001.zip", json);
         }
         finally
         {

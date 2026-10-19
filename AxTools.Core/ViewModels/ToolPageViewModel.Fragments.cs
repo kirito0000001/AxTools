@@ -29,14 +29,23 @@ public sealed partial class ToolPageViewModel
 
     private bool IsAndroidFragmentPage => Descriptor.Key is ManagedToolKey.CrossingVoidAndroid;
 
+    /// <summary>包名/发布用的平台字样：<c>PC</c> / <c>安卓</c>。</summary>
+    public string FragmentPlatformLabel => IsAndroidFragmentPage ? "安卓" : "PC";
+
+    /// <summary>下载站上的产品段：PC 是 <c>crossingvoid</c>，安卓是 <c>crossingvoid-android</c>。</summary>
+    public string FragmentProductSegment =>
+        IsAndroidFragmentPage ? "crossingvoid-android" : "crossingvoid";
+
     /// <summary>
-    /// 碎片产物的形态：PC 按体积切片（每片一个独立 zip），安卓暂时仍是"三组"旧机制
-    /// （它的散件在 OBB 里，等 OBB 拆解做完再切到 <see cref="CrossingVoidFragmentLayout.SizeSlices"/>）。
+    /// 版本标记/旁车用的渠道：游戏包发布是 Test 就写 test，其余一律 stable
+    /// （发布脚本只认这两个值；test 的 productKey 还会多一个 <c>-test</c> 后缀）。
     /// </summary>
-    public CrossingVoidFragmentLayout FragmentLayout =>
-        IsAndroidFragmentPage
-            ? CrossingVoidFragmentLayout.ThreeGroups
-            : CrossingVoidFragmentLayout.SizeSlices;
+    public string FragmentChannel =>
+        CrossingVoidVersionMarker.NormalizeChannel(_gamePublishPaths?.GamePublishChannel);
+
+    /// <summary>安卓旁车里的 productKey；PC 用不到，但保持同一份口径。</summary>
+    public string FragmentProductKey =>
+        CrossingVoidAndroidObbSidecar.BuildProductKey(FragmentProductSegment, FragmentChannel);
 
     public string FragmentGenerationActionText => IsAndroidFragmentPage ? "碎片生成" : "零境碎片生成";
 
@@ -50,19 +59,21 @@ public sealed partial class ToolPageViewModel
         _gamePublishPaths?.GamePublishVersion?.Trim() ?? string.Empty;
 
     /// <summary>
-    /// 基础碎片的名字前缀，例如 <c>零境V0.6</c>（版本只取主/次版，补丁版本不混进基础碎片）。
+    /// 基础碎片的名字前缀，例如 <c>零境V0.6PC</c> / <c>零境V0.6安卓</c>
+    /// （版本只取主/次版，补丁版本不混进基础碎片）。
     /// </summary>
     public string FragmentArchiveNamePrefix =>
-        CrossingVoidFragmentPlanner.BuildArchiveNamePrefix(FragmentGameVersion);
+        CrossingVoidFragmentPlanner.BuildArchiveNamePrefix(
+            FragmentGameVersion,
+            FragmentPlatformLabel);
 
     public string FragmentGenerationDescription =>
-        FragmentLayout == CrossingVoidFragmentLayout.SizeSlices
-            ? "把打包产物按大小切成若干基础碎片（每片最高 1 GiB，独立 zip，内部保持原目录树）。" +
+        IsAndroidFragmentPage
+            ? "从 OBB 里读出散件，和主 APK 一起切成「安卓安装包 + 安卓基础碎片」（每片最高 1 GiB）。" +
+              "必须用启动器导入：它会按清单组装 OBB 并安装 APK，不能手动解压。生成前会清空输出目录。"
+            : "把打包产物按大小切成若干 PC 基础碎片（每片最高 1 GiB，独立 zip，内部保持原目录树）。" +
               $"文件名形如 {FragmentArchiveNamePrefix}基础碎片001.zip；" +
-              "全部解压到同一个游戏安装目录即可，不需要合并。生成前会清空输出目录。"
-            : "把打包产物拆成三份：分片散件（保持目录树）+ 影片各一个压缩包 + 其余文件一个压缩包。" +
-              "分片不压缩是因为它本身已经是压过的；影片不压缩是因为再压一遍只省 0.0%。" +
-              "生成完自己发到网盘或群里就行。";
+              "全部解压到同一个游戏安装目录即可，不需要合并。生成前会清空输出目录。";
 
     /// <summary>
     /// 碎片从哪个目录生成 —— **直接复用「服务器 → 零境交错」那份游戏包目录**
@@ -145,12 +156,11 @@ public sealed partial class ToolPageViewModel
         !string.IsNullOrWhiteSpace(FragmentGameDirectory) &&
         !string.IsNullOrWhiteSpace(FragmentOutputDirectory);
 
-    /// <summary>碎片清单发布只接了 PC 这条链路（安卓还要先拆 OBB），安卓页整块按钮不出现。</summary>
-    public bool HasFragmentManifestPublishing =>
-        HasFragmentGeneration && !IsAndroidFragmentPage;
+    /// <summary>两个页都有《发布碎片清单》：PC 传 PC 的清单，安卓传安卓的清单。</summary>
+    public bool HasFragmentManifestPublishing => HasFragmentGeneration;
 
     /// <summary>
-    /// 能不能发布碎片清单：只有 PC 页有这条链路。
+    /// 能不能发布碎片清单：两个页走同一条脚本，靠产品段区分 PC / 安卓。
     /// 清单存在可以直接发；清单不存在但目录里有这一版的碎片包时也允许 ——
     /// 发布脚本会按现有 zip 读中央目录重建一份清单，省掉重新压 2.5 GB。
     /// </summary>
@@ -236,6 +246,8 @@ public sealed partial class ToolPageViewModel
         OnPropertyChanged(nameof(FragmentOutputDirectory));
         OnPropertyChanged(nameof(FragmentGameVersion));
         OnPropertyChanged(nameof(FragmentArchiveNamePrefix));
+        OnPropertyChanged(nameof(FragmentChannel));
+        OnPropertyChanged(nameof(FragmentProductKey));
         OnPropertyChanged(nameof(FragmentGenerationDescription));
         OnPropertyChanged(nameof(CanGenerateFragments));
         OnPropertyChanged(nameof(CanPublishFragmentManifest));
