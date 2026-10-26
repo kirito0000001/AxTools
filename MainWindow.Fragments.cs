@@ -61,7 +61,11 @@ public sealed partial class MainWindow
             return;
         }
 
-        if (args.PathKind == "OutputDirectory")
+        if (args.PathKind == "SourceDirectory")
+        {
+            viewModel.FragmentGameDirectory = folder.Path;
+        }
+        else if (args.PathKind == "OutputDirectory")
         {
             viewModel.FragmentOutputDirectory = folder.Path;
         }
@@ -91,7 +95,7 @@ public sealed partial class MainWindow
         {
             await ShowMessageDialogAsync(
                 $"无法{actionText}",
-                $"还没有可用的游戏包目录。先到「服务器 → {profile.DisplayName}」的游戏包发布里选一次，这里就跟着用了。");
+                "还没有可用的碎片源目录。请在碎片制作里点「源文件」旁的文件夹按钮，选择打包产物目录。");
             return;
         }
 

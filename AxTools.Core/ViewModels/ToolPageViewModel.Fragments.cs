@@ -118,20 +118,44 @@ public sealed partial class ToolPageViewModel
               "全部解压到同一个游戏安装目录即可，不需要合并。生成前会清空输出目录。";
 
     /// <summary>
-    /// 碎片从哪个目录生成 —— **直接复用「服务器 → 当前游戏」那份游戏包目录**
-    /// （PC / 安卓各记一个），不在碎片制作里再填一遍。
-    ///
-    /// 启动器页本来都不显示"游戏包发布"那一区，所以这份引用是注入进来的：
-    /// PC 页读 PC 那份、安卓页读安卓那份，用户在服务器那边选过一次，两边就一直是同一个源。
+    /// 碎片从哪个目录生成。优先用碎片制作里单独选的源目录；没选过时沿用
+    /// 「服务器 → 当前游戏」那份游戏包目录，保持旧配置无需迁移。
     /// </summary>
-    public string FragmentGameDirectory => FragmentGamePaths is null
-        ? string.Empty
-        : IsAndroidFragmentPage
-            ? FragmentGamePaths.GamePackageRootAndroid
-            : FragmentGamePaths.GamePackageRoot;
+    public string FragmentGameDirectory
+    {
+        get
+        {
+            var paths = FragmentSourcePaths;
+            if (!string.IsNullOrWhiteSpace(paths.FragmentSourceDirectory))
+            {
+                return paths.FragmentSourceDirectory;
+            }
+
+            return IsAndroidFragmentPage
+                ? paths.GamePackageRootAndroid
+                : paths.GamePackageRoot;
+        }
+        set
+        {
+            var paths = FragmentSourcePaths;
+            var normalized = value?.Trim() ?? string.Empty;
+            if (SetProperty(
+                paths.FragmentSourceDirectory,
+                normalized,
+                paths,
+                static (model, newValue) => model.FragmentSourceDirectory = newValue))
+            {
+                OnPropertyChanged(nameof(FragmentGameDirectory));
+                OnPropertyChanged(nameof(FragmentSourceText));
+                OnPropertyChanged(nameof(CanGenerateFragments));
+            }
+        }
+    }
+
+    private ManagedToolPaths FragmentSourcePaths => FragmentGamePaths ?? _paths;
 
     public string FragmentSourceText => string.IsNullOrWhiteSpace(FragmentGameDirectory)
-        ? $"还没有游戏包目录 —— 先到「服务器 → {FragmentProfile?.DisplayName ?? "零境交错"}」的游戏包发布里选一次。"
+        ? "还没有选择碎片源目录 —— 可以手动选择打包产物目录。"
         : FragmentGameDirectory;
 
     public string FragmentOutputDirectory

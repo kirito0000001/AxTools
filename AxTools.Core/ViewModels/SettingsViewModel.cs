@@ -380,6 +380,8 @@ public sealed class SettingsViewModel : ObservableObject
             nameof(ToolPageViewModel.PublishChannel) or
             nameof(ToolPageViewModel.LauncherReleaseDescription) or
             nameof(ToolPageViewModel.GamePackageRoot) or
+            nameof(ToolPageViewModel.FragmentGameDirectory) or
+            nameof(ToolPageViewModel.FragmentOutputDirectory) or
             nameof(ToolPageViewModel.GamePublishVersion) or
             nameof(ToolPageViewModel.GamePublishChannel) or
             nameof(ToolPageViewModel.GamePublishReleaseNotes))

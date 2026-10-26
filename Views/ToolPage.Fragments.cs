@@ -20,7 +20,7 @@ public sealed partial class ToolPage
     /// <summary>点《GitHub 兜底清单》（只把 fragments.json 发到 GitHub Release）。</summary>
     public event EventHandler? FragmentManifestPublishToGitHubRequested;
 
-    /// <summary>点碎片区里那个"选择文件夹"（碎片输出目录）。</summary>
+    /// <summary>点碎片区里那个"选择文件夹"（源目录 / 输出目录）。</summary>
     public event EventHandler<FragmentPathRequestedEventArgs>? FragmentPathSelectionRequested;
 
     private void GenerateFragments_Click(object sender, RoutedEventArgs e) =>
@@ -41,7 +41,7 @@ public sealed partial class ToolPage
     }
 }
 
-/// <summary>碎片区里点的是哪个"选择文件夹"（目前只有 OutputDirectory）。</summary>
+/// <summary>碎片区里点的是哪个"选择文件夹"（SourceDirectory / OutputDirectory）。</summary>
 public sealed class FragmentPathRequestedEventArgs(string pathKind) : EventArgs
 {
     public string PathKind { get; } = pathKind;

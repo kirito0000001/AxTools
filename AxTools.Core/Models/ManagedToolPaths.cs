@@ -23,6 +23,12 @@ public sealed class ManagedToolPaths
     public string GamePackageRootAndroid { get; set; } = string.Empty;
 
     /// <summary>
+    /// 《生成碎片》的源目录（PC/安卓各自记）。留空时沿用对应游戏包目录，
+    /// 这样旧配置不需要迁移；换过产物目录后可以单独改这里。
+    /// </summary>
+    public string FragmentSourceDirectory { get; set; } = string.Empty;
+
+    /// <summary>
     /// 《生成碎片》的输出目录。留空时按工具页给默认（`D:\零境交错PC碎片` / `D:\零境交错安卓碎片`）——
     /// 不预填死值，是因为默认值要等到用户真去点那个按钮时才算得准。
     /// </summary>

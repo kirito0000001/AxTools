@@ -522,6 +522,12 @@ public sealed class ToolPageViewModelTests : IDisposable
         Assert.Equal(@"F:\DaBaoV\Crossingvoid\Windows", viewModel.FragmentGameDirectory);
         Assert.Equal("零境碎片生成", viewModel.FragmentGenerationActionText);
 
+        // 碎片源目录可以单独选，优先于游戏包发布目录；选择结果落到该游戏自己的 paths。
+        var customSource = @"F:\DaBaoV\Crossingvoid\WindowsServer";
+        viewModel.FragmentGameDirectory = customSource;
+        Assert.Equal(customSource, viewModel.FragmentGameDirectory);
+        Assert.Equal(customSource, zeroPaths.FragmentSourceDirectory);
+
         viewModel.SelectedFragmentGame = options[1];
 
         Assert.Same(options[1], viewModel.SelectedFragmentGame);
