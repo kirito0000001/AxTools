@@ -40,6 +40,11 @@ param(
     # 对外下载基址。清单里的 baseUrl = <这个>/games/<产品段>/<版本>/
     [string]$PublicBaseUrl = 'https://dl.crossingvoid.top',
 
+    # 游戏清单主文件走阿里云静态站；dl 只保留游戏文件、latest.json 和 finalize 兼容副本。
+    [string]$ManifestUploadHost = 'crossing-server',
+    [string]$ManifestRemoteRoot = 'C:/inetpub/wwwroot/games',
+    [string]$ManifestPublicBaseUrl = 'https://www.crossingvoid.top',
+
     # dl 上的产品目录名。留空则按平台推导（Windows → crossingvoid，Android → crossingvoid-android）
     [string]$ProductSegment = '',
 
@@ -777,7 +782,7 @@ function Invoke-PublicVerify {
         [Parameter(Mandatory)][int]$ExpectedFileCount
     )
 
-    $manifestUrl = '{0}/games/{1}/manifests/{2}.json' -f $PublicBaseUrl.TrimEnd('/'), $ProductSegment, $ReleaseVersion
+    $manifestUrl = '{0}/games/{1}/manifests/{2}.json' -f $ManifestPublicBaseUrl.TrimEnd('/'), $ProductSegment, $ReleaseVersion
     $cacheBuster = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $manifest = $null
     for ($attempt = 1; $attempt -le 5; $attempt++) {
@@ -912,6 +917,73 @@ function Invoke-FileSyncScp {
     throw ("scp 上传失败：{0}`n{1}" -f $shown, $lastError)
 }
 
+function Invoke-ManifestHostPowerShell {
+    param([Parameter(Mandatory)][string]$Command)
+
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & ssh -o BatchMode=yes -o ConnectTimeout=15 $ManifestUploadHost `
+            "powershell -NoProfile -EncodedCommand $encoded" 2>&1
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
+
+    $lines = @($output | ForEach-Object { [string]$_ })
+    if ($code -ne 0) {
+        throw ("阿里云清单命令失败（退出码 {0}）：{1}" -f $code, (($lines | Out-String).Trim()))
+    }
+
+    return $lines
+}
+
+# 游戏清单主文件上传到阿里云 IIS；dl 上的清单仍保留给 game-file-sync finalize 使用。
+function Publish-ManifestToAliyun {
+    param(
+        [Parameter(Mandatory)][string]$LocalPath,
+        [Parameter(Mandatory)][string]$ProductSegment,
+        [Parameter(Mandatory)][string]$Version
+    )
+
+    $directory = "$ManifestRemoteRoot/$ProductSegment/manifests"
+    $directoryWin = $directory.Replace('/', '\')
+    $remoteTemp = "$directory/$Version.json.axtmp"
+    $remoteFinal = "$directory/$Version.json"
+    $tempWin = $remoteTemp.Replace('/', '\')
+    $finalWin = $remoteFinal.Replace('/', '\')
+
+    Invoke-ManifestHostPowerShell -Command (
+        "New-Item -ItemType Directory -Path '{0}' -Force | Out-Null" -f $directoryWin) | Out-Null
+
+    $sourceDirectory = Split-Path -Parent $LocalPath
+    $sourceName = Split-Path -Leaf $LocalPath
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    Push-Location -LiteralPath $sourceDirectory
+    try {
+        $target = '{0}:{1}' -f $ManifestUploadHost, $remoteTemp
+        $output = & scp -O -q -o BatchMode=yes -o ConnectTimeout=15 `
+            -o ServerAliveInterval=10 -o ServerAliveCountMax=3 $sourceName $target 2>&1
+        $code = $LASTEXITCODE
+    }
+    finally {
+        Pop-Location
+        $ErrorActionPreference = $previous
+    }
+
+    if ($code -ne 0) {
+        throw ("上传游戏清单到阿里云失败（退出码 {0}）：{1}" -f `
+            $code, (($output | ForEach-Object { [string]$_ } | Out-String).Trim()))
+    }
+
+    Invoke-ManifestHostPowerShell -Command (
+        "Move-Item -LiteralPath '{0}' -Destination '{1}' -Force" -f $tempWin, $finalWin) | Out-Null
+    return $remoteFinal
+}
+
 # 远端已完成的文件大小表：只用于跳过上次中断前已经传完的文件。
 # .axtmp 不参与跳过，半截临时文件会在这次重新覆盖。
 function Get-RemoteFileSizeMap {
@@ -961,7 +1033,7 @@ function Get-OnlineManifest {
     param([Parameter(Mandatory)][string]$Version)
 
     try {
-        $uri = "$PublicBaseUrl/games/$ProductSegment/manifests/$Version.json?t=$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
+        $uri = "$ManifestPublicBaseUrl/games/$ProductSegment/manifests/$Version.json?t=$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
         $response = Invoke-DownloadSiteRequest -Uri $uri
         return ($response.Content | ConvertFrom-Json)
     }
@@ -1096,6 +1168,16 @@ function Invoke-FileSyncPublish {
     if ($renameCommands.Count -gt 0) {
         [void](Invoke-FileSyncSsh -Command ($renameCommands -join ' && ') -Detail '原子改名')
     }
+
+    Write-AxTaskProgress `
+        -Stage 'push' `
+        -Percent 94 `
+        -Message '正在把游戏清单同步到阿里云'
+    Publish-ManifestToAliyun `
+        -LocalPath $ManifestPath `
+        -ProductSegment $ProductSegment `
+        -Version $ReleaseVersion | Out-Null
+
     Write-AxTaskProgress `
         -Stage 'push' `
         -Percent 94 `

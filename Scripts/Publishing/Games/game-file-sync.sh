@@ -80,7 +80,7 @@ finalize)
     FRAG_FIELD=$(printf ',"fragmentsUrl":"https://www.crossingvoid.top/games/%s/fragments/%s.json"' "$SEG" "$VER")
   fi
   TMP="$BASE/latest.json.tmp.$$"
-  printf "{\"schemaVersion\":1,\"productSegment\":\"%s\",\"version\":\"%s\",\"manifestUrl\":\"https://dl.crossingvoid.top/games/%s/manifests/%s.json\",\"generatedAt\":\"%s\"%s}\n" \
+  printf "{\"schemaVersion\":1,\"productSegment\":\"%s\",\"version\":\"%s\",\"manifestUrl\":\"https://www.crossingvoid.top/games/%s/manifests/%s.json\",\"generatedAt\":\"%s\"%s}\n" \
     "$SEG" "$VER" "$SEG" "$VER" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$FRAG_FIELD" > "$TMP"
   mv "$TMP" "$BASE/latest.json"
   echo "已更新：games/$SEG/latest.json → $VER"
