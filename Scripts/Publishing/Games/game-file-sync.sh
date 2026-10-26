@@ -77,7 +77,7 @@ finalize)
   #    否则不写这个字段。这样碎片发布和游戏包发布互不覆盖。
   FRAG_FIELD=""
   if [ -f "$BASE/fragments/$VER.json" ]; then
-    FRAG_FIELD=$(printf ',"fragmentsUrl":"https://dl.crossingvoid.top/games/%s/fragments/%s.json"' "$SEG" "$VER")
+    FRAG_FIELD=$(printf ',"fragmentsUrl":"https://www.crossingvoid.top/games/%s/fragments/%s.json"' "$SEG" "$VER")
   fi
   TMP="$BASE/latest.json.tmp.$$"
   printf "{\"schemaVersion\":1,\"productSegment\":\"%s\",\"version\":\"%s\",\"manifestUrl\":\"https://dl.crossingvoid.top/games/%s/manifests/%s.json\",\"generatedAt\":\"%s\"%s}\n" \

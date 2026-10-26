@@ -428,7 +428,7 @@
                                 Visibility="{Binding HasFragmentManifestPublishing, Converter={StaticResource BooleanToVisibilityConverter}}"
                                 Click="PublishFragmentManifest_Click"
                                 Style="{StaticResource PrimaryToolButtonStyle}"
-                                ToolTipService.ToolTip="把 fragments.json 传到下载站并更新 latest.json（碎片包走网盘/群，不上传）">
+                                ToolTipService.ToolTip="把 fragments.json 传到阿里云 www，并更新下载站 latest.json（碎片包走网盘/群，不上传）">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <SymbolIcon Symbol="Upload" />
                                     <TextBlock Text="发布碎片清单" />

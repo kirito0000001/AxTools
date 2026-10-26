@@ -5,7 +5,10 @@ param(
     [string]$ProductSegment = 'crossingvoid',
     [string]$GameShortName = '零境',
     [string]$FileSyncTarget = 'yecaoyun-hk',
-    [string]$PublicBaseUrl = 'https://dl.crossingvoid.top',
+    [string]$PublicBaseUrl = 'https://www.crossingvoid.top',
+    # 碎片清单走阿里云静态站；dl 只继续承载游戏包和 latest.json。
+    [string]$FragmentUploadHost = 'crossing-server',
+    [string]$FragmentRemoteRoot = 'C:/inetpub/wwwroot/games',
     # GitHub 兜底：只传 fragments.json，不传 zip；固定 latest Release 给启动器回退。
     [string]$GitHubRepository = '',
     [switch]$GitHubOnly,
@@ -21,8 +24,8 @@ param(
 # 碎片包本身走网盘/QQ 群分发，**不上服务器** —— 这里只发布描述它们的清单。
 #
 # 落位：
-#   /srv/downloads/games/<产品段>/fragments/<版本>.json
-#   /srv/downloads/games/<产品段>/latest.json 里加 fragmentsUrl
+#   https://www.crossingvoid.top/games/<产品段>/fragments/<版本>.json（阿里云 IIS）
+#   /srv/downloads/games/<产品段>/latest.json 里加 fragmentsUrl（野草云，保留游戏包 manifest 不动）
 #
 # 为什么上传前还要核对本地 zip：清单是玩家核对包的唯一依据，包被换过/清单写错了，
 #   比不写清单更糟。大小和包内条目数都是几十毫秒能算出来的，先对一遍再传。
@@ -41,6 +44,8 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyCon
 
 $ProductSegment = $ProductSegment.Trim().Trim('/')
 $GameShortName = $GameShortName.Trim()
+$PublicBaseUrl = $PublicBaseUrl.TrimEnd('/')
+$FragmentRemoteRoot = $FragmentRemoteRoot.TrimEnd('/')
 if ($ProductSegment -notmatch '^[A-Za-z0-9._-]+$') { throw "产品目录名不合法：$ProductSegment" }
 if ([string]::IsNullOrWhiteSpace($GameShortName)) { throw '碎片包名短名（GameShortName）不能为空。' }
 if ($ReleaseVersion -notmatch '^[0-9]+(\.[0-9]+){1,3}$') { throw "版本号格式不对：$ReleaseVersion（应形如 0.6.0）" }
@@ -156,6 +161,71 @@ function Invoke-SftpBatch {
     finally {
         Remove-Item -LiteralPath $batchFile -Force -ErrorAction SilentlyContinue
     }
+}
+
+function Invoke-FragmentHostPowerShell {
+    param([Parameter(Mandatory)][string]$Command)
+
+    $sshOptions = $script:SshConnectionOptions
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $target = $FragmentUploadHost
+        $output = & ssh @sshOptions $target "powershell -NoProfile -EncodedCommand $encoded" 2>&1
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
+
+    $lines = @($output | ForEach-Object { [string]$_ })
+    if ($code -ne 0) {
+        throw ("阿里云清单命令失败（退出码 {0}）：{1}" -f $code, (($lines | Out-String).Trim()))
+    }
+
+    return $lines
+}
+
+# 清单上传到阿里云 IIS 静态目录；先传 .axtmp，再在 Windows 上原子改名。
+function Publish-FragmentManifestToAliyun {
+    param(
+        [Parameter(Mandatory)][string]$LocalPath,
+        [Parameter(Mandatory)][string]$ProductSegment,
+        [Parameter(Mandatory)][string]$Version
+    )
+
+    Assert-NotCancelled
+    $directory = "$FragmentRemoteRoot/$ProductSegment/fragments"
+    $directoryWin = $directory.Replace('/', '\')
+    $remoteTemp = "$directory/$Version.json.axtmp"
+    $remoteFinal = "$directory/$Version.json"
+    $tempWin = $remoteTemp.Replace('/', '\')
+    $finalWin = $remoteFinal.Replace('/', '\')
+    $sshOptions = $script:SshConnectionOptions
+
+    Invoke-FragmentHostPowerShell -Command (
+        "New-Item -ItemType Directory -Path '{0}' -Force | Out-Null" -f $directoryWin) | Out-Null
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $target = $FragmentUploadHost
+        $output = & scp -O @sshOptions $LocalPath "${target}:$remoteTemp" 2>&1
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
+
+    if ($code -ne 0) {
+        throw ("上传 fragments.json 到阿里云失败（退出码 {0}）：{1}" -f `
+            $code, (($output | ForEach-Object { [string]$_ } | Out-String).Trim()))
+    }
+
+    Invoke-FragmentHostPowerShell -Command (
+        "Move-Item -LiteralPath '{0}' -Destination '{1}' -Force" -f $tempWin, $finalWin) | Out-Null
+    return $remoteFinal
 }
 
 function Invoke-GitHubCli {
@@ -380,7 +450,8 @@ try {
     }
 
     $remoteBase = "/srv/downloads/games/$ProductSegment"
-    $remoteManifest = "$remoteBase/fragments/$ReleaseVersion.json"
+    $remoteManifest = "$FragmentRemoteRoot/$ProductSegment/fragments/$ReleaseVersion.json"
+    $remoteFallbackManifest = "$remoteBase/fragments/$ReleaseVersion.json"
     $remoteLatest = "$remoteBase/latest.json"
     $publicFragmentsUrl = "$PublicBaseUrl/games/$ProductSegment/fragments/$ReleaseVersion.json"
 
@@ -411,8 +482,8 @@ try {
     if ($DryRun) {
         Write-AxTaskStage `
             -Stage 'upload' `
-            -Message '演练模式：跳过清单上传与 latest.json 更新' `
-            -Detail ("sftp → {0}:{1}" -f $FileSyncTarget, $remoteManifest)
+            -Message '演练模式：跳过阿里云清单上传与 latest.json 更新' `
+            -Detail ("阿里云 → {0}" -f $remoteManifest)
         Write-AxTaskResult -Status 'success' -ExitCode 0 -Message (
             "演练通过：{0} 个包 / {1}；清单目标 {2}" -f $entries.Count, (Format-Bytes $totalBytes), $remoteManifest)
         exit 0
@@ -455,13 +526,21 @@ try {
     Write-AxTaskProgress -Stage 'upload' -Percent 25 -Message (
         "碎片包只在本地核对，不上传：{0} 个 / {1}" -f $entries.Count, (Format-Bytes $totalBytes))
 
-    # 2) 上传 fragments.json（先临时名再原子改名）
-    Write-AxTaskProgress -Stage 'upload' -Percent 80 -Message '正在上传 fragments.json'
+    # 2) 上传 fragments.json 到阿里云（先临时名再原子改名）
+    Write-AxTaskProgress -Stage 'upload' -Percent 80 -Message '正在上传 fragments.json 到阿里云'
+    Publish-FragmentManifestToAliyun `
+        -LocalPath $manifestPath `
+        -ProductSegment $ProductSegment `
+        -Version $ReleaseVersion | Out-Null
+
+    # 下载站保留一份同名副本作为“该版本有碎片”的兼容标记：
+    # game-file-sync.sh finalize 需要看到它才会把 fragmentsUrl 写进 latest.json。
+    Write-AxTaskProgress -Stage 'upload' -Percent 84 -Message '正在同步下载站兼容标记'
+    Invoke-Ssh -Command ("mkdir -p '{0}/fragments'" -f $remoteBase) | Out-Null
     Invoke-SftpBatch -Commands @(
-        ("-mkdir `"{0}`"" -f "$remoteBase/fragments"),
-        ("put `"{0}`" `"{1}`"" -f $manifestPath, "$remoteManifest.axtmp"),
-        ("rename `"{0}`" `"{1}`"" -f "$remoteManifest.axtmp", $remoteManifest)
-    ) -Detail 'fragments.json'
+        ("put `"{0}`" `"{1}`"" -f $manifestPath, "$remoteFallbackManifest.axtmp"),
+        ("rename `"{0}`" `"{1}`"" -f "$remoteFallbackManifest.axtmp", $remoteFallbackManifest)
+    ) -Detail 'download-site marker'
 
     # 3) latest.json 加/改 fragmentsUrl（读服务端的，不用 CDN 缓存）
     Assert-NotCancelled
