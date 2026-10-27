@@ -404,6 +404,7 @@ public sealed class ManagedToolAdapterTests : IDisposable
                 ManagedToolAction.CheckGamePackage,
                 ManagedToolAction.PublishGameVersion,
                 ManagedToolAction.PublishGamePatch,
+                ManagedToolAction.GenerateGamePatchFragments,
                 ManagedToolAction.PublishGameVersionToGitHub
             }
             : new[]
@@ -411,11 +412,12 @@ public sealed class ManagedToolAdapterTests : IDisposable
                 ManagedToolAction.CheckEnvironment,
                 ManagedToolAction.CheckGamePackage,
                 ManagedToolAction.PublishGameVersion,
-                ManagedToolAction.PublishGamePatch
+                ManagedToolAction.PublishGamePatch,
+                ManagedToolAction.GenerateGamePatchFragments
             };
         var expectedNames = supportsGitHub
-            ? new[] { "检查环境", "只检查，不发布", "发布到服务器", "发布 Windows 补丁", "发布到 GitHub" }
-            : new[] { "检查环境", "只检查，不发布", "发布到服务器", "发布 Windows 补丁" };
+            ? new[] { "检查环境", "只检查，不发布", "发布到服务器", "发布补丁包", "生成补丁碎片", "发布到 GitHub" }
+            : new[] { "检查环境", "只检查，不发布", "发布到服务器", "发布补丁包", "生成补丁碎片" };
         Assert.Equal(expectedActions, adapter.Actions.Select(action => action.Action));
         Assert.Equal(expectedNames, adapter.Actions.Select(action => action.DisplayName));
         Assert.All(

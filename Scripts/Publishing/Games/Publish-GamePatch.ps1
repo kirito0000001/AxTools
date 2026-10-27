@@ -5,7 +5,16 @@ param(
     [string]$Channel = 'Stable',
     [string]$GitHubRepo = '',
     [string]$Version = '',
+    [string]$VersionManifestPath = '',
     [string]$BaseManifestUrl = '',
+    [string]$DownloadTarget = 'yecaoyun-hk',
+    [string]$DownloadRemoteRoot = '/srv/downloads/games',
+    [string]$DownloadPublicBaseUrl = 'https://dl.crossingvoid.top',
+    [string]$GiteeRepo = 'xiaojie578/CrossingVoid-patch-transfer',
+    [string]$FragmentOutputDirectory = '',
+    [long]$MaxFragmentBytes = 1GB,
+    [switch]$FragmentsOnly,
+    [switch]$UseGiteeTransfer,
     [switch]$DryRun
 )
 
@@ -22,11 +31,127 @@ function Assert-NotCancelled {
     }
 }
 
+function Format-Size {
+    param([long]$Bytes)
+    if ($Bytes -ge 1GB) { return ('{0:N2} GB' -f ($Bytes / 1GB)) }
+    if ($Bytes -ge 1MB) { return ('{0:N2} MB' -f ($Bytes / 1MB)) }
+    if ($Bytes -ge 1KB) { return ('{0:N1} KB' -f ($Bytes / 1KB)) }
+    return "$Bytes B"
+}
+
+function New-PatchFragments {
+    param(
+        [Parameter(Mandatory)][object[]]$Entries,
+        [Parameter(Mandatory)][string]$OutputRoot,
+        [Parameter(Mandatory)][string]$Version,
+        [Parameter(Mandatory)][string]$BaseVersion,
+        [Parameter(Mandatory)][string]$ProductSegment,
+        [long]$SliceBytes = 1GB
+    )
+
+    $shortName = switch ($ProductSegment.ToLowerInvariant()) {
+        'crossingvoid' { '零境' }
+        'fantasyproject' { '幻杀' }
+        default { $ProductSegment }
+    }
+    $outputDirectory = Join-Path $OutputRoot ("补丁V$Version")
+    if (Test-Path -LiteralPath $outputDirectory) {
+        Remove-Item -LiteralPath $outputDirectory -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
+
+    $prefix = "${shortName}V${Version}PC补丁碎片"
+    $slices = [System.Collections.Generic.List[object]]::new()
+    $current = [System.Collections.Generic.List[object]]::new()
+    $currentBytes = [int64]0
+    foreach ($entry in ($Entries | Sort-Object Path)) {
+        Assert-NotCancelled
+        $size = [int64]$entry.SizeBytes
+        if ($current.Count -gt 0 -and ($currentBytes + $size) -gt $SliceBytes) {
+            $slices.Add([pscustomobject]@{ Entries = @($current); Bytes = $currentBytes })
+            $current = [System.Collections.Generic.List[object]]::new()
+            $currentBytes = [int64]0
+        }
+        $current.Add($entry)
+        $currentBytes += $size
+    }
+    if ($current.Count -gt 0) {
+        $slices.Add([pscustomobject]@{ Entries = @($current); Bytes = $currentBytes })
+    }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archives = [System.Collections.Generic.List[object]]::new()
+    $index = 0
+    foreach ($slice in $slices) {
+        $index++
+        Assert-NotCancelled
+        $fileName = "{0}{1:D3}.zip" -f $prefix, $index
+        $zipPath = Join-Path $outputDirectory $fileName
+        $zip = [System.IO.Compression.ZipFile]::Open(
+            $zipPath,
+            [System.IO.Compression.ZipArchiveMode]::Create)
+        try {
+            foreach ($entry in $slice.Entries) {
+                [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                    $zip,
+                    $entry.SourcePath,
+                    $entry.Path,
+                    [System.IO.Compression.CompressionLevel]::Optimal)
+            }
+        }
+        finally {
+            $zip.Dispose()
+        }
+        $item = Get-Item -LiteralPath $zipPath
+        $archives.Add([ordered]@{
+            fileName = $fileName
+            sizeBytes = [int64]$item.Length
+            fileCount = @($slice.Entries).Count
+        })
+        Write-AxTaskProgress `
+            -Stage 'fragments' `
+            -Percent ([Math]::Min(99, 100 * $index / [Math]::Max(1, $slices.Count))) `
+            -Message ("已生成补丁碎片 {0}/{1}：{2}" -f $index, $slices.Count, $fileName) `
+            -Detail (Format-Size -Bytes $item.Length)
+    }
+
+    $manifest = [ordered]@{
+        schemaVersion = 1
+        kind = 'patch-fragments'
+        productSegment = $ProductSegment
+        platform = 'Windows'
+        version = $Version
+        baseVersion = $BaseVersion
+        generatedAt = [DateTimeOffset]::Now.ToString('o')
+        slices = @($archives)
+        files = @($Entries | ForEach-Object {
+            [ordered]@{ path = $_.Path; sizeBytes = $_.SizeBytes; sha256 = $_.Sha256 }
+        })
+    }
+    $manifestPath = Join-Path $outputDirectory 'patch-fragments.json'
+    [IO.File]::WriteAllText(
+        $manifestPath,
+        (($manifest | ConvertTo-Json -Depth 8) + "`n"),
+        [Text.UTF8Encoding]::new($false))
+
+    return [pscustomobject]@{
+        OutputDirectory = $outputDirectory
+        ArchiveCount = $archives.Count
+        FileCount = @($Entries).Count
+        ManifestPath = $manifestPath
+    }
+}
+
 function Read-BuildManifest {
-    param([string]$PackageRoot)
+    param([string]$PackageRoot, [string]$ExplicitPath = '')
     $root = [IO.Path]::GetFullPath($PackageRoot)
-    $candidates = @(
+    $candidates = @()
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
+        $candidates += $ExplicitPath
+    }
+    $candidates += @(
         (Join-Path $root 'Version.json'),
+        (Join-Path (Split-Path -Parent $root) 'Version-Windows.json'),
         (Join-Path (Split-Path -Parent $root) 'Version.json')
     ) | Select-Object -Unique
     foreach ($candidate in $candidates) {
@@ -70,6 +195,126 @@ function Ensure-Release {
     }
 }
 
+function Invoke-DownloadHostSsh {
+    param([Parameter(Mandatory)][string]$Command)
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & ssh -o BatchMode=yes -o ConnectTimeout=15 `
+            -o ServerAliveInterval=10 -o ServerAliveCountMax=3 `
+            $DownloadTarget $Command 2>&1
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
+    if ($code -ne 0) {
+        throw ("下载站命令失败（{0}）：{1}" -f $code, (($output | Out-String).Trim()))
+    }
+    return @($output | ForEach-Object { [string]$_ })
+}
+
+function Invoke-DownloadHostScp {
+    param(
+        [Parameter(Mandatory)][string]$LocalPath,
+        [Parameter(Mandatory)][string]$RemotePath
+    )
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & scp -O -q -o BatchMode=yes -o ConnectTimeout=15 `
+            -o ServerAliveInterval=10 -o ServerAliveCountMax=3 `
+            $LocalPath ("{0}:{1}" -f $DownloadTarget, $RemotePath) 2>&1
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
+    if ($code -ne 0) {
+        throw ("下载站上传失败（{0}）：{1}" -f $code, (($output | Out-String).Trim()))
+    }
+}
+
+function Get-GiteeCredential {
+    $lines = ("protocol=https`nhost=gitee.com`n`n" | git credential fill 2>$null)
+    $values = @{}
+    foreach ($line in $lines) {
+        $index = ([string]$line).IndexOf('=')
+        if ($index -gt 0) {
+            $values[([string]$line).Substring(0, $index)] = ([string]$line).Substring($index + 1)
+        }
+    }
+    if (-not $values.ContainsKey('username') -or -not $values.ContainsKey('password')) {
+        throw '本机没有 Gitee 凭据，无法走 Gitee 中转。'
+    }
+    return [pscustomobject]@{ User = [string]$values['username']; Token = [string]$values['password'] }
+}
+
+# 补丁先推到 Gitee 私有中转仓，再由野草云从 Gitee 拉取。
+# Gitee 只做传输，不写进 patch-latest 的 mirrors。
+function Publish-PatchViaGitee {
+    param(
+        [Parameter(Mandatory)][string]$ZipPath,
+        [Parameter(Mandatory)][string]$PatchJsonPath,
+        [Parameter(Mandatory)][string]$Version,
+        [Parameter(Mandatory)][string]$MirrorRoot
+    )
+
+    $credential = Get-GiteeCredential
+    $repository = $GiteeRepo.Trim().TrimEnd('/')
+    if ($repository -notmatch '^[^/]+/[^/]+$') { throw "GiteeRepo 格式应为 owner/repo：$repository" }
+    $encodedUser = [uri]::EscapeDataString($credential.User)
+    $encodedToken = [uri]::EscapeDataString($credential.Token)
+    $remoteUrl = "https://${encodedUser}:${encodedToken}@gitee.com/${repository}.git"
+    $branch = 'axtools-transfer'
+    $temp = Join-Path ([IO.Path]::GetTempPath()) ('axtools-gitee-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $temp -Force | Out-Null
+    try {
+        & git -C $temp init -q 2>&1 | Out-Null
+        & git -C $temp config user.name 'AxTools' 2>&1 | Out-Null
+        & git -C $temp config user.email 'axtools@localhost' 2>&1 | Out-Null
+        Copy-Item -LiteralPath $ZipPath -Destination (Join-Path $temp (Split-Path -Leaf $ZipPath)) -Force
+        Copy-Item -LiteralPath $PatchJsonPath -Destination (Join-Path $temp 'patch.json') -Force
+        & git -C $temp checkout -b $branch 2>&1 | Out-Null
+        & git -C $temp add --all 2>&1 | Out-Null
+        & git -C $temp commit -q -m "patch $Version transfer" 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Gitee 中转提交失败。' }
+        & git -C $temp remote add origin $remoteUrl 2>&1 | Out-Null
+        & git -C $temp push -f origin $branch 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Gitee 推送失败（$repository）。" }
+
+        $remoteTemp = "/tmp/axtools-gitee-" + [guid]::NewGuid().ToString('N')
+        $remoteZip = "$MirrorRoot/" + (Split-Path -Leaf $ZipPath)
+        $remoteJson = "$MirrorRoot/patch.json"
+        $command = @"
+rm -rf '$remoteTemp'
+git clone --depth 1 --branch '$branch' '$remoteUrl' '$remoteTemp'
+mkdir -p '$MirrorRoot'
+cp -f '$remoteTemp/$(Split-Path -Leaf $ZipPath)' '$remoteZip.axtmp'
+cp -f '$remoteTemp/patch.json' '$remoteJson.axtmp'
+mv -f '$remoteZip.axtmp' '$remoteZip'
+mv -f '$remoteJson.axtmp' '$remoteJson'
+rm -rf '$remoteTemp'
+sha256sum '$remoteZip'
+"@
+        $result = Invoke-DownloadHostSsh -Command $command
+        $remoteHash = (@($result) | Where-Object { $_ -match '^[0-9a-fA-F]{64}\s' } | Select-Object -First 1)
+        if ([string]::IsNullOrWhiteSpace($remoteHash)) { throw '野草云从 Gitee 拉取后没有返回补丁包 SHA256。' }
+        $actualHash = (($remoteHash -split '\s+')[0]).ToLowerInvariant()
+        $expectedHash = (Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actualHash -ne $expectedHash) {
+            throw "野草云补丁包校验失败：本地 $expectedHash / 远端 $actualHash"
+        }
+        Write-AxTaskStage -Stage 'gitee' -Message '野草云已从 Gitee 中转拉取补丁包并校验通过'
+    }
+    catch {
+        throw ($_.Exception.Message.Replace($encodedToken, '***').Replace($remoteUrl, "https://${encodedUser}:***@gitee.com/${repository}.git"))
+    }
+    finally {
+        Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # 补丁是相对“当前线上基线”的差量：插件 Version.json 只列内容补丁，
 # 这里再和线上全量 manifest 对比，把变化的程序文件（尤其 Shipping.exe）补进来。
 function Get-BaseFileMap {
@@ -99,7 +344,7 @@ function Get-BaseFileMap {
 
 try {
     Set-AxTaskCancellationMode -Mode 'stop' -Message '可以停止当前 Windows 补丁发布任务。'
-    $build = Read-BuildManifest -PackageRoot $GamePackageRoot
+    $build = Read-BuildManifest -PackageRoot $GamePackageRoot -ExplicitPath $VersionManifestPath
     $data = $build.Data
     if ([string]$data.mode -ne 'Patch') {
         throw "当前 Version.json 不是 Patch 模式：$($data.mode)"
@@ -110,7 +355,7 @@ try {
     $Version = [string]$data.version
     if ([string]::IsNullOrWhiteSpace($Version)) { throw 'Version.json 缺少 version。' }
     if ([string]$data.platform -notmatch 'Win') { throw "补丁平台不是 Windows：$($data.platform)" }
-    if ([string]::IsNullOrWhiteSpace($GitHubRepo)) { throw '缺少 GitHubRepo。' }
+    if (-not $FragmentsOnly -and [string]::IsNullOrWhiteSpace($GitHubRepo)) { throw '缺少 GitHubRepo。' }
 
     $artifactDir = [string]$data.artifactDir
     if ([string]::IsNullOrWhiteSpace($artifactDir)) { throw 'Version.json 缺少 artifactDir。' }
@@ -187,6 +432,27 @@ try {
         }
     }
 
+    if ($FragmentsOnly) {
+        $outputRoot = if ([string]::IsNullOrWhiteSpace($FragmentOutputDirectory)) {
+            Join-Path ([Environment]::GetFolderPath('Desktop')) 'CrossingVoidPC碎片'
+        }
+        else {
+            $FragmentOutputDirectory
+        }
+        $fragmentResult = New-PatchFragments `
+            -Entries @($entries) `
+            -OutputRoot $outputRoot `
+            -Version $Version `
+            -BaseVersion ([string]$data.releaseVersion) `
+            -ProductSegment $ProductSegment `
+            -SliceBytes $MaxFragmentBytes
+        $message = "补丁碎片已生成：{0} 个碎片 / {1} 个文件；{2}" -f `
+            $fragmentResult.ArchiveCount, $fragmentResult.FileCount, $fragmentResult.OutputDirectory
+        Write-AxTaskProgress -Stage 'completed' -Percent 100 -Message $message
+        Write-AxTaskResult -Status 'success' -ExitCode 0 -Message $message
+        exit 0
+    }
+
     $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('axtools-patch-' + [guid]::NewGuid().ToString('N'))
     $staging = Join-Path $tempRoot 'staging'
     New-Item -ItemType Directory -Path $staging -Force | Out-Null
@@ -235,6 +501,10 @@ try {
     $patchUrl = "https://github.com/$GitHubRepo/releases/download/$tag/patch.json"
     $packageUrl = "https://github.com/$GitHubRepo/releases/download/$tag/$zipName"
     $pointerUrl = "https://github.com/$GitHubRepo/releases/download/PC-Patch-Latest/patch-latest.json"
+    $mirrorRoot = "$DownloadRemoteRoot/$ProductSegment/patches/$Version"
+    $mirrorManifestUrl = "$DownloadPublicBaseUrl/games/$ProductSegment/patches/$Version/patch.json"
+    $mirrorPackageUrl = "$DownloadPublicBaseUrl/games/$ProductSegment/patches/$Version/$zipName"
+    $mirrorPointerUrl = "$DownloadPublicBaseUrl/games/$ProductSegment/patches/latest.json"
 
     if (-not $DryRun) {
         if ($null -eq (Get-Command gh -CommandType Application -ErrorAction SilentlyContinue)) {
@@ -257,6 +527,37 @@ try {
             }
         }
 
+        # 默认本机直传野草云；Gitee 只保留为显式可选项，正常发布不再绕路。
+        Write-AxTaskStage -Stage 'download' -Message '正在同步补丁到野草云' -Detail $mirrorRoot
+        if ($UseGiteeTransfer) {
+            Publish-PatchViaGitee `
+                -ZipPath $zipPath `
+                -PatchJsonPath (Join-Path $staging 'patch.json') `
+                -Version $Version `
+                -MirrorRoot $mirrorRoot
+        }
+        else {
+            Invoke-DownloadHostSsh -Command ("mkdir -p '{0}'" -f $mirrorRoot) | Out-Null
+            foreach ($asset in @((Join-Path $staging 'patch.json'), $zipPath)) {
+                $name = Split-Path -Leaf $asset
+                $remote = "$mirrorRoot/$name"
+                $lastError = $null
+                for ($attempt = 1; $attempt -le 3; $attempt++) {
+                    try {
+                        Invoke-DownloadHostScp -LocalPath $asset -RemotePath "$remote.axtmp"
+                        Invoke-DownloadHostSsh -Command ("mv -f -- '{0}.axtmp' '{0}'" -f $remote) | Out-Null
+                        $lastError = $null
+                        break
+                    }
+                    catch {
+                        $lastError = $_
+                        if ($attempt -lt 3) { Start-Sleep -Seconds 5 }
+                    }
+                }
+                if ($null -ne $lastError) { throw $lastError }
+            }
+        }
+
         $pointer = [ordered]@{
             schemaVersion = 1
             kind = 'patch'
@@ -270,6 +571,13 @@ try {
             packageUrl = $packageUrl
             packageSizeBytes = (Get-Item -LiteralPath $zipPath).Length
             packageSha256 = $zipHash
+            mirrors = @(
+                [ordered]@{
+                    name = 'yecaoyun'
+                    manifestUrl = $mirrorManifestUrl
+                    packageUrl = $mirrorPackageUrl
+                }
+            )
         }
         $pointerPath = Join-Path $tempRoot 'patch-latest.json'
         [IO.File]::WriteAllText(
@@ -284,6 +592,11 @@ try {
             '--repo', $GitHubRepo, '--clobber')
         if ($pointerUpload.ExitCode -ne 0) {
             throw ("GitHub 补丁指针上传失败：{0}" -f (($pointerUpload.Lines | Out-String).Trim()))
+        }
+        if (-not [string]::IsNullOrWhiteSpace($DownloadTarget)) {
+            $remotePointer = "$DownloadRemoteRoot/$ProductSegment/patches/latest.json"
+            Invoke-DownloadHostScp -LocalPath $pointerPath -RemotePath "$remotePointer.axtmp"
+            Invoke-DownloadHostSsh -Command ("mv -f -- '{0}.axtmp' '{0}'" -f $remotePointer) | Out-Null
         }
     }
 

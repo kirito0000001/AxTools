@@ -22,6 +22,7 @@ param(
     [string]$VersionMarkerName = '',
     # GitHub 备用渠道的仓库（owner/repo）；留空 = 这个游戏暂时不往 GitHub 发。
     [string]$GitHubRepo = '',
+    [AllowEmptyString()][string]$FragmentOutputDirectory = '',
     [switch]$DryRun
 )
 
@@ -36,11 +37,21 @@ function Read-GamePackageVersion {
     param([string]$PackageRoot, [string]$ExpectedPlatform)
 
     $root = [IO.Path]::GetFullPath($PackageRoot)
-    $candidates = @(
-        (Join-Path $root 'Version.json'),
-        (Join-Path (Split-Path -Parent $root) 'Version.json')
-    ) | Select-Object -Unique
+    $platformNames = if ($ExpectedPlatform -eq 'Android') {
+        @('Version-Android.json', 'Version.Android.json')
+    }
+    else {
+        @('Version-Windows.json', 'Version.Win64.json')
+    }
+    $candidates = @()
+    foreach ($name in $platformNames) { $candidates += Join-Path $root $name }
+    $candidates += Join-Path $root 'Version.json'
+    $parent = Split-Path -Parent $root
+    foreach ($name in $platformNames) { $candidates += Join-Path $parent $name }
+    $candidates += Join-Path $parent 'Version.json'
+    $candidates = @($candidates | Select-Object -Unique)
 
+    $lastMismatch = ''
     foreach ($candidate in $candidates) {
         if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
         $data = Get-Content -LiteralPath $candidate -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -55,7 +66,8 @@ function Read-GamePackageVersion {
             ([string]$data.platform) -match 'Win'
         }
         if (-not $platformOk) {
-            throw "版本文件平台不匹配：期望 $ExpectedPlatform，实际 $($data.platform)（$candidate）"
+            $lastMismatch = "版本文件平台不匹配：期望 $ExpectedPlatform，实际 $($data.platform)（$candidate）"
+            continue
         }
 
         Write-AxTaskStage `
@@ -71,6 +83,7 @@ function Read-GamePackageVersion {
         }
     }
 
+    if (-not [string]::IsNullOrWhiteSpace($lastMismatch)) { throw $lastMismatch }
     throw "游戏包里没有 Version.json（包根或上一级），拒绝使用手写版本发布。"
 }
 
@@ -80,7 +93,7 @@ $kernel = Join-Path $scriptsRoot 'Publishing\Games\Publish-GameDownloadRelease.p
 $segment = if ($Platform -eq 'Android') { "$ProductSegment-android" } else { $ProductSegment }
 
 try {
-    if ($Action -notin @('CheckEnvironment', 'CheckGamePackage', 'PublishGameVersion', 'PublishGameVersionToGitHub', 'PublishGamePatch', 'RebuildGameDownloadRepo')) {
+    if ($Action -notin @('CheckEnvironment', 'CheckGamePackage', 'PublishGameVersion', 'PublishGameVersionToGitHub', 'PublishGamePatch', 'GenerateGamePatchFragments', 'RebuildGameDownloadRepo')) {
         throw "未知的游戏包发布动作：'$Action'。"
     }
     if ([string]::IsNullOrWhiteSpace($ProductSegment)) {
@@ -118,6 +131,29 @@ try {
     $buildInfo = Read-GamePackageVersion -PackageRoot $GamePackageRoot -ExpectedPlatform $Platform
     $Version = $buildInfo.Version
 
+    # 主包版本由前两段决定（0.6.0）；0.6.2 这种第三段非零的产物只能走补丁渠道。
+    if ($buildInfo.Mode -eq 'Patch' -and $Action -in @('PublishGameVersion', 'PublishGameVersionToGitHub', 'RebuildGameDownloadRepo')) {
+        throw "当前是补丁产物（$Version），不能发布为完整主包；完整包应使用 0.6.0，补丁请走 发布补丁包 按钮。"
+    }
+
+    if ($Action -eq 'GenerateGamePatchFragments') {
+        if ($Platform -ne 'Windows') { throw '补丁碎片目前只支持 PC 游戏包。' }
+        $patchKernel = Join-Path $scriptsRoot 'Publishing\Games\Publish-GamePatch.ps1'
+        $fragmentParameters = @{
+            GamePackageRoot         = $GamePackageRoot
+            ProductSegment          = $segment
+            Version                 = $Version
+            VersionManifestPath     = $buildInfo.SourcePath
+            FragmentOutputDirectory = $FragmentOutputDirectory
+            FragmentsOnly           = $true
+        }
+        Set-AxTaskCancellationMode -Mode 'stop' -Message '可以停止当前补丁碎片生成任务。'
+        & $patchKernel @fragmentParameters
+        if ($LASTEXITCODE -ne 0) { throw "补丁碎片脚本返回退出码 $LASTEXITCODE。" }
+        Write-AxTaskResult -Status 'success' -ExitCode 0 -Message '补丁碎片生成完成。'
+        exit 0
+    }
+
     if ($Action -eq 'PublishGamePatch') {
         if ($Platform -ne 'Windows') {
             throw 'Windows 补丁渠道目前只支持 PC 游戏包。'
@@ -135,6 +171,7 @@ try {
             Channel         = $(if ($Channel -eq 'beta') { 'Test' } else { 'Stable' })
             GitHubRepo      = $GitHubRepo
             Version         = $Version
+            VersionManifestPath = $buildInfo.SourcePath
         }
         if ($DryRun) { $patchParameters['DryRun'] = $true }
         Set-AxTaskCancellationMode -Mode 'stop' -Message '可以停止当前 Windows 补丁发布任务。'

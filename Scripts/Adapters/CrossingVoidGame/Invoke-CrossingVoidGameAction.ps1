@@ -12,6 +12,7 @@ param(
     [string]$Channel = 'stable',
     [string]$ReleaseNotes = '',
     [ValidateSet('Windows', 'Android')][string]$Platform = 'Windows',
+    [AllowEmptyString()][string]$FragmentOutputDirectory = '',
     [switch]$DryRun
 )
 

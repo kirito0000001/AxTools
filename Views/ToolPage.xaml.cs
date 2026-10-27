@@ -139,6 +139,8 @@ public sealed partial class ToolPage : UserControl
         if (action is ManagedToolAction.CheckGamePackage or
             ManagedToolAction.PublishGameVersion or
             ManagedToolAction.PublishGameVersionToGitHub or
+            ManagedToolAction.PublishGamePatch or
+            ManagedToolAction.GenerateGamePatchFragments or
             ManagedToolAction.RebuildGameDownloadRepo)
         {
             // 游戏版本以包内 Version.json 为准，界面不再提供手写入口。

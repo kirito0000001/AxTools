@@ -50,13 +50,26 @@ public static class GamePackageBuildInfoReader
             return null;
         }
 
-        var candidates = new List<string> { Path.Combine(root, "Version.json") };
+        var candidates = new List<string>();
+        var platformNames = expectedPlatform?.Equals("Android", StringComparison.OrdinalIgnoreCase) == true
+            ? new[] { "Version-Android.json", "Version.Android.json" }
+            : new[] { "Version-Windows.json", "Version.Win64.json" };
+        foreach (var name in platformNames)
+        {
+            candidates.Add(Path.Combine(root, name));
+        }
+        candidates.Add(Path.Combine(root, "Version.json"));
         var parent = Directory.GetParent(root)?.FullName;
         if (!string.IsNullOrWhiteSpace(parent))
         {
+            foreach (var name in platformNames)
+            {
+                candidates.Add(Path.Combine(parent, name));
+            }
             candidates.Add(Path.Combine(parent, "Version.json"));
         }
 
+        var lastPlatformError = string.Empty;
         foreach (var candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
         {
             if (!File.Exists(candidate))
@@ -85,8 +98,10 @@ public static class GamePackageBuildInfoReader
                 if (!string.IsNullOrWhiteSpace(expectedPlatform) &&
                     !PlatformMatches(platform, expectedPlatform))
                 {
-                    error = $"版本文件平台不匹配：期望 {expectedPlatform}，实际 {platform}（{candidate}）";
-                    return null;
+                    // 公共父目录的 Version.json 可能是另一平台的最近一次构建；
+                    // 继续找 Version-Windows.json / Version-Android.json。
+                    lastPlatformError = $"版本文件平台不匹配：期望 {expectedPlatform}，实际 {platform}（{candidate}）";
+                    continue;
                 }
 
                 return new GamePackageBuildInfo(
@@ -109,7 +124,9 @@ public static class GamePackageBuildInfoReader
             }
         }
 
-        error = "游戏包里没有 Version.json（应在包根或上一级），无法确定版本。";
+        error = string.IsNullOrWhiteSpace(lastPlatformError)
+            ? "游戏包里没有 Version.json（应在包根或上一级），无法确定版本。"
+            : lastPlatformError;
         return null;
     }
 

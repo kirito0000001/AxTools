@@ -386,11 +386,12 @@ public sealed partial class ToolPageViewModel : ObservableObject
         }
     }
 
-    internal void RefreshGamePackageBuildInfo()
+    public void RefreshGamePackageBuildInfo()
     {
         OnPropertyChanged(nameof(GamePublishVersion));
         OnPropertyChanged(nameof(GamePackageVersionText));
         OnPropertyChanged(nameof(CanPublishWindowsPatch));
+        OnPropertyChanged(nameof(CanPublishFullGamePackage));
         OnPropertyChanged(nameof(GameVersionMajor));
         OnPropertyChanged(nameof(GameVersionFeature));
         OnPropertyChanged(nameof(GameVersionBugFix));
@@ -398,9 +399,14 @@ public sealed partial class ToolPageViewModel : ObservableObject
         RefreshActionAvailability();
     }
 
+    public bool CanPublishFullGamePackage => !IsPatchGamePackage;
+
     public bool CanPublishWindowsPatch =>
         !IsAndroidPlatform &&
         GamePackageBuildInfoReader.Read(CurrentGamePackageRoot, out _, "Windows") is { IsPatch: true };
+
+    private bool IsPatchGamePackage =>
+        GamePackageBuildInfoReader.Read(CurrentGamePackageRoot, out _, PlatformLabel == "安卓" ? "Android" : "Windows") is { IsPatch: true };
 
     public double GameVersionMajor
     {
@@ -914,7 +920,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
         ManagedToolAction.Publish or
         ManagedToolAction.PublishGameVersion or
         ManagedToolAction.PublishGameVersionToGitHub or
-        ManagedToolAction.PublishGamePatch;
+        ManagedToolAction.PublishGamePatch or
+        ManagedToolAction.GenerateGamePatchFragments;
 
     private IReadOnlyList<ToolActionItemViewModel> FilterActions(
         ManagedToolActionSection section) =>
@@ -936,7 +943,12 @@ public sealed partial class ToolPageViewModel : ObservableObject
         foreach (var action in AllActions)
         {
             action.IsEnabled = enabled &&
-                (action.Action != ManagedToolAction.PublishGamePatch || (!IsAndroidPlatform && CanPublishWindowsPatch)) &&
+                (action.Action is not (ManagedToolAction.PublishGamePatch or
+                    ManagedToolAction.GenerateGamePatchFragments) ||
+                    (!IsAndroidPlatform && CanPublishWindowsPatch)) &&
+                (action.Action is not (ManagedToolAction.PublishGameVersion or
+                    ManagedToolAction.PublishGameVersionToGitHub or
+                    ManagedToolAction.RebuildGameDownloadRepo) || CanPublishFullGamePackage) &&
                 (!IsGamePublishingAction(action.Action) ||
                  (!string.IsNullOrWhiteSpace(GamePackageRoot) &&
                   (!action.Definition.RequiresVersion ||
@@ -964,7 +976,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
         if (_gamePublishState is null ||
             action is not (ManagedToolAction.PublishGameVersion or
                 ManagedToolAction.PublishGameVersionToGitHub or
-                ManagedToolAction.PublishGamePatch) ||
+                ManagedToolAction.PublishGamePatch or
+                ManagedToolAction.GenerateGamePatchFragments) ||
             string.IsNullOrWhiteSpace(GamePublishVersion))
         {
             return false;

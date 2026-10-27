@@ -37,7 +37,8 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
             Action(ManagedToolAction.CheckEnvironment, "检查环境", ManagedToolActionSection.Development, "\uE9D9", false),
             Action(ManagedToolAction.CheckGamePackage, "只检查，不发布", ManagedToolActionSection.Publish, "\uE9D5", false, true),
             Action(ManagedToolAction.PublishGameVersion, "发布到服务器", ManagedToolActionSection.Publish, "\uE72D", true, true, true),
-            Action(ManagedToolAction.PublishGamePatch, "发布 Windows 补丁", ManagedToolActionSection.Publish, "\uE8B7", true, true, true)
+            Action(ManagedToolAction.PublishGamePatch, "发布补丁包", ManagedToolActionSection.Publish, "\uE8B7", true, true, true),
+            Action(ManagedToolAction.GenerateGamePatchFragments, "生成补丁碎片", ManagedToolActionSection.Publish, "\uE7B8", true, true)
         };
         if (!string.IsNullOrWhiteSpace(gitHubRepository))
         {
@@ -115,6 +116,7 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
                 ManagedToolAction.PublishGameVersion or
                 ManagedToolAction.PublishGameVersionToGitHub or
                 ManagedToolAction.PublishGamePatch or
+                ManagedToolAction.GenerateGamePatchFragments or
                 ManagedToolAction.RebuildGameDownloadRepo))
         {
             return task;
@@ -124,6 +126,10 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
         if (request.Action == ManagedToolAction.PublishGamePatch && platform != "Windows")
         {
             throw new InvalidOperationException("Windows 补丁渠道目前只支持 PC 游戏包。");
+        }
+        if (request.Action == ManagedToolAction.GenerateGamePatchFragments && platform != "Windows")
+        {
+            throw new InvalidOperationException("补丁碎片目前只支持 PC 游戏包。");
         }
         var packageRoot = platform is "Android" ? paths.GamePackageRootAndroid : paths.GamePackageRoot;
         if (string.IsNullOrWhiteSpace(packageRoot))
@@ -142,7 +148,8 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
             [
                 "-Platform", platform,
                 "-GamePackageRoot", packageRoot,
-                "-ReleaseNotes", request.ReleaseNotes
+                "-ReleaseNotes", request.ReleaseNotes,
+                "-FragmentOutputDirectory", paths.FragmentOutputDirectory
             ]).ToArray()
         };
     }
