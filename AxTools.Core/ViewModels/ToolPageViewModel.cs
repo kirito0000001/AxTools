@@ -642,6 +642,9 @@ public sealed partial class ToolPageViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(ConfigurationStatus));
         OnPropertyChanged(nameof(ConfigurationSeverity));
+        // 开发版面板里那行可用性会回落到这份文案；不一起刷新，
+        // 切回开发版时还会残留打包页的“缺少游戏包目录”。
+        OnPropertyChanged(nameof(ExecutionAvailabilityText));
     }
 
     /// <summary>
