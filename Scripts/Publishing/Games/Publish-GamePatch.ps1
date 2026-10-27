@@ -5,6 +5,7 @@ param(
     [string]$Channel = 'Stable',
     [string]$GitHubRepo = '',
     [string]$Version = '',
+    [string]$BaseManifestUrl = '',
     [switch]$DryRun
 )
 
@@ -69,6 +70,33 @@ function Ensure-Release {
     }
 }
 
+# 补丁是相对“当前线上基线”的差量：插件 Version.json 只列内容补丁，
+# 这里再和线上全量 manifest 对比，把变化的程序文件（尤其 Shipping.exe）补进来。
+function Get-BaseFileMap {
+    param([string]$Segment, [string]$ExplicitUrl)
+
+    $manifestUrl = $ExplicitUrl
+    if ([string]::IsNullOrWhiteSpace($manifestUrl)) {
+        $latestUrl = "https://dl.crossingvoid.top/games/$Segment/latest.json"
+        $latest = Invoke-RestMethod -Uri "${latestUrl}?t=$([DateTimeOffset]::Now.ToUnixTimeSeconds())" -TimeoutSec 30
+        $manifestUrl = [string]$latest.manifestUrl
+    }
+    if ([string]::IsNullOrWhiteSpace($manifestUrl)) {
+        throw "无法确定基线 manifest URL：$Segment"
+    }
+
+    Write-AxTaskStage -Stage 'base' -Message '正在读取线上基线 manifest' -Detail $manifestUrl
+    $manifest = Invoke-RestMethod -Uri "${manifestUrl}?t=$([DateTimeOffset]::Now.ToUnixTimeSeconds())" -TimeoutSec 30
+    $map = @{}
+    foreach ($file in @($manifest.files)) {
+        $map[([string]$file.path -replace '\\', '/')] = [pscustomobject]@{
+            Size = [int64]$file.sizeBytes
+            Sha256 = ([string]$file.sha256).ToLowerInvariant()
+        }
+    }
+    return $map
+}
+
 try {
     Set-AxTaskCancellationMode -Mode 'stop' -Message '可以停止当前 Windows 补丁发布任务。'
     $build = Read-BuildManifest -PackageRoot $GamePackageRoot
@@ -116,7 +144,47 @@ try {
             Path = ($deployRelative -replace '\\', '/')
             SizeBytes = [int64]$item.Length
             Sha256 = $hash
+            SourcePath = $sourcePath
         })
+    }
+
+    # 插件只列内容补丁；和线上基线再比一次，补上变化的程序文件（如 Shipping.exe）。
+    $baseMap = @{}
+    try {
+        $baseMap = Get-BaseFileMap -Segment $ProductSegment -ExplicitUrl $BaseManifestUrl
+    }
+    catch {
+        throw ("读取线上基线失败，不能生成可用的补丁包：" + $_.Exception.Message)
+    }
+    if ($baseMap.Count -eq 0) {
+        throw '线上基线 manifest 没有文件，不能判断程序文件差量。'
+    }
+
+    $known = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($entry in $entries) { [void]$known.Add([string]$entry.Path) }
+    if ($baseMap.Count -gt 0) {
+        foreach ($localFile in @(Get-ChildItem -LiteralPath $GamePackageRoot -Recurse -File -ErrorAction SilentlyContinue)) {
+            Assert-NotCancelled
+            $relative = $localFile.FullName.Substring($GamePackageRoot.Length).TrimStart('\', '/') -replace '\\', '/'
+            if ($relative -match '\.(pdb|axtmp)$' -or $relative -match '(^|/)(Saved|\.git|_download)/') { continue }
+            if ($known.Contains($relative)) { continue }
+
+            $base = $baseMap[$relative]
+            $needsPatch = $true
+            if ($null -ne $base -and [int64]$base.Size -eq $localFile.Length) {
+                $localHash = (Get-FileHash -LiteralPath $localFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                $needsPatch = $localHash -ne $base.Sha256
+            }
+            if (-not $needsPatch) { continue }
+
+            $entries.Add([pscustomobject]@{
+                Path = $relative
+                SizeBytes = [int64]$localFile.Length
+                Sha256 = (Get-FileHash -LiteralPath $localFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                SourcePath = $localFile.FullName
+            })
+            [void]$known.Add($relative)
+        }
     }
 
     $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('axtools-patch-' + [guid]::NewGuid().ToString('N'))
@@ -131,7 +199,9 @@ try {
         baseVersion = [string]$data.releaseVersion
         channel = $Channel
         generatedAt = [DateTimeOffset]::Now.ToString('o')
-        files = @($entries)
+        files = @($entries | ForEach-Object {
+            [ordered]@{ path = $_.Path; sizeBytes = $_.SizeBytes; sha256 = $_.Sha256 }
+        })
     }
     [IO.File]::WriteAllText(
         (Join-Path $staging 'patch.json'),
@@ -141,13 +211,12 @@ try {
 
     foreach ($entry in $entries) {
         Assert-NotCancelled
-        $sourcePath = Join-Path (Join-Path $archiveRoot $artifactDir) ($entry.Path -replace '/', '\')
         $destination = Join-Path $staging ($entry.Path -replace '/', '\')
         $directory = Split-Path -Parent $destination
         if (-not [string]::IsNullOrWhiteSpace($directory)) {
             New-Item -ItemType Directory -Path $directory -Force | Out-Null
         }
-        Copy-Item -LiteralPath $sourcePath -Destination $destination -Force
+        Copy-Item -LiteralPath $entry.SourcePath -Destination $destination -Force
     }
 
     $zipName = "$ProductSegment-Windows-Patch-$Version.zip"

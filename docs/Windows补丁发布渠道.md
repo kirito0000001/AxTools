@@ -21,7 +21,12 @@
 
 ## 补丁渠道
 
-AX 的「发布 Windows 补丁」只处理 `mode=Patch` 的 `Version.json`，产物放 GitHub Release：
+AX 的「发布 Windows 补丁」只处理 `mode=Patch` 的 `Version.json`，并读取当前线上全量 manifest 作为基线：
+
+- 插件 `Version.json.files` 列出的内容补丁；
+- 再对比线上基线，自动补上所有实际变化的程序文件（例如 `CrossingVoid-Win64-Shipping.exe`、DLL 和 Manifest）。
+
+产物放 GitHub Release：
 
 - `PC-Patch-V<version>`
   - `patch.json`：补丁清单（路径已去掉 `Windows\` 前缀，相对游戏根目录）
@@ -40,6 +45,7 @@ https://github.com/<repo>/releases/download/PC-Patch-Latest/patch-latest.json
 ## 边界
 
 - 目前只支持 Windows；Android 补丁渠道未实现。
-- 补丁包只包含插件 `Version.json.files` 列出的文件，不自动包含完整的 `CrossingVoid-Win64-Shipping.exe`。本次如果改了 C++，必须另外发布/更新新 exe；纯内容补丁才适合只发 2–6 MB。
+- 补丁必须能读到线上基线 manifest；读取失败会直接拒绝发布，避免生成缺程序文件的假补丁。
+- 补丁体积取决于代码变化：本次 0.6.2 因包含新 `Shipping.exe`，补丁包约 68 MB；纯内容补丁仍可能只有几 MB。
 - 同一基线可以生成 `_0_P`、`_1_P` 等；发布器按文件级 SHA-256 判断，新文件才会被下载。
 - GitHub CLI 必须已登录；未登录时发布器会明确拒绝。
