@@ -41,4 +41,11 @@ public sealed class ManagedToolPaths
     public string GamePublishPlatform { get; set; } = "Windows";
 
     public string GamePublishReleaseNotes { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 这个游戏是否拥有安卓启动器。
+    /// null = 还没改过，按 GameWorkbenchCatalog 的默认值算；改过之后以这里为准。
+    /// 关掉以后安卓那个项目不再参与开发环境检查，也不需要填路径。
+    /// </summary>
+    public bool? HasAndroidLauncher { get; set; }
 }

@@ -26,8 +26,10 @@ public static class GameWorkbenchCatalog
                 "安卓启动器",
                 "启动器",
                 @"D:\UnrealMap\CrossingVoidinitiator-Android",
-                "https://github.com/kirito0000001/CrossingVoid-Downloader-Android")
-        ]);
+                "https://github.com/kirito0000001/CrossingVoid-Downloader-Android",
+                IsAndroidLauncher: true)
+        ],
+        HasAndroidLauncherByDefault: true);
 
     public static GameWorkbenchProfile Fantasy { get; } = new(
         ManagedToolKey.FantasyGame,

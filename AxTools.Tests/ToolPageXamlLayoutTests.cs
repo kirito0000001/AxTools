@@ -296,6 +296,39 @@ public sealed class ToolPageXamlLayoutTests
     }
 
     [Fact]
+    public void GameTools_HaveScratchPageForParkedFeatures()
+    {
+        var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+        // 「功能散页」只在游戏页出现。
+        var tab = document.Descendants(presentation + "SelectorBarItem")
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "ScratchSelectorItem");
+        Assert.Equal("功能散页", (string?)tab.Attribute("Text"));
+        Assert.Equal(
+            "{Binding IsGameTool, Converter={StaticResource BooleanToVisibilityConverter}}",
+            (string?)tab.Attribute("Visibility"));
+
+        var panel = document.Descendants(presentation + "Border")
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "ScratchPanel");
+
+        // 正规设置第一项：是否拥有安卓启动器。
+        var toggle = panel.Descendants(presentation + "ToggleSwitch").Single();
+        Assert.Equal("{Binding HasAndroidLauncher, Mode=TwoWay}", (string?)toggle.Attribute("IsOn"));
+
+        // 暂存清单绑定到 GameScratchItems。
+        Assert.Contains(
+            panel.Descendants(presentation + "ItemsControl"),
+            element => (string?)element.Attribute("ItemsSource") == "{Binding GameScratchItems}");
+
+        // 页签切换要同步通知栏并显示对应面板。
+        var codeBehind = File.ReadAllText(FindProjectFile(Path.Combine("Views", "ToolPage.xaml.cs")));
+        Assert.Contains("ToolPageSection.Scratch", codeBehind);
+        Assert.Contains("ScratchPanel.Visibility", codeBehind);
+    }
+
+    [Fact]
     public void PublishPanel_SeparatesLauncherAndGamePublishingWorkflows()
     {
         var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));

@@ -290,6 +290,7 @@ public sealed partial class ToolPage : UserControl
             : selectedItem == PublishSelectorItem ? ToolPageSection.Publish
             : selectedItem == FragmentSelectorItem ? ToolPageSection.Fragments
             : selectedItem == StorageSelectorItem ? ToolPageSection.Storage
+            : selectedItem == ScratchSelectorItem ? ToolPageSection.Scratch
             : ToolPageSection.Development;
         if (DataContext is ToolPageViewModel sectionViewModel)
         {
@@ -313,6 +314,10 @@ public sealed partial class ToolPage : UserControl
         StoragePanel.Visibility = selectedItem == StorageSelectorItem
             ? Visibility.Visible
             : Visibility.Collapsed;
+        ScratchPanel.Visibility = selectedItem == ScratchSelectorItem &&
+            DataContext is ToolPageViewModel { IsGameTool: true }
+                ? Visibility.Visible
+                : Visibility.Collapsed;
 
         if (selectedItem == DevelopmentSelectorItem && DataContext is ToolPageViewModel developmentViewModel)
         {

@@ -18,6 +18,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
     private readonly PublishedVersionService _publishedVersionService;
     private readonly CrossingVoidGamePublishState? _gamePublishState;
     private readonly GameWorkbenchProfile? _gameWorkbench;
+    private bool _hasAndroidLauncher;
     private bool _isRunning;
     private string _lastResultText = "尚未执行任务。";
     private string _launcherPublishedVersionText = "尚未检查线上发布版本。";
@@ -47,6 +48,9 @@ public sealed partial class ToolPageViewModel : ObservableObject
         _selectedFragmentGame = _fragmentGameOptions.Count > 0 ? _fragmentGameOptions[0] : null;
         _adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
         _gameWorkbench = GameWorkbenchCatalog.Find(descriptor.Key);
+        _hasAndroidLauncher = paths.HasAndroidLauncher
+            ?? _gameWorkbench?.HasAndroidLauncherByDefault
+            ?? false;
         _isRunnerAvailable = isRunnerAvailable;
         _publishedVersionService = publishedVersionService ?? new PublishedVersionService(
             new HttpClient { Timeout = TimeSpan.FromSeconds(20) });
@@ -645,7 +649,9 @@ public sealed partial class ToolPageViewModel : ObservableObject
     /// 这里按校验结果给：通过才算 Success，其余一律 Warning。
     /// </summary>
     public OperationNoticeSeverity ConfigurationSeverity =>
-        IsConfigurationReady ? OperationNoticeSeverity.Success : OperationNoticeSeverity.Warning;
+        IsGameTool && CurrentSection is ToolPageSection.Scratch
+            ? OperationNoticeSeverity.Informational
+            : IsConfigurationReady ? OperationNoticeSeverity.Success : OperationNoticeSeverity.Warning;
 
     private bool IsConfigurationReady => IsGameTool
         ? EvaluateGameConfiguration().Ready
@@ -673,6 +679,12 @@ public sealed partial class ToolPageViewModel : ObservableObject
             return missingPublish.Count == 0
                 ? ("发布环境已就绪", true)
                 : ($"缺少：{string.Join("；", missingPublish)}", false);
+        }
+
+        if (CurrentSection is ToolPageSection.Scratch)
+        {
+            // 「功能散页」没有环境要求，通知栏保持中性。
+            return ("功能散页不参与环境校验。", true);
         }
 
         var validation = _adapter.Validate(_paths);
@@ -721,6 +733,31 @@ public sealed partial class ToolPageViewModel : ObservableObject
     /// <summary>游戏页要展示的项目（本体 + 启动器）；非游戏工具为空。</summary>
     public IReadOnlyList<GameProjectStatus> GameProjects { get; private set; } = [];
 
+    /// <summary>「功能散页」的暂存清单；非游戏工具为空。</summary>
+    public IReadOnlyList<GameScratchItem> GameScratchItems =>
+        IsGameTool ? GameScratchCatalog.All : [];
+
+    /// <summary>
+    /// 这个游戏是否拥有安卓启动器。关掉以后安卓项目不再参与开发环境检查。
+    /// 值写回 ManagedToolPaths，随设置一起在窗口关闭时落盘。
+    /// </summary>
+    public bool HasAndroidLauncher
+    {
+        get => _hasAndroidLauncher;
+        set
+        {
+            if (_hasAndroidLauncher == value)
+            {
+                return;
+            }
+
+            _hasAndroidLauncher = value;
+            _paths.HasAndroidLauncher = value;
+            OnPropertyChanged();
+            RefreshGameProjects();
+        }
+    }
+
     /// <summary>
     /// 重新检查项目是否存在。进游戏页的「开发版」时调一次，
     /// 免得启动后新建了目录还要重启才认。
@@ -746,6 +783,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
         }
 
         return _gameWorkbench.Projects
+            .Where(project => HasAndroidLauncher || !project.IsAndroidLauncher)
             .Select(project =>
             {
                 if (string.IsNullOrWhiteSpace(project.DefaultPath))

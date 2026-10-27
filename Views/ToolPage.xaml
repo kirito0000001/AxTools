@@ -69,6 +69,10 @@
                     Text="碎片制作"
                     Visibility="{Binding HasFragmentGeneration, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 <SelectorBarItem x:Name="StorageSelectorItem" Text="存储清理" />
+                <SelectorBarItem
+                    x:Name="ScratchSelectorItem"
+                    Text="功能散页"
+                    Visibility="{Binding IsGameTool, Converter={StaticResource BooleanToVisibilityConverter}}" />
             </SelectorBar>
 
             <Grid Grid.Row="3">
@@ -460,6 +464,69 @@
                             HorizontalAlignment="Left"
                             Style="{StaticResource PrimaryToolButtonStyle}" />
                         <TextBlock Text="{Binding StorageAvailabilityText}" Style="{StaticResource SubtleTextStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 功能散页：游戏页专用。正规设置从「是否拥有安卓启动器」开始，
+                     下面暂存暂时没归位的功能与未复用逻辑，供后续排期查看。 -->
+                <Border x:Name="ScratchPanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
+                    <StackPanel Spacing="{StaticResource AxSpace14}">
+                        <StackPanel Spacing="{StaticResource AxSpace4}">
+                            <TextBlock Text="设置" Style="{StaticResource SectionTitleStyle}" />
+                        </StackPanel>
+                        <Grid ColumnSpacing="{StaticResource AxSpace12}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="{StaticResource AxSpace2}">
+                                <TextBlock Text="是否拥有安卓启动器" />
+                                <TextBlock
+                                    Text="关掉后安卓项目不再参与开发环境检查，也不需要填路径。"
+                                    Style="{StaticResource SubtleTextStyle}" />
+                            </StackPanel>
+                            <ToggleSwitch
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                IsOn="{Binding HasAndroidLauncher, Mode=TwoWay}" />
+                        </Grid>
+
+                        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
+
+                        <StackPanel Spacing="{StaticResource AxSpace4}">
+                            <TextBlock Text="待整理" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock
+                                Text="暂时没有正式位置的功能，以及还没抽出来复用的逻辑。"
+                                Style="{StaticResource SubtleTextStyle}" />
+                        </StackPanel>
+                        <ItemsControl ItemsSource="{Binding GameScratchItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border
+                                        Margin="0,0,0,8"
+                                        Padding="12"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="{StaticResource AxRadiusMedium}">
+                                        <Grid ColumnSpacing="{StaticResource AxSpace12}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Spacing="{StaticResource AxSpace2}">
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Detail}" Style="{StaticResource SubtleTextStyle}" />
+                                            </StackPanel>
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Text="{Binding Status}"
+                                                FontSize="{StaticResource AxFontCaption}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
                 </Border>
             </Grid>

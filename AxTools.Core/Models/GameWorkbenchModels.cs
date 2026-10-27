@@ -11,13 +11,15 @@ public sealed record GameProjectDefinition(
     string DisplayName,
     string Role,
     string DefaultPath,
-    string RepositoryUrl);
+    string RepositoryUrl,
+    bool IsAndroidLauncher = false);
 
 /// <summary>一个游戏的工程档案；三个游戏共用同一套页面，只在目录里各写一条。</summary>
 public sealed record GameWorkbenchProfile(
     ManagedToolKey GameToolKey,
     string DisplayName,
-    IReadOnlyList<GameProjectDefinition> Projects);
+    IReadOnlyList<GameProjectDefinition> Projects,
+    bool HasAndroidLauncherByDefault = false);
 
 /// <summary>
 /// 项目在磁盘上的当前状态，供游戏页的通用面板直接绑定。
