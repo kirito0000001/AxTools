@@ -262,18 +262,11 @@ public sealed class ToolPageXamlLayoutTests
     }
 
     [Fact]
-    public void GameTools_ShareOneWorkbenchPanelAndHideTheToolDescription()
+    public void GameTools_HideTheToolDescriptionAndReportMissingItemsAtTop()
     {
         var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
         XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
-        XNamespace views = "using:AxTools.Views";
-
-        // 三个游戏共用同一个面板控件，改一处三处生效。
-        var panel = Assert.Single(document.Descendants(views + "GameWorkbenchPanel"));
-        Assert.Equal(
-            "{Binding IsGameTool, Converter={StaticResource BooleanToVisibilityConverter}}",
-            (string?)panel.Attribute("Visibility"));
 
         // 游戏页不再显示工具描述行。
         var description = document.Descendants(presentation + "TextBlock")
@@ -288,11 +281,11 @@ public sealed class ToolPageXamlLayoutTests
             "{Binding ConfigurationSeverity, Converter={StaticResource OperationNoticeSeverityConverter}}",
             (string?)infoBar.Attribute("Severity"));
 
-        // 面板本身只认 GameProjects，不写死某个游戏。
-        var panelXaml = XDocument.Load(FindProjectFile(Path.Combine("Views", "GameWorkbenchPanel.xaml")));
-        Assert.Contains(
-            panelXaml.Descendants(presentation + "ItemsControl"),
-            element => (string?)element.Attribute("ItemsSource") == "{Binding GameProjects}");
+        // 缺什么写在顶部通知栏里，开发版面板这一轮不动。
+        var viewModel = File.ReadAllText(FindProjectFile(Path.Combine("AxTools.Core", "ViewModels", "ToolPageViewModel.cs")));
+        Assert.Contains("BuildGameConfigurationReport", viewModel);
+        Assert.Contains("缺少：", viewModel);
+        Assert.DoesNotContain("GameWorkbenchPanel", File.ReadAllText(FindProjectFile(Path.Combine("Views", "ToolPage.xaml"))));
     }
 
     [Fact]

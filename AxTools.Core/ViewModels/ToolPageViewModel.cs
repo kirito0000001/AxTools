@@ -609,7 +609,14 @@ public sealed partial class ToolPageViewModel : ObservableObject
     public bool HasValidSourceRoot =>
         !string.IsNullOrWhiteSpace(SourceRoot) && Directory.Exists(SourceRoot);
 
-    public string ConfigurationStatus => _adapter.Validate(_paths).Message;
+    /// <summary>
+    /// 顶部「配置状态」通知栏的文案。
+    /// 游戏页要在这里说清缺什么（项目路径 / 游戏包目录），而不是塞进开发版面板；
+    /// 非游戏工具仍用适配器的校验结果。
+    /// </summary>
+    public string ConfigurationStatus => IsGameTool
+        ? BuildGameConfigurationReport()
+        : _adapter.Validate(_paths).Message;
 
     /// <summary>配置状态和它的颜色档位总是一起变，统一从这里发通知，避免只刷新文字不刷新颜色。</summary>
     private void NotifyConfigurationChanged()
@@ -623,9 +630,52 @@ public sealed partial class ToolPageViewModel : ObservableObject
     /// 这里按校验结果给：通过才算 Success，其余一律 Warning。
     /// </summary>
     public OperationNoticeSeverity ConfigurationSeverity =>
-        _adapter.Validate(_paths).IsValid
-            ? OperationNoticeSeverity.Success
-            : OperationNoticeSeverity.Warning;
+        IsConfigurationReady ? OperationNoticeSeverity.Success : OperationNoticeSeverity.Warning;
+
+    private bool IsConfigurationReady => IsGameTool
+        ? MissingGameConfigurationItems().Count == 0
+        : _adapter.Validate(_paths).IsValid;
+
+    private string BuildGameConfigurationReport()
+    {
+        var missing = MissingGameConfigurationItems();
+        if (missing.Count == 0)
+        {
+            return $"配置齐全：游戏包目录可用，{GameProjects.Count} 个项目存在。";
+        }
+
+        return $"缺少：{string.Join("；", missing)}";
+    }
+
+    /// <summary>按“缺什么”列清单：项目路径与当前平台的游戏包目录各查一遍。</summary>
+    private List<string> MissingGameConfigurationItems()
+    {
+        var missing = new List<string>();
+
+        var packageRoot = CurrentGamePackageRoot;
+        if (string.IsNullOrWhiteSpace(packageRoot))
+        {
+            missing.Add("游戏包目录");
+        }
+        else if (!Directory.Exists(packageRoot))
+        {
+            missing.Add($"游戏包目录（{packageRoot} 不存在）");
+        }
+
+        foreach (var project in GameProjects)
+        {
+            if (string.IsNullOrWhiteSpace(project.Path))
+            {
+                missing.Add($"{project.DisplayName}路径");
+            }
+            else if (project.StateKey == "missing")
+            {
+                missing.Add($"{project.DisplayName}（{project.Path} 不存在）");
+            }
+        }
+
+        return missing;
+    }
 
     /// <summary>这个工具是不是三个游戏之一（决定页面是否走游戏通用面板）。</summary>
     public bool IsGameTool => _gameWorkbench is not null;
@@ -646,6 +696,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
 
         GameProjects = BuildGameProjects();
         OnPropertyChanged(nameof(GameProjects));
+        // 顶部通知栏的“缺少什么”也要跟着重算，否则新建目录后仍然显示缺失。
+        NotifyConfigurationChanged();
     }
 
     private IReadOnlyList<GameProjectStatus> BuildGameProjects()

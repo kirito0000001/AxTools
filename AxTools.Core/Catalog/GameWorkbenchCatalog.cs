@@ -3,11 +3,11 @@ using AxTools.Core.Models;
 namespace AxTools.Core.Catalog;
 
 /// <summary>
-/// 三个游戏的工程档案：每个游戏两个项目（本体 + 安卓启动器）。
+/// 三个游戏的工程档案。零境有本体 + 安卓启动器两个项目；
+/// 幻杀、火影目前只有本体（暂时没有安卓启动器）。
 ///
 /// 页面、状态判断、以后的项目操作全部读这里，不再出现“零境专用”的分支；
-/// 加第四个游戏只要在 <see cref="All"/> 里补一条。
-/// 幻杀 / 火影的本地路径与仓库还没给，先留空，界面显示“未配置”。
+/// 加游戏或给某个游戏补项目，只改这个目录。
 /// </summary>
 public static class GameWorkbenchCatalog
 {
@@ -33,16 +33,24 @@ public static class GameWorkbenchCatalog
         ManagedToolKey.FantasyGame,
         "幻杀",
         [
-            new GameProjectDefinition("client", "游戏本体", "本体项目", string.Empty, string.Empty),
-            new GameProjectDefinition("android", "安卓启动器", "启动器", string.Empty, string.Empty)
+            new GameProjectDefinition(
+                "client",
+                "游戏本体",
+                "本体项目",
+                @"D:\UnrealMap\FantasyTools",
+                "https://github.com/kirito0000001/FantasyProject")
         ]);
 
     public static GameWorkbenchProfile Naruto { get; } = new(
         ManagedToolKey.NarutoGame,
         "火影BP",
         [
-            new GameProjectDefinition("client", "游戏本体", "本体项目", string.Empty, string.Empty),
-            new GameProjectDefinition("android", "安卓启动器", "启动器", string.Empty, string.Empty)
+            new GameProjectDefinition(
+                "client",
+                "游戏本体",
+                "本体项目",
+                @"D:\UnrealMap\NarutoBP",
+                "https://github.com/kirito0000001/NarutoBP")
         ]);
 
     public static IReadOnlyList<GameWorkbenchProfile> All { get; } =
