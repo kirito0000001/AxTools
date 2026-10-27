@@ -76,27 +76,13 @@ public sealed partial class ToolPageViewModel : ObservableObject
             .Select(definition => new ToolActionItemViewModel(definition))
             .ToArray();
         DevelopmentActions = FilterActions(ManagedToolActionSection.Development);
-        ReleaseActions = FilterActions(ManagedToolActionSection.Release);
         SourceDownloadAction = new ToolActionItemViewModel(new ManagedToolActionDefinition(
             ManagedToolAction.DownloadSource,
             "从 GitHub 下载源码",
             ManagedToolActionSection.Development,
             "\uE896",
             true));
-        ReleaseDownloadAction = new ToolActionItemViewModel(new ManagedToolActionDefinition(
-            ManagedToolAction.DownloadRelease,
-            "下载正式版",
-            ManagedToolActionSection.Release,
-            "\uE896",
-            true));
-        DownloadLinkAction = new ToolActionItemViewModel(new ManagedToolActionDefinition(
-            ManagedToolAction.GetDownloadLink,
-            "获取下载链接",
-            ManagedToolActionSection.Release,
-            "\uE71B",
-            false));
         DevelopmentPanelActions = [SourceDownloadAction, .. DevelopmentActions];
-        ReleasePanelActions = [ReleaseDownloadAction, DownloadLinkAction, .. ReleaseActions];
         PublishActions = FilterActions(ManagedToolActionSection.Publish);
         var launcherPublishActions = PublishActions
             .Where(item => !IsGamePublishingAction(item.Action))
@@ -163,24 +149,13 @@ public sealed partial class ToolPageViewModel : ObservableObject
 
     public IReadOnlyList<ToolActionItemViewModel> DevelopmentPanelActions { get; }
 
-    public IReadOnlyList<ToolActionItemViewModel> ReleaseActions { get; }
-
-    public IReadOnlyList<ToolActionItemViewModel> ReleasePanelActions { get; }
-
     public ToolActionItemViewModel SourceDownloadAction { get; }
-
-    public ToolActionItemViewModel ReleaseDownloadAction { get; }
-
-    public ToolActionItemViewModel DownloadLinkAction { get; }
 
     public string GiteeReleasesUrl =>
         ManagedRepositoryCatalog.Get(Descriptor.Key).GiteeReleasesUrl;
 
     public string DevelopmentVersionText =>
         $"开发版版本：{ExecutableVersionReader.Read(DevelopmentExecutable)}";
-
-    public string ReleaseVersionText =>
-        $"正式版版本：{ExecutableVersionReader.Read(ReleaseExecutable)}";
 
     public IReadOnlyList<ToolActionItemViewModel> PublishActions { get; }
 
@@ -548,17 +523,11 @@ public sealed partial class ToolPageViewModel : ObservableObject
     public string ReleaseExecutable
     {
         get => _paths.ReleaseExecutable;
-        set
-        {
-            if (SetProperty(
-                _paths.ReleaseExecutable,
-                value,
-                _paths,
-                static (model, newValue) => model.ReleaseExecutable = newValue))
-            {
-                OnPropertyChanged(nameof(ReleaseVersionText));
-            }
-        }
+        set => SetProperty(
+            _paths.ReleaseExecutable,
+            value,
+            _paths,
+            static (model, newValue) => model.ReleaseExecutable = newValue);
     }
 
     public string OutputRoot
@@ -799,6 +768,92 @@ public sealed partial class ToolPageViewModel : ObservableObject
                         .ToArray()))
                 .ToArray()
             : [];
+
+    private ServerPageViewModel? _serverPage;
+    private ServerProgramProfile? _serverProfile;
+
+    /// <summary>发布区里的「服务器更新」是否可用（游戏页 + 任务运行器可用）。</summary>
+    public bool HasServerUpdate =>
+        IsGameTool && _serverProfile is not null && _serverPage?.HasUpdateService == true;
+
+    /// <summary>服务器更新的状态行（部署中 / 上一版 / 本机仓库 / 服务器 / 实例）。</summary>
+    public IReadOnlyList<ServerUpdateLine> ServerUpdateLines { get; private set; } = [];
+
+    public string ServerUpdateStatusText { get; private set; } = "尚未读取服务端状态。";
+
+    /// <summary>
+    /// 由 ApplicationViewModel 在服务器页 VM 建好之后调用；只有游戏页会匹配到服务端程序。
+    /// </summary>
+    public void AttachServerUpdates(ServerPageViewModel? server)
+    {
+        _serverPage = server;
+        _serverProfile = Descriptor.Key switch
+        {
+            ManagedToolKey.CrossingVoidGame => ServerProgramCatalog.Get("crossingvoid"),
+            ManagedToolKey.NarutoGame => ServerProgramCatalog.Get("narutobp"),
+            ManagedToolKey.FantasyGame => ServerProgramCatalog.Get("fantasyproject"),
+            _ => null
+        };
+        RebuildServerUpdateLines();
+        OnPropertyChanged(nameof(HasServerUpdate));
+    }
+
+    /// <summary>读一次远端与本机仓库状态；结果同时写进全局进度条。</summary>
+    public async Task RefreshServerUpdateAsync(CancellationToken cancellationToken)
+    {
+        if (_serverPage is null || _serverProfile is null)
+        {
+            return;
+        }
+
+        var progress = _globalProgress;
+        progress?.Start("读取服务端更新状态", _serverProfile.DisplayName);
+        progress?.SetCancellationMode(AxTaskCancellationMode.Locked, "只读检查。");
+
+        try
+        {
+            var state = await _serverPage.RefreshUpdateStateAsync(_serverProfile, cancellationToken);
+            RebuildServerUpdateLines();
+            ServerUpdateStatusText = string.IsNullOrWhiteSpace(state.Error)
+                ? "已读取远端与本机仓库状态。"
+                : $"状态读取不完整：{state.Error}";
+            OnPropertyChanged(nameof(ServerUpdateStatusText));
+            progress?.Complete("服务端状态已更新", ServerUpdateStatusText);
+        }
+        catch (Exception exception)
+        {
+            ServerUpdateStatusText = $"读取失败：{exception.Message}";
+            OnPropertyChanged(nameof(ServerUpdateStatusText));
+            progress?.Complete("读取失败", exception.Message);
+        }
+        finally
+        {
+            if (progress is not null)
+            {
+                await Task.Delay(1200);
+                progress.Hide();
+            }
+        }
+    }
+
+    private void RebuildServerUpdateLines()
+    {
+        var state = _serverProfile is null
+            ? null
+            : _serverPage?.GetUpdateState(_serverProfile.Key);
+
+        ServerUpdateLines = state is null
+            ? []
+            :
+            [
+                new ServerUpdateLine("部署中", state.DeployedText),
+                new ServerUpdateLine("上一版", state.PreviousText),
+                new ServerUpdateLine("本机仓库", state.LocalAheadText),
+                new ServerUpdateLine("服务器", state.PendingText),
+                new ServerUpdateLine("实例", state.InstancesText)
+            ];
+        OnPropertyChanged(nameof(ServerUpdateLines));
+    }
 
     /// <summary>标题形如「项目本体-CrossingVoid」「安卓启动器-CrossingVoid-Downloader-Android」。</summary>
     private static string BuildProjectCardTitle(GameProjectStatus project)
@@ -1176,7 +1231,6 @@ public sealed partial class ToolPageViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(result);
         IsRunning = false;
         OnPropertyChanged(nameof(DevelopmentVersionText));
-        OnPropertyChanged(nameof(ReleaseVersionText));
         LastResultText = result.Status switch
         {
             AxTaskStatus.Succeeded => $"成功 · {result.Duration.TotalSeconds:F1}s",
@@ -1460,8 +1514,6 @@ public sealed partial class ToolPageViewModel : ObservableObject
                 !IsBlockedByOlderGameVersion(action.Action);
         }
         SourceDownloadAction.IsEnabled = _isRunnerAvailable && !IsRunning;
-        ReleaseDownloadAction.IsEnabled = _isRunnerAvailable && !IsRunning;
-        DownloadLinkAction.IsEnabled = _isRunnerAvailable && !IsRunning;
         LauncherReleaseNotesAction.IsEnabled = !IsRunning;
         GameReleaseNotesAction.IsEnabled = !IsRunning;
     }

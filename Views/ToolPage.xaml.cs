@@ -231,6 +231,15 @@ public sealed partial class ToolPage : UserControl
         viewModel.ReportActionMessage($"已复制到剪贴板：{repositoryUrl}");
     }
 
+    /// <summary>发布区「服务器更新」的立即刷新。</summary>
+    private async void RefreshServerUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is ToolPageViewModel viewModel)
+        {
+            await viewModel.RefreshServerUpdateAsync(CancellationToken.None);
+        }
+    }
+
     private async void RefreshLauncherVersion_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is ToolPageViewModel viewModel)

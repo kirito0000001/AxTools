@@ -209,7 +209,7 @@ public sealed class ToolPageViewModelTests : IDisposable
     }
 
     [Fact]
-    public void DownloadCommands_AreIntegratedIntoDevelopmentAndReleaseActionRows()
+    public void DownloadCommands_AreIntegratedIntoDevelopmentActionRow()
     {
         var paths = new ManagedToolPaths();
         var viewModel = new ToolPageViewModel(
@@ -220,19 +220,14 @@ public sealed class ToolPageViewModelTests : IDisposable
         Assert.Equal(ManagedToolAction.DownloadSource, viewModel.DevelopmentPanelActions[0].Action);
         Assert.Contains(viewModel.DevelopmentPanelActions, action =>
             action.Action == ManagedToolAction.BuildAndRun);
-        Assert.Equal(ManagedToolAction.DownloadRelease, viewModel.ReleasePanelActions[0].Action);
-        Assert.Equal(ManagedToolAction.GetDownloadLink, viewModel.ReleasePanelActions[1].Action);
         Assert.Equal(
             "https://gitee.com/xiaojie578/FantasyTools/releases",
             viewModel.GiteeReleasesUrl);
-        Assert.Contains(viewModel.ReleasePanelActions, action =>
-            action.Action == ManagedToolAction.RunRelease);
         Assert.True(viewModel.DevelopmentPanelActions[0].IsEnabled);
-        Assert.True(viewModel.ReleasePanelActions[0].IsEnabled);
     }
 
     [Fact]
-    public void DevelopmentAndReleaseVersionText_ReadConfiguredExecutables()
+    public void DevelopmentVersionText_ReadsConfiguredExecutable()
     {
         var executable = typeof(ToolPageViewModelTests).Assembly.Location;
         var paths = CreateFantasyProject();
@@ -245,8 +240,6 @@ public sealed class ToolPageViewModelTests : IDisposable
 
         Assert.Contains("开发版版本：", viewModel.DevelopmentVersionText);
         Assert.DoesNotContain("未配置", viewModel.DevelopmentVersionText);
-        Assert.Contains("正式版版本：", viewModel.ReleaseVersionText);
-        Assert.DoesNotContain("未配置", viewModel.ReleaseVersionText);
     }
 
     [Fact]

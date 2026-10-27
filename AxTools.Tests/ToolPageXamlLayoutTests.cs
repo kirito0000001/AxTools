@@ -399,6 +399,36 @@ public sealed class ToolPageXamlLayoutTests
     }
 
     [Fact]
+    public void PublishPanel_PutsServerUpdateFirstAndHidesLegacySections()
+    {
+        var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+        var panel = document.Descendants(presentation + "Border")
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "PublishPanel");
+
+        // 服务器更新排在发布区最上面。
+        Assert.Contains(
+            panel.Descendants(presentation + "TextBlock"),
+            element => (string?)element.Attribute("Text") == "服务器更新");
+        Assert.Contains(
+            panel.Descendants(presentation + "ItemsControl"),
+            element => (string?)element.Attribute("ItemsSource") == "{Binding ServerUpdateLines}");
+        Assert.Contains(
+            panel.Descendants(presentation + "Button"),
+            element => (string?)element.Attribute("Click") == "RefreshServerUpdate_Click");
+
+        // 旧的发布内容先整块收起，等重新设计。
+        var legacy = panel.Descendants(presentation + "StackPanel")
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "LegacyPublishSection");
+        Assert.Equal("Collapsed", (string?)legacy.Attribute("Visibility"));
+        Assert.Contains(
+            legacy.Descendants(presentation + "StackPanel"),
+            element => (string?)element.Attribute(xaml + "Name") == "LauncherPublishingSection");
+    }
+
+    [Fact]
     public void PublishPanel_SeparatesLauncherAndGamePublishingWorkflows()
     {
         var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));

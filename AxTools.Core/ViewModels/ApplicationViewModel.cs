@@ -133,6 +133,13 @@ public sealed class ApplicationViewModel : ObservableObject
                 GlobalProgress,
                 settings,          // 《导入新构建》按程序记住上次选的目录
                 settingsService);
+
+        // 游戏页的「发布 → 服务器更新」要用服务器页那套服务与状态，等 Server 建好再挂上去。
+        foreach (var tool in Tools)
+        {
+            tool.AttachServerUpdates(Server);
+        }
+
         TaskHistoryService = taskHistoryService;
         _currentPageTag = NormalizePageTag(settings.LastPageTag);
         _settings.LastPageTag = _currentPageTag;
