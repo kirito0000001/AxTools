@@ -9,6 +9,8 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <!-- 令牌必须排在样式前面：ToolboxStyles 里的样式会引用这些数值。 -->
+                <ResourceDictionary Source="Styles/DesignTokens.xaml" />
                 <ResourceDictionary Source="Styles/ToolboxStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />

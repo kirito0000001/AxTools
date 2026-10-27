@@ -22,7 +22,7 @@
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="0,0,0,1"
             Background="{ThemeResource LayerFillColorDefaultBrush}">
-            <Grid ColumnSpacing="12">
+            <Grid ColumnSpacing="{StaticResource AxSpace12}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="36" />
                     <ColumnDefinition Width="*" />
@@ -89,7 +89,7 @@
                 </NavigationViewItem>
             </NavigationView.FooterMenuItems>
 
-            <Grid Padding="20" RowSpacing="14">
+            <Grid Padding="{StaticResource AxShellPadding}" RowSpacing="{StaticResource AxSpace14}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
@@ -110,7 +110,7 @@
                     <views:ServerPage x:Name="ServerAliyunPage" Visibility="Collapsed" />
                     <views:SettingsPage x:Name="GlobalSettingsPage" Visibility="Collapsed" />
                 </Grid>
-                <StackPanel Grid.Row="1" Spacing="8">
+                <StackPanel Grid.Row="1" Spacing="{StaticResource AxSpace8}">
                     <TextBlock
                         x:Name="WorkspacePathText"
                         Visibility="Collapsed"
@@ -125,13 +125,13 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <Grid ColumnSpacing="8">
+                            <Grid ColumnSpacing="{StaticResource AxSpace8}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="输出日志" Style="{StaticResource SectionTitleStyle}" />
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{StaticResource AxSpace6}">
                                     <Button
                                         x:Name="ScrollLogToBottomButton"
                                         Click="ScrollLogToBottomButton_Click"
@@ -175,7 +175,7 @@
                                                 Padding="8,6"
                                                 HorizontalAlignment="Stretch"
                                                 BorderThickness="1"
-                                                CornerRadius="4"
+                                                CornerRadius="{StaticResource AxRadiusSmall}"
                                                 Tapped="LogEntryBorder_Tapped"
                                                 Style="{Binding Kind, Converter={StaticResource LogKindToStyleConverter}, ConverterParameter=Block}">
                                                 <TextBlock
@@ -205,7 +205,7 @@
             HorizontalAlignment="Stretch"
             VerticalAlignment="Bottom"
             Canvas.ZIndex="320"
-            CornerRadius="8"
+            CornerRadius="{StaticResource AxRadiusLarge}"
             BorderBrush="{ThemeResource GlobalProgressHostBorderBrush}"
             BorderThickness="1"
             Background="{ThemeResource GlobalProgressHostBackgroundBrush}"

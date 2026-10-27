@@ -215,7 +215,9 @@ public sealed class ToolPageXamlLayoutTests
             .ToArray();
 
         Assert.Equal("ToolPage_SizeChanged", (string?)root.Attribute("SizeChanged"));
-        Assert.Equal("0,0,20,0", (string?)scrollViewer.Attribute("Padding"));
+        // 内边距走令牌：数值本身在 DesignTokens.xaml 里锁定，这里是引用契约。
+        Assert.Equal("{StaticResource AxPagePadding}", (string?)scrollViewer.Attribute("Padding"));
+        Assert.Equal("0,0,20,0", ReadTokenValue("AxPagePadding"));
         Assert.Null(actionButton.Attribute("MinWidth"));
         Assert.Equal("Stretch", (string?)actionButton.Attribute("HorizontalAlignment"));
         Assert.NotEmpty(actionLists);
@@ -471,7 +473,8 @@ public sealed class ToolPageXamlLayoutTests
             .Select(element => (string?)element.Attribute("Width"))
             .ToArray();
 
-        Assert.Equal("10", (string?)pathRow.Attribute("ColumnSpacing"));
+        Assert.Equal("{StaticResource AxSpace10}", (string?)pathRow.Attribute("ColumnSpacing"));
+        Assert.Equal("10", ReadTokenValue("AxSpace10"));
         Assert.Equal("0", (string?)pathRow.Attribute("Margin"));
         Assert.Equal(new[] { "*", "40" }, columns);
         Assert.Equal("40", (string?)browseButton.Attribute("Width"));
@@ -489,6 +492,21 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains("\"游戏版本\"", source);
         Assert.Contains("\"启动器版本\"", source);
         Assert.Contains("CreateDialogLine(\"游戏目录\", tool.GamePackageRoot)", source);
+    }
+
+    /// <summary>
+    /// 读取 DesignTokens.xaml 里的令牌数值。布局测试因此不再把间距/内边距写死在断言里，
+    /// 而是把"引用令牌"和"令牌取值"分开锁：换皮时只动令牌，结构契约仍然生效。
+    /// </summary>
+    private static string ReadTokenValue(string key)
+    {
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var document = XDocument.Load(FindProjectFile(Path.Combine("Styles", "DesignTokens.xaml")));
+        var token = document.Root!
+            .Elements()
+            .SingleOrDefault(element => (string?)element.Attribute(xaml + "Key") == key);
+        Assert.True(token is not null, $"DesignTokens.xaml 里缺少令牌 {key}。");
+        return token!.Value.Trim();
     }
 
     private static string FindProjectFile(string relativePath)

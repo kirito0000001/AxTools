@@ -15,7 +15,7 @@
                 IsEnabled="{Binding IsEnabled}"
                 Style="{StaticResource PrimaryToolButtonStyle}"
                 ToolTipService.ToolTip="{Binding Description}">
-                <StackPanel Orientation="Horizontal" Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace8}">
                     <FontIcon Glyph="{Binding IconGlyph}" FontSize="16" />
                     <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
                 </StackPanel>
@@ -26,9 +26,9 @@
     <ScrollViewer
         x:Name="PageScrollViewer"
         HorizontalScrollBarVisibility="Disabled"
-        Padding="0,0,20,0"
+        Padding="{StaticResource AxPagePadding}"
         VerticalScrollBarVisibility="Auto">
-        <Grid HorizontalAlignment="Stretch" RowSpacing="16">
+        <Grid HorizontalAlignment="Stretch" RowSpacing="{StaticResource AxSpace16}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -36,7 +36,7 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <StackPanel Spacing="4" Margin="0,0,0,2">
+            <StackPanel Spacing="{StaticResource AxSpace4}" Margin="0,0,0,2">
                 <TextBlock x:Name="PageTitleText" Text="{Binding DisplayName}" Style="{StaticResource PageTitleStyle}" />
                 <TextBlock x:Name="PageDescriptionText" Text="{Binding Description}" Style="{StaticResource SubtleTextStyle}" />
                 <Button
@@ -79,9 +79,9 @@
             </SelectorBar>
 
             <Grid Grid.Row="3">
-                <Border x:Name="DevelopmentPanel" Style="{StaticResource PanelBorderStyle}" Padding="18">
-                    <StackPanel Spacing="14">
-                        <StackPanel Spacing="4">
+                <Border x:Name="DevelopmentPanel" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
+                    <StackPanel Spacing="{StaticResource AxSpace14}">
+                        <StackPanel Spacing="{StaticResource AxSpace4}">
                             <TextBlock Text="开发版" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Text="构建和启动源码开发版本。" Style="{StaticResource SubtleTextStyle}" />
                             <TextBlock Text="{Binding DevelopmentVersionText}" Style="{StaticResource SubtleTextStyle}" />
@@ -102,9 +102,9 @@
                     </StackPanel>
                 </Border>
 
-                <Border x:Name="ReleasePanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="18">
-                    <StackPanel Spacing="14">
-                        <StackPanel Spacing="4">
+                <Border x:Name="ReleasePanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
+                    <StackPanel Spacing="{StaticResource AxSpace14}">
+                        <StackPanel Spacing="{StaticResource AxSpace4}">
                             <TextBlock Text="正式版" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Text="启动已安装或已打包的正式程序。" Style="{StaticResource SubtleTextStyle}" />
                             <TextBlock Text="{Binding ReleaseVersionText}" Style="{StaticResource SubtleTextStyle}" />
@@ -125,17 +125,17 @@
                     </StackPanel>
                 </Border>
 
-                <Border x:Name="PublishPanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="18">
-                    <StackPanel Spacing="22">
+                <Border x:Name="PublishPanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
+                    <StackPanel Spacing="{StaticResource AxSpace22}">
                         <StackPanel
                             x:Name="LauncherPublishingSection"
-                            Spacing="14"
+                            Spacing="{StaticResource AxSpace14}"
                             Visibility="{Binding HasLauncherPublishActions, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <StackPanel Spacing="4">
+                            <StackPanel Spacing="{StaticResource AxSpace4}">
                                 <TextBlock Text="启动器发布" Style="{StaticResource SectionTitleStyle}" />
                                 <TextBlock Text="构建、校验并发布启动器自身的新版本。" Style="{StaticResource SubtleTextStyle}" />
                             </StackPanel>
-                            <Grid x:Name="LauncherPublishingFields" ColumnSpacing="12">
+                            <Grid x:Name="LauncherPublishingFields" ColumnSpacing="{StaticResource AxSpace12}">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
@@ -156,7 +156,7 @@
                                 <Grid
                                     x:Name="LauncherVersionField"
                                     Grid.Column="1"
-                                    ColumnSpacing="8">
+                                    ColumnSpacing="{StaticResource AxSpace8}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
@@ -171,12 +171,12 @@
                                 Text="{Binding LauncherVersionStateText}"
                                 Style="{StaticResource SubtleTextStyle}"
                                 TextWrapping="Wrap" />
-                            <Grid ColumnSpacing="10">
+                            <Grid ColumnSpacing="{StaticResource AxSpace10}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="40" />
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Spacing="2" VerticalAlignment="Center">
+                                <StackPanel Spacing="{StaticResource AxSpace2}" VerticalAlignment="Center">
                                     <TextBlock
                                         Text="{Binding LauncherPublishedVersionText}"
                                         FontWeight="SemiBold"
@@ -216,13 +216,13 @@
 
                         <StackPanel
                             x:Name="GamePublishingSection"
-                            Spacing="14"
+                            Spacing="{StaticResource AxSpace14}"
                             Visibility="{Binding HasGamePackagePublishing, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <StackPanel x:Name="GamePublishingHeader" Spacing="4">
+                            <StackPanel x:Name="GamePublishingHeader" Spacing="{StaticResource AxSpace4}">
                                 <TextBlock Text="{Binding GamePublishingTitle}" Style="{StaticResource SectionTitleStyle}" />
                                 <TextBlock Text="{Binding GamePublishingDescription}" Style="{StaticResource SubtleTextStyle}" />
                             </StackPanel>
-                            <Grid x:Name="GamePublishingFields" ColumnSpacing="12">
+                            <Grid x:Name="GamePublishingFields" ColumnSpacing="{StaticResource AxSpace12}">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
@@ -245,7 +245,7 @@
                                     x:Name="GameVersionField"
                                     Grid.Row="1"
                                     Grid.ColumnSpan="2"
-                                    Spacing="2">
+                                    Spacing="{StaticResource AxSpace2}">
                                     <TextBlock
                                         Text="游戏版本（由打包产物 Version.json 决定，不可手填）"
                                         Style="{StaticResource SubtleTextStyle}" />
@@ -255,12 +255,12 @@
                                         TextWrapping="Wrap" />
                                 </StackPanel>
                             </Grid>
-                            <Grid ColumnSpacing="10">
+                            <Grid ColumnSpacing="{StaticResource AxSpace10}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="40" />
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Spacing="2" VerticalAlignment="Center">
+                                <StackPanel Spacing="{StaticResource AxSpace2}" VerticalAlignment="Center">
                                     <TextBlock
                                         Text="{Binding GamePublishedVersionText}"
                                         FontWeight="SemiBold"
@@ -282,7 +282,7 @@
                             </Grid>
                             <Grid
                                 x:Name="GamePackagePathRow"
-                                ColumnSpacing="10"
+                                ColumnSpacing="{StaticResource AxSpace10}"
                                 Margin="0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -324,7 +324,7 @@
                                 <Expander.Header>
                                     <TextBlock Text="维护（额外）" Style="{StaticResource SubtleTextStyle}" />
                                 </Expander.Header>
-                                <StackPanel Spacing="8">
+                                <StackPanel Spacing="{StaticResource AxSpace8}">
                                     <TextBlock
                                         Text="平时用不到。只有本机暂存仓库的对象涨得太大、需要重新压一遍时才点。"
                                         Style="{StaticResource SubtleTextStyle}"
@@ -349,8 +349,8 @@
                     </StackPanel>
                 </Border>
 
-                <Border x:Name="FragmentPanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="18">
-                    <StackPanel x:Name="FragmentGenerationSection" Spacing="12">
+                <Border x:Name="FragmentPanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
+                    <StackPanel x:Name="FragmentGenerationSection" Spacing="{StaticResource AxSpace12}">
                         <ComboBox
                             x:Name="FragmentGameSelector"
                             Header="游戏"
@@ -363,7 +363,7 @@
                             Text="{Binding FragmentGenerationDescription}"
                             Style="{StaticResource SubtleTextStyle}"
                             TextWrapping="Wrap" />
-                        <Grid ColumnSpacing="10">
+                        <Grid ColumnSpacing="{StaticResource AxSpace10}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="40" />
@@ -386,7 +386,7 @@
                                 <FontIcon Glyph="&#xE8B7;" />
                             </Button>
                         </Grid>
-                        <Grid ColumnSpacing="10">
+                        <Grid ColumnSpacing="{StaticResource AxSpace10}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="40" />
@@ -408,14 +408,14 @@
                                 <FontIcon Glyph="&#xE8B7;" />
                             </Button>
                         </Grid>
-                        <StackPanel Orientation="Horizontal" Spacing="10">
+                        <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace10}">
                             <Button
                                 x:Name="GenerateFragmentsButton"
                                 HorizontalAlignment="Left"
                                 IsEnabled="{Binding CanGenerateFragments}"
                                 Click="GenerateFragments_Click"
                                 Style="{StaticResource AccentButtonStyle}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace8}">
                                     <SymbolIcon Symbol="Save" />
                                     <TextBlock Text="{Binding FragmentGenerationActionText}" />
                                 </StackPanel>
@@ -428,7 +428,7 @@
                                 Click="PublishFragmentManifest_Click"
                                 Style="{StaticResource PrimaryToolButtonStyle}"
                                 ToolTipService.ToolTip="把 fragments.json 传到阿里云 www，并更新下载站 latest.json（碎片包走网盘/群，不上传）">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace8}">
                                     <SymbolIcon Symbol="Upload" />
                                     <TextBlock Text="发布碎片清单" />
                                 </StackPanel>
@@ -441,7 +441,7 @@
                                 Click="PublishFragmentManifestToGitHub_Click"
                                 Style="{StaticResource PrimaryToolButtonStyle}"
                                 ToolTipService.ToolTip="只把 fragments.json 发到 GitHub Release 兜底，不连下载站，也不上传碎片 zip">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace8}">
                                     <SymbolIcon Symbol="Upload" />
                                     <TextBlock Text="GitHub 兜底清单" />
                                 </StackPanel>
@@ -454,9 +454,9 @@
                     </StackPanel>
                 </Border>
 
-                <Border x:Name="StoragePanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="18">
-                    <StackPanel Spacing="14">
-                        <StackPanel Spacing="4">
+                <Border x:Name="StoragePanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
+                    <StackPanel Spacing="{StaticResource AxSpace14}">
+                        <StackPanel Spacing="{StaticResource AxSpace4}">
                             <TextBlock Text="存储清理" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Text="先扫描占用，再选择固定白名单中的缓存目录。" Style="{StaticResource SubtleTextStyle}" />
                         </StackPanel>
