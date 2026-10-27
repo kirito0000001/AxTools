@@ -24,6 +24,9 @@ public sealed partial class ToolPage : UserControl
 
     public event EventHandler? GamePackageRootSelectionRequested;
 
+    /// <summary>设置页里选择游戏项目目录（本体 / 安卓启动器）。</summary>
+    public event EventHandler<ToolProjectPathSelectionRequestedEventArgs>? ProjectPathSelectionRequested;
+
     public ToolPage()
     {
         InitializeComponent();
@@ -47,6 +50,17 @@ public sealed partial class ToolPage : UserControl
 
     private void GamePackageRootBrowse_Click(object sender, RoutedEventArgs e) =>
         GamePackageRootSelectionRequested?.Invoke(this, EventArgs.Empty);
+
+    private void ProjectPathBrowse_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string projectId } &&
+            DataContext is ToolPageViewModel viewModel)
+        {
+            ProjectPathSelectionRequested?.Invoke(
+                this,
+                new ToolProjectPathSelectionRequestedEventArgs(viewModel, projectId));
+        }
+    }
 
     private async void RefreshLauncherVersion_Click(object sender, RoutedEventArgs e)
     {
@@ -357,4 +371,14 @@ public sealed class ToolActionRequestedEventArgs(
     public ToolPageViewModel ViewModel { get; } = viewModel;
 
     public ToolActionItemViewModel Action { get; } = action;
+}
+
+/// <summary>设置页里点了某个项目路径的「浏览」：projectId 为 client / android。</summary>
+public sealed class ToolProjectPathSelectionRequestedEventArgs(
+    ToolPageViewModel viewModel,
+    string projectId) : EventArgs
+{
+    public ToolPageViewModel ViewModel { get; } = viewModel;
+
+    public string ProjectId { get; } = projectId;
 }

@@ -92,6 +92,10 @@ public sealed partial class MainWindow : Window
         CrossingVoidGamePage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested;
         NarutoGamePage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested;
         FantasyGamePage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested;
+        // 游戏页「设置」里的项目路径（本体 / 安卓启动器）复用同一个文件夹选择器。
+        CrossingVoidGamePage.ProjectPathSelectionRequested += ToolPage_ProjectPathSelectionRequested;
+        FantasyGamePage.ProjectPathSelectionRequested += ToolPage_ProjectPathSelectionRequested;
+        NarutoGamePage.ProjectPathSelectionRequested += ToolPage_ProjectPathSelectionRequested;
         // 《生成碎片》的页面由 GameProfileCatalog 决定（零境/幻杀 PC/安卓）；
         // 接线、确认弹窗、执行和进度全在 MainWindow.Fragments.cs 里。
         AttachFragmentGenerationHandlers();
@@ -207,6 +211,9 @@ public sealed partial class MainWindow : Window
         CrossingVoidGamePage.GamePackageRootSelectionRequested -= ToolPage_GamePackageRootSelectionRequested;
         NarutoGamePage.GamePackageRootSelectionRequested -= ToolPage_GamePackageRootSelectionRequested;
         FantasyGamePage.GamePackageRootSelectionRequested -= ToolPage_GamePackageRootSelectionRequested;
+        CrossingVoidGamePage.ProjectPathSelectionRequested -= ToolPage_ProjectPathSelectionRequested;
+        FantasyGamePage.ProjectPathSelectionRequested -= ToolPage_ProjectPathSelectionRequested;
+        NarutoGamePage.ProjectPathSelectionRequested -= ToolPage_ProjectPathSelectionRequested;
         if (_viewModel.TaskRunner is not null)
         {
             _viewModel.TaskRunner.EventReceived -= TaskRunner_EventReceived;

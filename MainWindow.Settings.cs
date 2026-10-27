@@ -28,6 +28,20 @@ public sealed partial class MainWindow
         }
     }
 
+    private async void ToolPage_ProjectPathSelectionRequested(
+        object? sender,
+        ToolProjectPathSelectionRequestedEventArgs args)
+    {
+        var folderPicker = new FolderPicker();
+        InitializeWithWindow.Initialize(folderPicker, WindowNative.GetWindowHandle(this));
+        folderPicker.FileTypeFilter.Add("*");
+        var folder = await folderPicker.PickSingleFolderAsync();
+        if (folder is not null)
+        {
+            args.ViewModel.SetProjectPath(args.ProjectId, folder.Path);
+        }
+    }
+
     private async void GlobalSettingsPage_ProjectRootSelectionRequested(
         object? sender,
         EventArgs args)

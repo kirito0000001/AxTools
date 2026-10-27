@@ -321,6 +321,19 @@ public sealed class ToolPageXamlLayoutTests
         var toggle = panel.Descendants(presentation + "ToggleSwitch").Single();
         Assert.Equal("{Binding HasAndroidLauncher, Mode=TwoWay}", (string?)toggle.Attribute("IsOn"));
 
+        // 两个项目路径：可手填，也可点右侧按钮选目录（Tag 供文件夹选择器识别）。
+        var textBindings = panel.Descendants(presentation + "TextBox")
+            .Select(element => (string?)element.Attribute("Text"))
+            .ToArray();
+        Assert.Contains("{Binding ClientProjectPath, Mode=TwoWay}", textBindings);
+        Assert.Contains("{Binding AndroidLauncherPath, Mode=TwoWay}", textBindings);
+
+        var browseTags = panel.Descendants(presentation + "Button")
+            .Where(element => (string?)element.Attribute("Click") == "ProjectPathBrowse_Click")
+            .Select(element => (string?)element.Attribute("Tag"))
+            .ToArray();
+        Assert.Equal(new string?[] { "client", "android" }, browseTags);
+
         // 暂存清单绑定到 GameScratchItems。
         Assert.Contains(
             panel.Descendants(presentation + "ItemsControl"),

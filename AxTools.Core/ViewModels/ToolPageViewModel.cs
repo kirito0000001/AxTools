@@ -761,6 +761,39 @@ public sealed partial class ToolPageViewModel : ObservableObject
         }
     }
 
+    /// <summary>游戏本体的本地路径（设置页可改）。</summary>
+    public string ClientProjectPath
+    {
+        get => EffectiveProjectPath("client");
+        set => SetProjectPath("client", value);
+    }
+
+    /// <summary>安卓启动器的本地路径（设置页可改）。</summary>
+    public string AndroidLauncherPath
+    {
+        get => EffectiveProjectPath("android");
+        set => SetProjectPath("android", value);
+    }
+
+    /// <summary>写入某个项目的本地路径；空串表示清空，之后会按“缺少路径”提示。</summary>
+    public void SetProjectPath(string projectId, string path)
+    {
+        _paths.ProjectPaths[projectId] = path ?? string.Empty;
+        OnPropertyChanged(nameof(ClientProjectPath));
+        OnPropertyChanged(nameof(AndroidLauncherPath));
+        RefreshGameProjects();
+    }
+
+    /// <summary>设置里没写过就用目录默认值；写过（哪怕空串）以设置为准。</summary>
+    private string EffectiveProjectPath(string projectId) =>
+        _paths.ProjectPaths.TryGetValue(projectId, out var stored)
+            ? stored
+            : _gameWorkbench?.Projects.FirstOrDefault(project => project.Id == projectId)?.DefaultPath
+                ?? string.Empty;
+
+    private string EffectiveProjectPath(GameProjectDefinition project) =>
+        EffectiveProjectPath(project.Id);
+
     /// <summary>
     /// 重新检查项目是否存在。进游戏页的「开发版」时调一次，
     /// 免得启动后新建了目录还要重启才认。
@@ -789,7 +822,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
             .Where(project => HasAndroidLauncher || !project.IsAndroidLauncher)
             .Select(project =>
             {
-                if (string.IsNullOrWhiteSpace(project.DefaultPath))
+                var path = EffectiveProjectPath(project);
+                if (string.IsNullOrWhiteSpace(path))
                 {
                     return new GameProjectStatus
                     {
@@ -804,17 +838,17 @@ public sealed partial class ToolPageViewModel : ObservableObject
                     };
                 }
 
-                var exists = Directory.Exists(project.DefaultPath);
+                var exists = Directory.Exists(path);
                 return new GameProjectStatus
                 {
                     Id = project.Id,
                     DisplayName = project.DisplayName,
                     Role = project.Role,
-                    Path = project.DefaultPath,
+                    Path = path,
                     RepositoryUrl = project.RepositoryUrl,
                     StateKey = exists ? "exists" : "missing",
                     StateText = exists ? "存在" : "缺失",
-                    DetailText = project.DefaultPath
+                    DetailText = path
                 };
             })
             .ToArray();

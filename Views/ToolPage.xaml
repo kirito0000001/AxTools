@@ -488,6 +488,55 @@
                                 IsOn="{Binding HasAndroidLauncher, Mode=TwoWay}" />
                         </Grid>
 
+                        <StackPanel Spacing="{StaticResource AxSpace10}">
+                            <Grid ColumnSpacing="{StaticResource AxSpace10}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox
+                                    Header="本体路径"
+                                    PlaceholderText="选择或输入本体项目目录"
+                                    Text="{Binding ClientProjectPath, Mode=TwoWay}" />
+                                <Button
+                                    Grid.Column="1"
+                                    Width="40"
+                                    Height="40"
+                                    Margin="0,24,0,0"
+                                    HorizontalAlignment="Stretch"
+                                    Tag="client"
+                                    Click="ProjectPathBrowse_Click"
+                                    Style="{StaticResource PrimaryToolButtonStyle}"
+                                    ToolTipService.ToolTip="选择本体项目目录">
+                                    <FontIcon Glyph="&#xE8B7;" />
+                                </Button>
+                            </Grid>
+                            <Grid
+                                ColumnSpacing="{StaticResource AxSpace10}"
+                                Visibility="{Binding HasAndroidLauncher, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox
+                                    Header="安卓启动器路径"
+                                    PlaceholderText="选择或输入安卓启动器目录"
+                                    Text="{Binding AndroidLauncherPath, Mode=TwoWay}" />
+                                <Button
+                                    Grid.Column="1"
+                                    Width="40"
+                                    Height="40"
+                                    Margin="0,24,0,0"
+                                    HorizontalAlignment="Stretch"
+                                    Tag="android"
+                                    Click="ProjectPathBrowse_Click"
+                                    Style="{StaticResource PrimaryToolButtonStyle}"
+                                    ToolTipService.ToolTip="选择安卓启动器目录">
+                                    <FontIcon Glyph="&#xE8B7;" />
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+
                         <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
 
                         <StackPanel Spacing="{StaticResource AxSpace4}">

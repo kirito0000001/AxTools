@@ -48,4 +48,10 @@ public sealed class ManagedToolPaths
     /// 关掉以后安卓那个项目不再参与开发环境检查，也不需要填路径。
     /// </summary>
     public bool? HasAndroidLauncher { get; set; }
+
+    /// <summary>
+    /// 游戏项目的本地路径，按项目 Id 记（client = 本体，android = 安卓启动器）。
+    /// 没写过的 Id 用 GameWorkbenchCatalog 里的默认路径；写过（哪怕写成空串）就以这里为准。
+    /// </summary>
+    public Dictionary<string, string> ProjectPaths { get; set; } = new(StringComparer.Ordinal);
 }
