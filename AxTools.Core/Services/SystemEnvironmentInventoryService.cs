@@ -15,6 +15,7 @@ public sealed partial class SystemEnvironmentInventoryService
         var items = new List<ToolchainStatusItem>();
         AddUnreal(items, paths);
         AddVisualStudio(items, paths);
+        AddRider(items, paths);
         AddWindowsSdk(items, paths);
         AddAndroid(items, toolchains, paths);
         AddManagedJava(items, toolchains, paths);
@@ -142,6 +143,47 @@ public sealed partial class SystemEnvironmentInventoryService
             EnvironmentManagementMode.OfficialManager,
             $"VS 2026 的 {string.Join(", ", msvc2026)} 不用于 UE 5.6 构建。",
             LastWrite(Path.Combine(paths.VisualStudio2022Root, "VC", "Tools", "MSVC"))));
+    }
+
+    /// <summary>JetBrains Rider：游戏本体的日常 IDE，开发版卡片可以直接用它打开项目。</summary>
+    private static void AddRider(
+        ICollection<ToolchainStatusItem> items,
+        EnvironmentInventoryPaths paths)
+    {
+        var executable = new RiderLauncher().FindRiderExecutable();
+        var available = !string.IsNullOrWhiteSpace(executable) && File.Exists(executable);
+        var installRoot = available && executable is not null
+            ? Path.GetDirectoryName(Path.GetDirectoryName(executable))
+                ?? Path.GetDirectoryName(executable)
+                ?? string.Empty
+            : string.Empty;
+        var version = available && executable is not null
+            ? DetectVersion(executable)
+            : string.Empty;
+
+        items.Add(new ToolchainStatusItem(
+            "jetbrains-rider",
+            "JetBrains Rider",
+            available ? installRoot : "未检测到安装",
+            available,
+            available
+                ? "用于打开和编辑游戏本体的工程。"
+                : "没有找到 rider64.exe（Toolbox 与 Program Files 里都没有）。",
+            "游戏本体的日常 IDE；开发版卡片可以直接用它打开项目，不负责编译。",
+            version,
+            "任意近期版本（按本机实际安装为准）",
+            available ? EnvironmentHealthState.Recommended : EnvironmentHealthState.Missing,
+            [
+                new EnvironmentConsumerInfo(
+                    "游戏本体工程",
+                    "Rider 打开项目",
+                    available ? "已确认使用" : "未发现",
+                    paths.CrossingVoidRoot)
+            ],
+            Existing(executable),
+            EnvironmentManagementMode.OfficialManager,
+            "通过 JetBrains Toolbox 维护。",
+            LastWrite(installRoot)));
     }
 
     private static void AddWindowsSdk(

@@ -57,6 +57,11 @@ public sealed class SystemEnvironmentInventoryServiceTests : IDisposable
         var jbr = Assert.Single(inventory, item => item.Key == "android-studio-jbr");
         Assert.Equal("21.0.3", jbr.CurrentVersion);
         Assert.Contains(jbr.Consumers!, consumer => consumer.Name == "CrossingVoid");
+
+        // Rider 作为游戏本体的 IDE 进环境中心；本机装没装都应有这一项（没装就是 Missing）。
+        var rider = Assert.Single(inventory, item => item.Key == "jetbrains-rider");
+        Assert.Equal("JetBrains Rider", rider.DisplayName);
+        Assert.Contains(rider.Consumers!, consumer => consumer.Requirement == "Rider 打开项目");
     }
 
     [Fact]
