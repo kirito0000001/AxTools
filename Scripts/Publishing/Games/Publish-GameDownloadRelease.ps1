@@ -864,7 +864,9 @@ function Invoke-FileSyncSsh {
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = & ssh $FileSyncTarget $Command 2>&1
+        $output = & ssh -o BatchMode=yes -o ConnectTimeout=15 `
+            -o ServerAliveInterval=10 -o ServerAliveCountMax=3 `
+            $FileSyncTarget $Command 2>&1
         $code = $LASTEXITCODE
     }
     finally {
@@ -990,9 +992,19 @@ function Get-RemoteFileSizeMap {
     param([Parameter(Mandatory)][string]$VersionRoot)
 
     $map = @{}
-    $lines = Invoke-FileSyncSsh `
-        -Command ("if [ -d '{0}' ]; then cd '{0}' && find . -type f ! -name '*.axtmp' -printf '%P\t%s\n'; fi" -f $VersionRoot) `
-        -Detail '读取远端已完成文件大小'
+    try {
+        # 只用于跳过上次中断前已传完的文件；远端 find 偶发挂住时不能无限等。
+        $lines = Invoke-FileSyncSsh `
+            -Command ("if [ -d '{0}' ]; then cd '{0}' && timeout 45 find . -type f ! -name '*.axtmp' -printf '%P\t%s\n'; fi" -f $VersionRoot) `
+            -Detail '读取远端已完成文件大小'
+    }
+    catch {
+        Write-AxTaskStage `
+            -Stage 'stage' `
+            -Message '读取远端已完成文件大小失败，本次按变化文件全量重传' `
+            -Detail $_.Exception.Message
+        return @{}
+    }
     foreach ($line in $lines) {
         $parts = ([string]$line) -split "`t", 2
         if ($parts.Count -ne 2) { continue }
@@ -1110,7 +1122,6 @@ function Invoke-FileSyncPublish {
     $mkdirCommand = "mkdir -p " + (($remoteDirs | ForEach-Object { "'" + $_ + "'" }) -join ' ')
     [void](Invoke-FileSyncSsh -Command $mkdirCommand -Detail '创建远端目录')
 
-    $remoteSizes = Get-RemoteFileSizeMap -VersionRoot $versionRoot
     $pairs = [System.Collections.Generic.List[object]]::new()
     $renameCommands = [System.Collections.Generic.List[string]]::new()
     $bytesDone = [int64]0
@@ -1131,17 +1142,8 @@ function Invoke-FileSyncPublish {
         }
         $pairs.Add($pair)
 
-        if ($remoteSizes.ContainsKey([string]$file.path) -and [int64]$remoteSizes[[string]$file.path] -eq $size) {
-            $bytesDone += $size
-            $percent = 60 + [int](33 * $bytesDone / [Math]::Max(1, $changedBytes))
-            Write-AxTaskProgress `
-                -Stage 'push' `
-                -Percent ([Math]::Min(93, $percent)) `
-                -Message ("正在上传 {0}/{1}：已存在，跳过 {2}" -f $fileIndex, $changed.Count, $file.path) `
-                -Detail $remotePath
-            continue
-        }
-
+        # 不能只按远端文件大小判断“已存在”：同大小但内容不同的文件会被跳过。
+        # 断点续传宁可变慢，也必须按内容重传，最后再用 sha256 校验。
         $tempPath = "$remotePath.axtmp"
         Write-AxTaskProgress `
             -Stage 'push' `
@@ -1590,10 +1592,26 @@ try {
         -Detail $(if ($Platform -eq 'Android') { '安卓只发主 APK 与 OBB，符号/AFS/bat 已排除。' } else { '已排除 pdb、Saved 日志、_download。' })
 
     $previousManifest = Get-ManifestSnapshot -Path $ManifestPath
+    $onlineBaseVersion = Get-OnlinePublishedVersion
+    $onlineBaseManifest = if ([string]::IsNullOrWhiteSpace($onlineBaseVersion)) {
+        $null
+    }
+    else {
+        Get-OnlineManifest -Version $onlineBaseVersion
+    }
+    if ($null -ne $onlineBaseManifest) {
+        $previousManifest = [pscustomobject]@{
+            Json        = $onlineBaseManifest
+            GeneratedAt = ''
+        }
+    }
     $hashedFiles = Get-HashedFileList -Files $releaseFiles
     $totalBytes = 0L
     foreach ($file in $hashedFiles) { $totalBytes += $file.sizeBytes }
     $changeSummary = Get-ChangeSummary -Previous $previousManifest -Files $hashedFiles
+    if ($null -ne $onlineBaseManifest) {
+        $changeSummary.Note = "按线上 $onlineBaseVersion 清单比对；本地暂存仍按全量整理，实际上传以逐文件比对为准。"
+    }
 
     Write-AxTaskStage `
         -Stage 'manifest' `
