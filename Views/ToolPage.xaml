@@ -70,8 +70,8 @@
                     Visibility="{Binding HasFragmentGeneration, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 <SelectorBarItem x:Name="StorageSelectorItem" Text="存储清理" />
                 <SelectorBarItem
-                    x:Name="ScratchSelectorItem"
-                    Text="功能散页"
+                    x:Name="SettingsSelectorItem"
+                    Text="设置"
                     Visibility="{Binding IsGameTool, Converter={StaticResource BooleanToVisibilityConverter}}" />
             </SelectorBar>
 
@@ -467,13 +467,10 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 功能散页：游戏页专用。正规设置从「是否拥有安卓启动器」开始，
-                     下面暂存暂时没归位的功能与未复用逻辑，供后续排期查看。 -->
-                <Border x:Name="ScratchPanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
+                <!-- 设置页（游戏专用）：上面是正规设置项，下面挂着临时的「功能散页」，
+                     散页整理完就删，别把长期内容放进去。 -->
+                <Border x:Name="SettingsPanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
                     <StackPanel Spacing="{StaticResource AxSpace14}">
-                        <StackPanel Spacing="{StaticResource AxSpace4}">
-                            <TextBlock Text="设置" Style="{StaticResource SectionTitleStyle}" />
-                        </StackPanel>
                         <Grid ColumnSpacing="{StaticResource AxSpace12}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -494,9 +491,9 @@
                         <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
 
                         <StackPanel Spacing="{StaticResource AxSpace4}">
-                            <TextBlock Text="待整理" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="功能散页" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock
-                                Text="暂时没有正式位置的功能，以及还没抽出来复用的逻辑。"
+                                Text="临时区：暂时没有正式位置的功能，以及还没抽出来复用的逻辑。整理完这块就删。"
                                 Style="{StaticResource SubtleTextStyle}" />
                         </StackPanel>
                         <ItemsControl ItemsSource="{Binding GameScratchItems}">

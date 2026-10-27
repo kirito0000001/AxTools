@@ -11,6 +11,6 @@ public enum ToolPageSection
     Publish,
     Fragments,
     Storage,
-    /// <summary>游戏页的「功能散页」：暂存未归位的功能，不参与环境校验。</summary>
-    Scratch
+    /// <summary>游戏页的「设置」页：正规设置项 + 临时的「功能散页」，不参与环境校验。</summary>
+    Settings
 }

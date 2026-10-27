@@ -296,22 +296,26 @@ public sealed class ToolPageXamlLayoutTests
     }
 
     [Fact]
-    public void GameTools_HaveScratchPageForParkedFeatures()
+    public void GameTools_HaveSettingsPageWithScratchSection()
     {
         var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
         XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
-        // 「功能散页」只在游戏页出现。
+        // 页签叫「设置」；「功能散页」是它内部的临时分区，只在游戏页出现。
         var tab = document.Descendants(presentation + "SelectorBarItem")
-            .Single(element => (string?)element.Attribute(xaml + "Name") == "ScratchSelectorItem");
-        Assert.Equal("功能散页", (string?)tab.Attribute("Text"));
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "SettingsSelectorItem");
+        Assert.Equal("设置", (string?)tab.Attribute("Text"));
         Assert.Equal(
             "{Binding IsGameTool, Converter={StaticResource BooleanToVisibilityConverter}}",
             (string?)tab.Attribute("Visibility"));
 
         var panel = document.Descendants(presentation + "Border")
-            .Single(element => (string?)element.Attribute(xaml + "Name") == "ScratchPanel");
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "SettingsPanel");
+
+        Assert.Contains(
+            panel.Descendants(presentation + "TextBlock"),
+            element => (string?)element.Attribute("Text") == "功能散页");
 
         // 正规设置第一项：是否拥有安卓启动器。
         var toggle = panel.Descendants(presentation + "ToggleSwitch").Single();
@@ -324,8 +328,8 @@ public sealed class ToolPageXamlLayoutTests
 
         // 页签切换要同步通知栏并显示对应面板。
         var codeBehind = File.ReadAllText(FindProjectFile(Path.Combine("Views", "ToolPage.xaml.cs")));
-        Assert.Contains("ToolPageSection.Scratch", codeBehind);
-        Assert.Contains("ScratchPanel.Visibility", codeBehind);
+        Assert.Contains("ToolPageSection.Settings", codeBehind);
+        Assert.Contains("SettingsPanel.Visibility", codeBehind);
     }
 
     [Fact]

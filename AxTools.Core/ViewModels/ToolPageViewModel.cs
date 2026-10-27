@@ -649,7 +649,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
     /// 这里按校验结果给：通过才算 Success，其余一律 Warning。
     /// </summary>
     public OperationNoticeSeverity ConfigurationSeverity =>
-        IsGameTool && CurrentSection is ToolPageSection.Scratch
+        IsGameTool && CurrentSection is ToolPageSection.Settings
             ? OperationNoticeSeverity.Informational
             : IsConfigurationReady ? OperationNoticeSeverity.Success : OperationNoticeSeverity.Warning;
 
@@ -681,10 +681,10 @@ public sealed partial class ToolPageViewModel : ObservableObject
                 : ($"缺少：{string.Join("；", missingPublish)}", false);
         }
 
-        if (CurrentSection is ToolPageSection.Scratch)
+        if (CurrentSection is ToolPageSection.Settings)
         {
-            // 「功能散页」没有环境要求，通知栏保持中性。
-            return ("功能散页不参与环境校验。", true);
+            // 「设置」页不参与环境校验，通知栏保持中性。
+            return ("设置页不参与环境校验。", true);
         }
 
         var validation = _adapter.Validate(_paths);
