@@ -384,6 +384,11 @@ public sealed class ToolPageXamlLayoutTests
             .Single(element => (string?)element.Attribute("Property") == "Height");
         Assert.Equal("48", (string?)heightSetter.Attribute("Value"));
         Assert.Null(cardButton.Attribute("Height"));
+
+        // 图标+文字整体居中，不做左对齐。
+        var alignSetter = style.Descendants(presentation + "Setter")
+            .Single(element => (string?)element.Attribute("Property") == "HorizontalContentAlignment");
+        Assert.Equal("Center", (string?)alignSetter.Attribute("Value"));
     }
 
     [Fact]

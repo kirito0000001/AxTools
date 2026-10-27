@@ -119,7 +119,7 @@
     </Style>
 
     <!--
-        卡片里的动作按钮：比工具页顶部的 40px 按钮高一档（48px），左对齐图标+文字。
+        卡片里的动作按钮：比工具页顶部的 40px 按钮高一档（48px），图标+文字整体居中。
         以后所有卡片动作按钮都复用它，不要在页面里单独改高度或写 Padding。
     -->
     <Style x:Key="CardActionButtonStyle" TargetType="Button">
@@ -127,7 +127,7 @@
         <Setter Property="Padding" Value="16,0" />
         <Setter Property="CornerRadius" Value="{StaticResource AxRadiusMedium}" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
-        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
     </Style>
 
     <Style x:Key="ToolbarBorderStyle" TargetType="Border" BasedOn="{StaticResource PanelBorderStyle}">

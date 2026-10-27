@@ -141,7 +141,10 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Text="{Binding LastResultText}" Style="{StaticResource SubtleTextStyle}" />
+                        <TextBlock
+                            Text="{Binding LastResultText}"
+                            Visibility="{Binding IsGameTool, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
+                            Style="{StaticResource SubtleTextStyle}" />
                     </StackPanel>
                 </Border>
 
