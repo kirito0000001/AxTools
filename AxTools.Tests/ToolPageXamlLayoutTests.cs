@@ -588,7 +588,12 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains(
             document.Descendants(presentation + "ItemsControl"),
             element => ((string?)element.Attribute("ItemsSource"))?.Contains("DevelopmentPanelActions") == true);
-        Assert.Contains(
+
+        // 2026-10-27：正式版分区整个移除，不再有对应的页签与动作列表。
+        Assert.DoesNotContain(
+            document.Descendants(presentation + "SelectorBarItem"),
+            element => (string?)element.Attribute("Text") == "正式版");
+        Assert.DoesNotContain(
             document.Descendants(presentation + "ItemsControl"),
             element => ((string?)element.Attribute("ItemsSource"))?.Contains("ReleasePanelActions") == true);
     }

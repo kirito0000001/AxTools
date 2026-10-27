@@ -444,7 +444,6 @@ public sealed partial class ToolPage : UserControl
 
         ModeSelector.Visibility = Visibility.Collapsed;
         DevelopmentPanel.Visibility = Visibility.Collapsed;
-        ReleasePanel.Visibility = Visibility.Collapsed;
         FragmentSelectorItem.Visibility = Visibility.Collapsed;
         FragmentPanel.Visibility = Visibility.Collapsed;
         StoragePanel.Visibility = Visibility.Collapsed;
@@ -470,8 +469,7 @@ public sealed partial class ToolPage : UserControl
         var selectedItem = sender.SelectedItem;
 
         // 顶部「配置状态」跟着页签走：开发版查项目，打包与发布查游戏包目录。
-        var section = selectedItem == ReleaseSelectorItem ? ToolPageSection.Release
-            : selectedItem == PublishSelectorItem ? ToolPageSection.Publish
+        var section = selectedItem == PublishSelectorItem ? ToolPageSection.Publish
             : selectedItem == FragmentSelectorItem ? ToolPageSection.Fragments
             : selectedItem == StorageSelectorItem ? ToolPageSection.Storage
             : selectedItem == SettingsSelectorItem ? ToolPageSection.Settings
@@ -482,9 +480,6 @@ public sealed partial class ToolPage : UserControl
         }
 
         DevelopmentPanel.Visibility = selectedItem == DevelopmentSelectorItem
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        ReleasePanel.Visibility = selectedItem == ReleaseSelectorItem
             ? Visibility.Visible
             : Visibility.Collapsed;
         PublishPanel.Visibility = selectedItem == PublishSelectorItem &&

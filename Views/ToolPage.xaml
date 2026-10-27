@@ -64,7 +64,6 @@
                 Grid.Row="2"
                 SelectionChanged="ModeSelector_SelectionChanged">
                 <SelectorBarItem x:Name="DevelopmentSelectorItem" Text="开发版" IsSelected="True" />
-                <SelectorBarItem x:Name="ReleaseSelectorItem" Text="正式版" />
                 <SelectorBarItem
                     x:Name="PublishSelectorItem"
                     Text="打包与发布"
@@ -153,29 +152,6 @@
                             Text="{Binding LastResultText}"
                             Visibility="{Binding IsGameTool, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
                             Style="{StaticResource SubtleTextStyle}" />
-                    </StackPanel>
-                </Border>
-
-                <Border x:Name="ReleasePanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
-                    <StackPanel Spacing="{StaticResource AxSpace14}">
-                        <StackPanel Spacing="{StaticResource AxSpace4}">
-                            <TextBlock Text="正式版" Style="{StaticResource SectionTitleStyle}" />
-                            <TextBlock Text="启动已安装或已打包的正式程序。" Style="{StaticResource SubtleTextStyle}" />
-                            <TextBlock Text="{Binding ReleaseVersionText}" Style="{StaticResource SubtleTextStyle}" />
-                        </StackPanel>
-                        <ItemsControl
-                            ItemsSource="{Binding ReleasePanelActions}"
-                            Loaded="ActionItemsControl_Loaded"
-                            SizeChanged="ActionItemsControl_SizeChanged"
-                            ItemTemplate="{StaticResource ToolActionButtonTemplate}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <ItemsWrapGrid Orientation="Horizontal" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                        </ItemsControl>
-                        <TextBlock Text="{Binding ExecutionAvailabilityText}" Style="{StaticResource SubtleTextStyle}" />
-                        <TextBlock Text="{Binding LastResultText}" Style="{StaticResource SubtleTextStyle}" />
                     </StackPanel>
                 </Border>
 
