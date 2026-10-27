@@ -780,8 +780,18 @@ public sealed partial class ToolPageViewModel : ObservableObject
     /// <summary>服务端实例（含端口与运行状态），按当前游戏过滤。</summary>
     public IReadOnlyList<ServerInstanceViewModel> ServerInstances { get; private set; } = [];
 
-    /// <summary>服务器更新的状态行（部署中 / 上一版 / 本机仓库 / 服务器 / 实例）。</summary>
-    public IReadOnlyList<ServerUpdateLine> ServerUpdateLines { get; private set; } = [];
+    public bool HasServerInstances => ServerInstances.Count > 0;
+
+    /// <summary>
+    /// 仓库状态三行：当前部署版本 / 上次旧版存留 / 本机仓库。
+    /// 没读到数据时给占位文字，保证卡片结构不变——旧版空白最难查就是这个原因。
+    /// </summary>
+    public IReadOnlyList<ServerUpdateLine> ServerUpdateLines { get; private set; } =
+    [
+        new ServerUpdateLine("当前部署版本", "尚未读取"),
+        new ServerUpdateLine("上次旧版存留", "尚未读取"),
+        new ServerUpdateLine("本机仓库", "尚未读取")
+    ];
 
     /// <summary>卡片顶部那句话：没读过、读好了、还是在读，一眼能看出来（旧版空白最难查）。</summary>
     public string ServerStateStatus { get; private set; } =
@@ -816,7 +826,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
         }
 
         _isRefreshingServerState = true;
-        ServerStateStatus = "正在读取服务端状态…";
+        ServerStateStatus = "正在刷新服务端状态…";
         OnPropertyChanged(nameof(ServerStateStatus));
 
         try
@@ -826,6 +836,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
 
             ServerInstances = _serverPage.InstancesOf(_serverProfile.Key).ToArray();
             OnPropertyChanged(nameof(ServerInstances));
+            OnPropertyChanged(nameof(HasServerInstances));
             RebuildServerUpdateLines();
 
             ServerStateStatus = string.IsNullOrWhiteSpace(state.Error)
@@ -849,16 +860,12 @@ public sealed partial class ToolPageViewModel : ObservableObject
             ? null
             : _serverPage?.GetUpdateState(_serverProfile.Key);
 
-        ServerUpdateLines = state is null
-            ? []
-            :
-            [
-                new ServerUpdateLine("部署中", state.DeployedText),
-                new ServerUpdateLine("上一版", state.PreviousText),
-                new ServerUpdateLine("本机仓库", state.LocalAheadText),
-                new ServerUpdateLine("服务器", state.PendingText),
-                new ServerUpdateLine("实例", state.InstancesText)
-            ];
+        ServerUpdateLines =
+        [
+            new ServerUpdateLine("当前部署版本", state?.DeployedText ?? "尚未读取"),
+            new ServerUpdateLine("上次旧版存留", state?.PreviousText ?? "尚未读取"),
+            new ServerUpdateLine("本机仓库", state?.LocalAheadText ?? "尚未读取")
+        ];
         OnPropertyChanged(nameof(ServerUpdateLines));
     }
 

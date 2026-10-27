@@ -208,6 +208,11 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
 
+                                <TextBlock
+                                    Text="尚未读取到实例信息。"
+                                    Visibility="{Binding HasServerInstances, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
+                                    Style="{StaticResource SubtleTextStyle}" />
+
                                 <ItemsControl ItemsSource="{Binding ServerUpdateLines}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>

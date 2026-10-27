@@ -418,6 +418,10 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains(
             panel.Descendants(presentation + "ItemsControl"),
             element => (string?)element.Attribute("ItemsSource") == "{Binding ServerUpdateLines}");
+        // 刷新时排版不变：实例为空给占位提示，不隐藏整块。
+        Assert.Contains(
+            panel.Descendants(presentation + "TextBlock"),
+            element => (string?)element.Attribute("Text") == "尚未读取到实例信息。");
         Assert.Contains(
             panel.Descendants(presentation + "Button"),
             element => (string?)element.Attribute("Click") == "RefreshServerState_Click");
