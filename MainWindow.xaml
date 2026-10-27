@@ -48,8 +48,8 @@
             Grid.Row="1"
             CompactPaneLength="64"
             OpenPaneLength="286"
-            PaneDisplayMode="LeftCompact"
-            IsPaneOpen="False"
+            PaneDisplayMode="Left"
+            IsPaneOpen="True"
             IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False"
             SelectionFollowsFocus="Disabled"
@@ -58,11 +58,8 @@
                 <x:Double x:Key="NavigationViewItemOnLeftMinHeight">64</x:Double>
             </NavigationView.Resources>
             <NavigationView.MenuItems>
-                <NavigationViewItem x:Name="AxToolsNavItem" Content="Ax管理器" Tag="AxTools">
+                <NavigationViewItem x:Name="AxToolsNavItem" Content="AX管理器" Tag="AxTools">
                     <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/AxTools.png" /></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="ServerAliyunNavItem" Content="服务器" Tag="ServerAliyun">
-                    <NavigationViewItem.Icon><SymbolIcon Symbol="World" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem x:Name="CrossingVoidZDToolNavItem" Content="工具-零境素材" Tag="CrossingVoidZDTool">
                     <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidZDTool.png" /></NavigationViewItem.Icon>
@@ -76,11 +73,16 @@
                 <NavigationViewItem x:Name="CrossingVoidPcNavItem" Content="TFAC启动平台" Tag="CrossingVoidPc">
                     <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidPc.png" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Name="CrossingVoidAndroidNavItem" Content="平台-零境-安卓" Tag="CrossingVoidAndroid">
-                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidAndroid.png" /></NavigationViewItem.Icon>
+                <!-- 三个游戏项暂时用统一字形：目前没有各自的游戏图标，历史版本是拿工具图标顶的，
+                     会出现两项同图。等补了图标再换 ImageIcon。 -->
+                <NavigationViewItem x:Name="CrossingVoidGameNavItem" Content="游戏-零境交错" Tag="CrossingVoidGame">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Game" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Name="FantasyAndroidNavItem" Content="平台-幻杀-安卓" Tag="FantasyAndroid">
-                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/FantasyProjectPc.png" /></NavigationViewItem.Icon>
+                <NavigationViewItem x:Name="FantasyGameNavItem" Content="游戏-幻杀" Tag="FantasyGame">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Game" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="NarutoGameNavItem" Content="游戏-火影BP" Tag="NarutoGame">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Game" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>

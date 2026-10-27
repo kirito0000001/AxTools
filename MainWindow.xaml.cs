@@ -32,30 +32,8 @@ public sealed partial class MainWindow : Window
         ServerAliyunPage.DataContext = viewModel.Server;
         GlobalSettingsPage.DataContext = viewModel.Settings;
 
-        // 2026-09-20：游戏包发布不再是左侧独立导航，而是并进「服务器」页的游戏页签
-        // （零境交错 / 火影BP / 幻杀）。这三个 ToolPage 只是换了宿主，动作、进度、
-        // 确认弹窗和日志仍走本类里那套既有事件，执行逻辑没有第二份。
-        //
-        // 摘除必须用内容网格自己的 Children：它们和别的页共用一个格子，而 WinUI 的
-        // FrameworkElement.Parent 不保证指向这个 Grid —— 之前就是因此没摘掉，三张发布页
-        // 直接叠在了当前选中页上（18:51 那次启动）。
-        var gamePublishPages = new[] { CrossingVoidGamePage, FantasyGamePage, NarutoGamePage };
-        var detachedCount = gamePublishPages.Count(page => PageHost.Children.Remove(page));
-        ServerAliyunPage.AttachGamePublishPanel("crossingvoid", CrossingVoidGamePage);
-        ServerAliyunPage.AttachGamePublishPanel("narutobp", NarutoGamePage);
-        ServerAliyunPage.AttachGamePublishPanel("fantasyproject", FantasyGamePage);
-        if (detachedCount == gamePublishPages.Length)
-        {
-            _viewModel.LogService.Write(
-                LogKind.Info,
-                "游戏包发布面板已并入「服务器」页的游戏页签（零境交错 / 火影BP / 幻杀）。");
-        }
-        else
-        {
-            _viewModel.LogService.Write(
-                LogKind.Warning,
-                $"游戏包发布面板挂载异常：只从内容网格摘出 {detachedCount}/{gamePublishPages.Length} 个页面，可能和当前页叠在一起。");
-        }
+        // 2026-10-27：三个游戏发布页回到左侧导航，重新作为独立页面挂在 PageHost 里。
+        // 服务器页暂时保留（后续整页移除、只留功能），但不再承载游戏发布面板。
         GlobalSettingsPage.PathSelectionRequested += GlobalSettingsPage_PathSelectionRequested;
         GlobalSettingsPage.ProjectRootSelectionRequested +=
             GlobalSettingsPage_ProjectRootSelectionRequested;

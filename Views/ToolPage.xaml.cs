@@ -12,6 +12,7 @@ public sealed partial class ToolPage : UserControl
     private const double WidePublishingFieldsWidth = 720;
     private const double PreferredActionSlotWidth = 220;
     private bool _isActionHelpOpen;
+    private bool _publishModeSelected;
 
     public event EventHandler<ToolActionRequestedEventArgs>? ToolActionRequested;
 
@@ -26,6 +27,22 @@ public sealed partial class ToolPage : UserControl
     public ToolPage()
     {
         InitializeComponent();
+    }
+
+    /// <summary>
+    /// 首次进入时把页签切到「打包与发布」。
+    /// 游戏页只有发布动作，默认的「开发版」面板是空的，不切过去等于点进来一片空白。
+    /// 只生效一次：用户之后自己切回别的页签，不会被每次导航拽回来。
+    /// </summary>
+    internal void EnsurePublishMode()
+    {
+        if (_publishModeSelected || PublishSelectorItem.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        _publishModeSelected = true;
+        ModeSelector.SelectedItem = PublishSelectorItem;
     }
 
     private void GamePackageRootBrowse_Click(object sender, RoutedEventArgs e) =>

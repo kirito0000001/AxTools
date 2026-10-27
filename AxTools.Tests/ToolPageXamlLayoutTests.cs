@@ -14,13 +14,11 @@ public sealed class ToolPageXamlLayoutTests
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
         var expected = new Dictionary<string, (string Title, string Icon)>
         {
-            ["AxToolsNavItem"] = ("Ax管理器", "AxTools.png"),
+            ["AxToolsNavItem"] = ("AX管理器", "AxTools.png"),
             ["CrossingVoidZDToolNavItem"] = ("工具-零境素材", "CrossingVoidZDTool.png"),
             ["GalExcleToolsNavItem"] = ("工具-剧情填表", "GalExcleTools.png"),
             ["FantasyToolsNavItem"] = ("工具-幻杀卡牌", "FantasyTools.png"),
-            ["CrossingVoidPcNavItem"] = ("TFAC启动平台", "CrossingVoidPc.png"),
-            ["CrossingVoidAndroidNavItem"] = ("平台-零境-安卓", "CrossingVoidAndroid.png"),
-            ["FantasyAndroidNavItem"] = ("平台-幻杀-安卓", "FantasyProjectPc.png")
+            ["CrossingVoidPcNavItem"] = ("TFAC启动平台", "CrossingVoidPc.png")
         };
 
         foreach (var item in document.Descendants(presentation + "NavigationViewItem"))
@@ -36,14 +34,17 @@ public sealed class ToolPageXamlLayoutTests
 
         Assert.Empty(expected);
 
-        // 2026-09-20：三个游戏包发布页并进「服务器」页的游戏页签，左侧不再有这三个导航项。
+        // 2026-10-27：左栏固定 8 项，三个游戏页回到左栏；服务器与两个安卓页不再有入口。
         var names = document
             .Descendants(presentation + "NavigationViewItem")
             .Select(element => (string?)element.Attribute(xaml + "Name"))
             .ToArray();
-        Assert.DoesNotContain("CrossingVoidGameNavItem", names);
-        Assert.DoesNotContain("FantasyGameNavItem", names);
-        Assert.DoesNotContain("NarutoGameNavItem", names);
+        Assert.Contains("CrossingVoidGameNavItem", names);
+        Assert.Contains("FantasyGameNavItem", names);
+        Assert.Contains("NarutoGameNavItem", names);
+        Assert.DoesNotContain("ServerAliyunNavItem", names);
+        Assert.DoesNotContain("CrossingVoidAndroidNavItem", names);
+        Assert.DoesNotContain("FantasyAndroidNavItem", names);
     }
 
     [Fact]
@@ -114,56 +115,61 @@ public sealed class ToolPageXamlLayoutTests
     }
 
     [Fact]
-    public void GamePublishing_LivesInServerPageTabsInsteadOfLeftNavigation()
+    public void GamePublishing_IsBackInLeftNavigationAsStandalonePages()
     {
+        // 2026-10-27：游戏发布页从「服务器」页签搬回左栏，重新作为独立页面。
+        var document = XDocument.Load(FindProjectFile("MainWindow.xaml"));
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XNamespace views = "using:AxTools.Views";
+
+        var gameItems = new Dictionary<string, (string Title, string Tag)>
+        {
+            ["CrossingVoidGameNavItem"] = ("游戏-零境交错", "CrossingVoidGame"),
+            ["FantasyGameNavItem"] = ("游戏-幻杀", "FantasyGame"),
+            ["NarutoGameNavItem"] = ("游戏-火影BP", "NarutoGame")
+        };
+        foreach (var item in document.Descendants(presentation + "NavigationViewItem"))
+        {
+            var name = (string?)item.Attribute(xaml + "Name");
+            if (name is null || !gameItems.TryGetValue(name, out var value))
+            {
+                continue;
+            }
+
+            Assert.Equal(value.Title, (string?)item.Attribute("Content"));
+            Assert.Equal(value.Tag, (string?)item.Attribute("Tag"));
+            gameItems.Remove(name);
+        }
+
+        Assert.Empty(gameItems);
+
+        // 三个游戏页仍是 PageHost 的常驻子页，不再被摘出去挂到服务器页。
+        var pageNames = document
+            .Descendants(views + "ToolPage")
+            .Select(element => (string?)element.Attribute(xaml + "Name"))
+            .ToArray();
+        Assert.Contains("CrossingVoidGamePage", pageNames);
+        Assert.Contains("FantasyGamePage", pageNames);
+        Assert.Contains("NarutoGamePage", pageNames);
+
         var windowCode = File.ReadAllText(FindProjectFile("MainWindow.xaml.cs"));
-        Assert.Contains(
-            "ServerAliyunPage.AttachGamePublishPanel(\"crossingvoid\", CrossingVoidGamePage)",
-            windowCode);
-        Assert.Contains(
-            "ServerAliyunPage.AttachGamePublishPanel(\"narutobp\", NarutoGamePage)",
-            windowCode);
-        Assert.Contains(
-            "ServerAliyunPage.AttachGamePublishPanel(\"fantasyproject\", FantasyGamePage)",
-            windowCode);
-        // 幻杀的游戏包目录选择按钮原本没接线，跟着这次搬家一起补上。
-        Assert.Contains(
-            "FantasyGamePage.GamePackageRootSelectionRequested += ToolPage_GamePackageRootSelectionRequested",
-            windowCode);
+        Assert.DoesNotContain("AttachGamePublishPanel", windowCode);
+        Assert.DoesNotContain("PageHost.Children.Remove(page)", windowCode);
 
-        // 旧页签统一回到服务器分区，避免设置里存着旧值、重开时落不到页面上。
+        // 路由要把三个标签指到各自页面，并在首次进入时切到发布页签。
         var routing = File.ReadAllText(FindProjectFile("MainWindow.Navigation.cs"));
-        Assert.Contains(
-            "\"CrossingVoidGame\" or \"FantasyGame\" or \"NarutoGame\" => \"ServerAliyun\"",
-            routing);
-        Assert.DoesNotContain("CrossingVoidGamePage.Visibility", routing);
-        Assert.DoesNotContain("NarutoGamePage.Visibility", routing);
+        Assert.Contains("\"CrossingVoidGame\" => CrossingVoidGamePage", routing);
+        Assert.Contains("\"FantasyGame\" => FantasyGamePage", routing);
+        Assert.Contains("\"NarutoGame\" => NarutoGamePage", routing);
+        Assert.Contains("gamePage.EnsurePublishMode();", routing);
 
-        // 服务器页按产品键把发布面板挂进对应游戏的页签卡片。
-        var serverPage = File.ReadAllText(FindProjectFile(Path.Combine("Views", "ServerPage.xaml.cs")));
-        Assert.Contains("_gamePublishPanels.TryGetValue(programKey, out var publishPage)", serverPage);
-        Assert.Contains("客户端发布（下载站）", serverPage);
-        // 发布卡片挂在固定宿主上，不跟着 15 秒轮询重建（否则输入焦点每 15 秒被踢一次）。
-        Assert.Contains("UpdateGamePublishPanel();", serverPage);
-        Assert.Contains(
-            "GamePublishPanelHost",
-            File.ReadAllText(FindProjectFile(Path.Combine("Views", "ServerPage.xaml"))));
-
-        // ToolPage 的嵌入形态：藏掉自己的页头、模式选择器和内层边框。
         var toolPage = File.ReadAllText(FindProjectFile(Path.Combine("Views", "ToolPage.xaml.cs")));
-        Assert.Contains("internal void HostAsGamePublishPanel()", toolPage);
-        Assert.Contains("PageTitleText.Visibility = Visibility.Collapsed", toolPage);
-        Assert.Contains("ModeSelector.Visibility = Visibility.Collapsed", toolPage);
-
-        // 必须按内容网格自己的 Children 摘除：三个页面和别的页共用一个格子，
-        // 用 FrameworkElement.Parent 判断时摘不掉，三张发布页会叠在当前选中页上。
-        Assert.Contains("PageHost.Children.Remove(page)", windowCode);
-        Assert.Contains("x:Name=\"PageHost\"", File.ReadAllText(FindProjectFile("MainWindow.xaml")));
-        Assert.DoesNotContain("page.Parent is Panel", File.ReadAllText(FindProjectFile(Path.Combine("Views", "ServerPage.xaml.cs"))));
+        Assert.Contains("internal void EnsurePublishMode()", toolPage);
     }
 
     [Fact]
-    public void MainWindow_PlacesAndroidLauncherAfterPcLauncher()
+    public void MainWindow_LeftNavigationHasExactlyEightItemsInOrder()
     {
         var document = XDocument.Load(FindProjectFile("MainWindow.xaml"));
         XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
@@ -171,14 +177,22 @@ public sealed class ToolPageXamlLayoutTests
         var names = document
             .Descendants(presentation + "NavigationViewItem")
             .Select(element => (string?)element.Attribute(xaml + "Name"))
-            .ToList();
+            .ToArray();
 
-        var pc = names.IndexOf("CrossingVoidPcNavItem");
-        var android = names.IndexOf("CrossingVoidAndroidNavItem");
-        Assert.Equal(pc + 1, android);
-        Assert.DoesNotContain("FantasyProjectPcNavItem", names);
-        Assert.Contains("FantasyAndroidNavItem", names);
-        Assert.DoesNotContain("CrossingVoidPackagePage", names);
+        // 顺序即需求：管理器 → 三个工具 → TFAC → 三个游戏；设置固定在页脚。
+        Assert.Equal(
+            [
+                "AxToolsNavItem",
+                "CrossingVoidZDToolNavItem",
+                "GalExcleToolsNavItem",
+                "FantasyToolsNavItem",
+                "CrossingVoidPcNavItem",
+                "CrossingVoidGameNavItem",
+                "FantasyGameNavItem",
+                "NarutoGameNavItem",
+                "SettingsNavItem"
+            ],
+            names);
     }
 
     [Fact]

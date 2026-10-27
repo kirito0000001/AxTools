@@ -1,3 +1,4 @@
+using AxTools.Views;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -22,13 +23,14 @@ public sealed partial class MainWindow
 
     private void ShowPageByTag(string tag, bool playAnimation)
     {
-        // 2026-09-20：三个游戏包发布页并进了「服务器」页的游戏页签，旧的导航标识统一回到服务器分区
-        // （设置里存着旧页签时，重开也会落在服务器页，而不是弹回 Ax管理器）。
+        // 2026-10-27：左栏固定 8 项——AX管理器 / 三个工具 / TFAC / 三个游戏。
+        // 「服务器」与两个安卓页已从左栏移除，但页面实例仍留在 PageHost：
+        // 旧配置里存着这些页签时统一落回 AX管理器，等后续把功能迁走再删页面。
         var normalizedTag = tag switch
         {
-            "CrossingVoidGame" or "FantasyGame" or "NarutoGame" => "ServerAliyun",
-            "FantasyTools" or "GalExcleTools" or "CrossingVoidZDTool" or "CrossingVoidPc" or
-                "CrossingVoidAndroid" or "FantasyAndroid" or "ServerAliyun" or "Settings" => tag,
+            "AxTools" or "CrossingVoidZDTool" or "GalExcleTools" or "FantasyTools" or
+                "CrossingVoidPc" or "CrossingVoidGame" or "FantasyGame" or "NarutoGame" or
+                "Settings" => tag,
             _ => "AxTools"
         };
         FrameworkElement visiblePage = normalizedTag switch
@@ -37,9 +39,9 @@ public sealed partial class MainWindow
             "GalExcleTools" => GalExcleToolsPage,
             "CrossingVoidZDTool" => CrossingVoidZDToolPage,
             "CrossingVoidPc" => CrossingVoidPcPage,
-            "CrossingVoidAndroid" => CrossingVoidAndroidPage,
-            "FantasyAndroid" => FantasyAndroidPage,
-            "ServerAliyun" => ServerAliyunPage,
+            "CrossingVoidGame" => CrossingVoidGamePage,
+            "FantasyGame" => FantasyGamePage,
+            "NarutoGame" => NarutoGamePage,
             "Settings" => GlobalSettingsPage,
             _ => AxToolsPage
         };
@@ -49,6 +51,10 @@ public sealed partial class MainWindow
         GalExcleToolsPage.Visibility = visiblePage == GalExcleToolsPage ? Visibility.Visible : Visibility.Collapsed;
         CrossingVoidZDToolPage.Visibility = visiblePage == CrossingVoidZDToolPage ? Visibility.Visible : Visibility.Collapsed;
         CrossingVoidPcPage.Visibility = visiblePage == CrossingVoidPcPage ? Visibility.Visible : Visibility.Collapsed;
+        CrossingVoidGamePage.Visibility = visiblePage == CrossingVoidGamePage ? Visibility.Visible : Visibility.Collapsed;
+        FantasyGamePage.Visibility = visiblePage == FantasyGamePage ? Visibility.Visible : Visibility.Collapsed;
+        NarutoGamePage.Visibility = visiblePage == NarutoGamePage ? Visibility.Visible : Visibility.Collapsed;
+        // 下面三页已无左栏入口，恒为 Collapsed；保留赋值是为了将来恢复入口时不用再想状态。
         CrossingVoidAndroidPage.Visibility = visiblePage == CrossingVoidAndroidPage ? Visibility.Visible : Visibility.Collapsed;
         FantasyAndroidPage.Visibility = visiblePage == FantasyAndroidPage ? Visibility.Visible : Visibility.Collapsed;
         ServerAliyunPage.Visibility = visiblePage == ServerAliyunPage ? Visibility.Visible : Visibility.Collapsed;
@@ -63,6 +69,13 @@ public sealed partial class MainWindow
             ServerAliyunPage.OnNavigatedFrom();
         }
 
+        // 游戏页只有发布动作，首次进入时落到「打包与发布」；否则开局停在空的开发版面板。
+        if (visiblePage is ToolPage gamePage &&
+            normalizedTag is "CrossingVoidGame" or "FantasyGame" or "NarutoGame")
+        {
+            gamePage.EnsurePublishMode();
+        }
+
         _viewModel.CurrentPageTag = normalizedTag;
         ShellNavigation.SelectedItem = normalizedTag switch
         {
@@ -70,9 +83,9 @@ public sealed partial class MainWindow
             "GalExcleTools" => GalExcleToolsNavItem,
             "CrossingVoidZDTool" => CrossingVoidZDToolNavItem,
             "CrossingVoidPc" => CrossingVoidPcNavItem,
-            "CrossingVoidAndroid" => CrossingVoidAndroidNavItem,
-            "FantasyAndroid" => FantasyAndroidNavItem,
-            "ServerAliyun" => ServerAliyunNavItem,
+            "CrossingVoidGame" => CrossingVoidGameNavItem,
+            "FantasyGame" => FantasyGameNavItem,
+            "NarutoGame" => NarutoGameNavItem,
             "Settings" => SettingsNavItem,
             _ => AxToolsNavItem
         };
