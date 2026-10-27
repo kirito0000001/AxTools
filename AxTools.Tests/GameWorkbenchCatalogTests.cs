@@ -56,4 +56,22 @@ public sealed class GameWorkbenchCatalogTests
         var cleanCache = GameDevActionCatalog.ClientActions.Single(action => action.Key == "clean-cache");
         Assert.False(cleanCache.IsEnabled);
     }
+
+    [Fact]
+    public void AndroidLauncherCardReusesButtonsExceptUProject()
+    {
+        // 安卓启动器不是 UE 工程，没有 .uproject；其余按钮沿用同一套。
+        Assert.DoesNotContain(
+            GameDevActionCatalog.AndroidLauncherActions,
+            action => action.Key == "launch-uproject");
+        Assert.Contains(
+            GameDevActionCatalog.AndroidLauncherActions,
+            action => action.Key == "launch-rider");
+        Assert.Contains(
+            GameDevActionCatalog.AndroidLauncherActions,
+            action => action.Key == "check-upstream");
+
+        Assert.Same(GameDevActionCatalog.ClientActions, GameDevActionCatalog.ForProject("client"));
+        Assert.Same(GameDevActionCatalog.AndroidLauncherActions, GameDevActionCatalog.ForProject("android"));
+    }
 }

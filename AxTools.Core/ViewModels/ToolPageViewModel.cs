@@ -776,38 +776,53 @@ public sealed partial class ToolPageViewModel : ObservableObject
         set => SetProjectPath("client", value);
     }
 
-    /// <summary>项目本体卡片的标题，形如「项目本体-CrossingVoid」（取仓库名）。</summary>
-    public string ClientProjectCardTitle
-    {
-        get
-        {
-            var name = ClientRepositoryUrl.TrimEnd('/');
-            var lastSlash = name.LastIndexOf('/');
-            if (lastSlash >= 0 && lastSlash < name.Length - 1)
-            {
-                name = name[(lastSlash + 1)..];
-            }
-
-            return string.IsNullOrWhiteSpace(name) ? "项目本体" : $"项目本体-{name}";
-        }
-    }
-
     /// <summary>本体项目的仓库地址；空串表示没配。</summary>
-    public string ClientRepositoryUrl =>
-        _gameWorkbench?.Projects.FirstOrDefault(project => !project.IsAndroidLauncher)?.RepositoryUrl
+    public string ClientRepositoryUrl => RepositoryUrlFor("client");
+
+    /// <summary>按项目 Id 取仓库地址（client / android）。</summary>
+    public string RepositoryUrlFor(string projectId) =>
+        _gameWorkbench?.Projects.FirstOrDefault(project => project.Id == projectId)?.RepositoryUrl
             ?? string.Empty;
 
-    /// <summary>开发版卡片上的动作清单；非游戏工具为空。</summary>
-    public IReadOnlyList<GameDevActionItem> GameProjectActions =>
-        IsGameTool ? GameDevActionCatalog.ClientActions : [];
+    /// <summary>
+    /// 开发版的卡片列表：本体一张，开了「拥有安卓启动器」再加一张。
+    /// 关掉开关后 GameProjects 里没有安卓项目，这里自然就不出那张卡。
+    /// </summary>
+    public IReadOnlyList<GameProjectCard> GameProjectCards =>
+        IsGameTool
+            ? GameProjects
+                .Select(project => new GameProjectCard(
+                    project.Id,
+                    BuildProjectCardTitle(project),
+                    GameDevActionCatalog.ForProject(project.Id)
+                        .Select(action => action with { ProjectId = project.Id })
+                        .ToArray()))
+                .ToArray()
+            : [];
+
+    /// <summary>标题形如「项目本体-CrossingVoid」「安卓启动器-CrossingVoid-Downloader-Android」。</summary>
+    private static string BuildProjectCardTitle(GameProjectStatus project)
+    {
+        var name = project.RepositoryUrl.TrimEnd('/');
+        var lastSlash = name.LastIndexOf('/');
+        if (lastSlash >= 0 && lastSlash < name.Length - 1)
+        {
+            name = name[(lastSlash + 1)..];
+        }
+
+        var prefix = string.Equals(project.Id, "android", StringComparison.Ordinal)
+            ? "安卓启动器"
+            : "项目本体";
+        return string.IsNullOrWhiteSpace(name) ? prefix : $"{prefix}-{name}";
+    }
 
     /// <summary>
     /// 在项目根目录找 .uproject 并用系统关联打开。
     /// 找不到文件或启动失败时返回 false，并把原因写进 message。
     /// </summary>
-    public bool TryLaunchUProject(out string message)
+    public bool TryLaunchUProject(string projectId, out string message)
     {
-        var root = ClientProjectPath;
+        var root = EffectiveProjectPath(projectId);
         if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
         {
             message = "本体路径不存在，先去「设置」里选目录。";
@@ -852,11 +867,15 @@ public sealed partial class ToolPageViewModel : ObservableObject
     /// 从 GitHub 安装本体项目：clone 到目标目录，成功后把设置里的本体路径同步过去。
     /// 目标目录必须不存在或为空，避免覆盖已有工程。
     /// </summary>
-    public async Task InstallClientProjectAsync(string targetPath, CancellationToken cancellationToken)
+    public async Task InstallProjectAsync(
+        string projectId,
+        string targetPath,
+        CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(ClientRepositoryUrl))
+        var repositoryUrl = RepositoryUrlFor(projectId);
+        if (string.IsNullOrWhiteSpace(repositoryUrl))
         {
-            ReportActionMessage("本体仓库地址还没配置。");
+            ReportActionMessage("这个项目的仓库地址还没配置。");
             return;
         }
 
@@ -889,28 +908,28 @@ public sealed partial class ToolPageViewModel : ObservableObject
 
         var succeeded = await RunGitWithProgressAsync(
             "安装项目",
-            $"克隆 {ClientRepositoryUrl} 到 {fullPath}",
+            $"克隆 {repositoryUrl} 到 {fullPath}",
             (progress, token) => _gitService.CloneAsync(
-                ClientRepositoryUrl,
+                repositoryUrl,
                 fullPath,
                 progress,
                 token),
             cancellationToken);
         if (succeeded)
         {
-            // 装完自动同步设置里的本体路径，省得再手动选一次。
-            SetProjectPath("client", fullPath);
-            ReportActionMessage($"安装完成，本体路径已设为：{fullPath}");
+            // 装完自动同步设置里的项目路径，省得再手动选一次。
+            SetProjectPath(projectId, fullPath);
+            ReportActionMessage($"安装完成，项目路径已设为：{fullPath}");
         }
     }
 
     /// <summary>检查上游并更新：在项目目录里执行 git pull（默认合并）。</summary>
-    public async Task PullClientProjectAsync(CancellationToken cancellationToken)
+    public async Task PullProjectAsync(string projectId, CancellationToken cancellationToken)
     {
-        var root = ClientProjectPath;
+        var root = EffectiveProjectPath(projectId);
         if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
         {
-            ReportActionMessage("本体路径不存在，先去「设置」里选目录。");
+            ReportActionMessage("项目路径不存在，先去「设置」里选目录。");
             return;
         }
 
@@ -927,10 +946,10 @@ public sealed partial class ToolPageViewModel : ObservableObject
             cancellationToken);
     }
 
-    /// <summary>用 Rider 打开本体项目（只打开，不编译不运行）。</summary>
-    public bool TryLaunchRider(out string message)
+    /// <summary>用 Rider 打开指定项目（只打开，不编译不运行）。</summary>
+    public bool TryLaunchRider(string projectId, out string message)
     {
-        var opened = _riderLauncher.TryOpenProject(ClientProjectPath, out message);
+        var opened = _riderLauncher.TryOpenProject(EffectiveProjectPath(projectId), out message);
         ReportActionMessage(message);
         return opened;
     }
@@ -1039,6 +1058,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
 
         GameProjects = BuildGameProjects();
         OnPropertyChanged(nameof(GameProjects));
+        OnPropertyChanged(nameof(GameProjectCards));
         // 顶部通知栏的“缺少什么”也要跟着重算，否则新建目录后仍然显示缺失。
         NotifyConfigurationChanged();
     }

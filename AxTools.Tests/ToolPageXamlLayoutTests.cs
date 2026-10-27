@@ -230,7 +230,8 @@ public sealed class ToolPageXamlLayoutTests
             {
                 var source = (string?)element.Attribute("ItemsSource");
                 return source?.Contains("Actions}") == true &&
-                    source?.Contains("GameProjectActions") != true;
+                    source?.Contains("GameProjectActions") != true &&
+                    source != "{Binding Actions}";
             })
             .ToArray();
 
@@ -365,15 +366,21 @@ public sealed class ToolPageXamlLayoutTests
         var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
         XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
 
-        // 卡片标题是「项目本体-<仓库名>」；原来那行「构建和启动源码开发版本」「开发版版本」只在非游戏页出现。
-        Assert.Contains(
-            document.Descendants(presentation + "TextBlock"),
-            element => (string?)element.Attribute("Text") == "{Binding ClientProjectCardTitle}");
+        // 卡片列表由 GameProjectCards 驱动：本体一张，开了安卓启动器再加一张。
+        var cardsList = document.Descendants(presentation + "ItemsControl")
+            .Single(element => (string?)element.Attribute("ItemsSource") == "{Binding GameProjectCards}");
+        Assert.Equal(
+            "{Binding IsGameTool, Converter={StaticResource BooleanToVisibilityConverter}}",
+            (string?)cardsList.Attribute("Visibility"));
 
-        var cardList = document.Descendants(presentation + "ItemsControl")
-            .Single(element => (string?)element.Attribute("ItemsSource") == "{Binding GameProjectActions}");
-        var cardButton = cardList.Descendants(presentation + "Button").Single();
-        Assert.Equal("{StaticResource CardActionButtonStyle}", (string?)cardButton.Attribute("Style"));
+        // 卡片内标题绑定 Title，动作列表绑定 Actions。
+        Assert.Contains(
+            cardsList.Descendants(presentation + "TextBlock"),
+            element => (string?)element.Attribute("Text") == "{Binding Title}");
+        var actionList = cardsList.Descendants(presentation + "ItemsControl")
+            .Single(element => (string?)element.Attribute("ItemsSource") == "{Binding Actions}");
+        var actionButton = actionList.Descendants(presentation + "Button").Single();
+        Assert.Equal("{StaticResource CardActionButtonStyle}", (string?)actionButton.Attribute("Style"));
 
         // 按钮高度由样式统一给 48（1.2 倍），页面里不写乘算、不写高度。
         var styles = XDocument.Load(FindProjectFile(Path.Combine("Styles", "ToolboxStyles.xaml")));
@@ -383,7 +390,7 @@ public sealed class ToolPageXamlLayoutTests
         var heightSetter = style.Descendants(presentation + "Setter")
             .Single(element => (string?)element.Attribute("Property") == "Height");
         Assert.Equal("48", (string?)heightSetter.Attribute("Value"));
-        Assert.Null(cardButton.Attribute("Height"));
+        Assert.Null(actionButton.Attribute("Height"));
 
         // 图标+文字整体居中，不做左对齐。
         var alignSetter = style.Descendants(presentation + "Setter")

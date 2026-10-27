@@ -78,22 +78,22 @@ public sealed partial class ToolPage : UserControl
         switch (action.Key)
         {
             case "copy-repo-link":
-                CopyRepositoryLink(viewModel);
+                CopyRepositoryLink(viewModel, action.ProjectId);
                 break;
             case "launch-uproject":
                 viewModel.ReportActionMessage(
-                    viewModel.TryLaunchUProject(out var message)
+                    viewModel.TryLaunchUProject(action.ProjectId, out var message)
                         ? message
                         : $"启动失败：{message}");
                 break;
             case "launch-rider":
-                viewModel.TryLaunchRider(out _);
+                viewModel.TryLaunchRider(action.ProjectId, out _);
                 break;
             case "install-from-github":
-                _ = ShowInstallDialogAsync(viewModel);
+                _ = ShowInstallDialogAsync(viewModel, action.ProjectId);
                 break;
             case "check-upstream":
-                _ = viewModel.PullClientProjectAsync(CancellationToken.None);
+                _ = viewModel.PullProjectAsync(action.ProjectId, CancellationToken.None);
                 break;
             default:
                 viewModel.ReportActionMessage($"「{action.Title}」还没接入。");
@@ -105,12 +105,16 @@ public sealed partial class ToolPage : UserControl
     /// 从 GitHub 安装的确认弹窗：参考启动器的下载前弹窗——路径 + 更改 + 可用空间 + 继续。
     /// git clone 没有可靠的预估体积，所以只报可用空间，不编“所需空间”。
     /// </summary>
-    private async Task ShowInstallDialogAsync(ToolPageViewModel viewModel)
+    private async Task ShowInstallDialogAsync(ToolPageViewModel viewModel, string projectId)
     {
+        var project = viewModel.GameProjects.FirstOrDefault(item => item.Id == projectId);
+        var cardTitle = viewModel.GameProjectCards
+            .FirstOrDefault(card => card.ProjectId == projectId)?.Title
+            ?? "从 GitHub 安装";
         var pathBox = new TextBox
         {
             Header = "安装到",
-            Text = viewModel.ClientProjectPath,
+            Text = project?.Path ?? string.Empty,
             PlaceholderText = "选择或输入安装目录"
         };
         var changeButton = new Button
@@ -169,7 +173,7 @@ public sealed partial class ToolPage : UserControl
         {
             XamlRoot = XamlRoot,
             RequestedTheme = ActualTheme,
-            Title = $"从 GitHub 安装 · {viewModel.ClientProjectCardTitle}",
+            Title = $"从 GitHub 安装 · {cardTitle}",
             Content = content,
             PrimaryButtonText = "继续安装",
             CloseButtonText = "取消",
@@ -181,7 +185,8 @@ public sealed partial class ToolPage : UserControl
             return;
         }
 
-        await viewModel.InstallClientProjectAsync(
+        await viewModel.InstallProjectAsync(
+            projectId,
             pathBox.Text?.Trim() ?? string.Empty,
             CancellationToken.None);
     }
@@ -211,18 +216,19 @@ public sealed partial class ToolPage : UserControl
         _ => $"{bytes} B"
     };
 
-    private static void CopyRepositoryLink(ToolPageViewModel viewModel)
+    private static void CopyRepositoryLink(ToolPageViewModel viewModel, string projectId)
     {
-        if (string.IsNullOrWhiteSpace(viewModel.ClientRepositoryUrl))
+        var repositoryUrl = viewModel.RepositoryUrlFor(projectId);
+        if (string.IsNullOrWhiteSpace(repositoryUrl))
         {
-            viewModel.ReportActionMessage("本体仓库地址还没配置。");
+            viewModel.ReportActionMessage("这个项目的仓库地址还没配置。");
             return;
         }
 
         var package = new DataPackage();
-        package.SetText(viewModel.ClientRepositoryUrl);
+        package.SetText(repositoryUrl);
         Clipboard.SetContent(package);
-        viewModel.ReportActionMessage($"已复制到剪贴板：{viewModel.ClientRepositoryUrl}");
+        viewModel.ReportActionMessage($"已复制到剪贴板：{repositoryUrl}");
     }
 
     private async void RefreshLauncherVersion_Click(object sender, RoutedEventArgs e)
