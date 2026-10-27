@@ -86,11 +86,130 @@ public sealed partial class ToolPage : UserControl
                         ? message
                         : $"启动失败：{message}");
                 break;
+            case "launch-rider":
+                viewModel.TryLaunchRider(out _);
+                break;
+            case "install-from-github":
+                _ = ShowInstallDialogAsync(viewModel);
+                break;
+            case "check-upstream":
+                _ = viewModel.PullClientProjectAsync(CancellationToken.None);
+                break;
             default:
                 viewModel.ReportActionMessage($"「{action.Title}」还没接入。");
                 break;
         }
     }
+
+    /// <summary>
+    /// 从 GitHub 安装的确认弹窗：参考启动器的下载前弹窗——路径 + 更改 + 可用空间 + 继续。
+    /// git clone 没有可靠的预估体积，所以只报可用空间，不编“所需空间”。
+    /// </summary>
+    private async Task ShowInstallDialogAsync(ToolPageViewModel viewModel)
+    {
+        var pathBox = new TextBox
+        {
+            Header = "安装到",
+            Text = viewModel.ClientProjectPath,
+            PlaceholderText = "选择或输入安装目录"
+        };
+        var changeButton = new Button
+        {
+            Content = "更改",
+            VerticalAlignment = VerticalAlignment.Bottom
+        };
+        var spaceText = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        var hint = new TextBlock
+        {
+            Text = "会完整拉取仓库，请预留足够空间；安装完成后会自动同步设置里的本体路径。",
+            Opacity = 0.7,
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap
+        };
+
+        void RefreshSpace()
+        {
+            var path = pathBox.Text?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                spaceText.Text = "可用空间：请先选择路径";
+                return;
+            }
+
+            spaceText.Text = ToolPageViewModel.TryGetAvailableFreeBytes(path, out var bytes, out var message)
+                ? $"可用空间：{FormatBytes(bytes)}"
+                : $"可用空间：无法检测（{message}）";
+        }
+
+        changeButton.Click += async (_, _) =>
+        {
+            var folder = await PickFolderAsync();
+            if (folder is not null)
+            {
+                pathBox.Text = folder;
+                RefreshSpace();
+            }
+        };
+        pathBox.TextChanged += (_, _) => RefreshSpace();
+
+        var pathRow = new Grid { ColumnSpacing = 8 };
+        pathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        pathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(changeButton, 1);
+        pathRow.Children.Add(pathBox);
+        pathRow.Children.Add(changeButton);
+
+        var content = new StackPanel { Spacing = 12, MinWidth = 520 };
+        content.Children.Add(pathRow);
+        content.Children.Add(spaceText);
+        content.Children.Add(hint);
+        RefreshSpace();
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
+            Title = $"从 GitHub 安装 · {viewModel.ClientProjectCardTitle}",
+            Content = content,
+            PrimaryButtonText = "继续安装",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        if (await DialogGate.TryShowAsync(dialog) != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        await viewModel.InstallClientProjectAsync(
+            pathBox.Text?.Trim() ?? string.Empty,
+            CancellationToken.None);
+    }
+
+    private static async Task<string?> PickFolderAsync()
+    {
+        if (App.ShellWindow is null)
+        {
+            return null;
+        }
+
+        var picker = new Windows.Storage.Pickers.FolderPicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(
+            picker,
+            WinRT.Interop.WindowNative.GetWindowHandle(App.ShellWindow));
+        picker.FileTypeFilter.Add("*");
+        var folder = await picker.PickSingleFolderAsync();
+        return folder?.Path;
+    }
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        >= 1024L * 1024 * 1024 * 1024 => $"{bytes / 1024d / 1024 / 1024 / 1024:N1} TB",
+        >= 1024L * 1024 * 1024 => $"{bytes / 1024d / 1024 / 1024:N1} GB",
+        >= 1024L * 1024 => $"{bytes / 1024d / 1024:N1} MB",
+        >= 1024 => $"{bytes / 1024d:N1} KB",
+        _ => $"{bytes} B"
+    };
 
     private static void CopyRepositoryLink(ToolPageViewModel viewModel)
     {

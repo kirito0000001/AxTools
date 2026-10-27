@@ -83,6 +83,8 @@ public sealed class ApplicationViewModel : ObservableObject
             })
             .ToArray();
 
+        // 全局进度条要先于工具页创建：游戏页的安装/更新动作会往这里报进度。
+        GlobalProgress = new GlobalProgressViewModel();
         Tools = ManagedToolCatalog.All
             .Select(descriptor => new ToolPageViewModel(
                 descriptor,
@@ -98,7 +100,8 @@ public sealed class ApplicationViewModel : ObservableObject
                 gamePublishPaths: gamePublishPathsByToolKey.GetValueOrDefault(descriptor.Key),
                 fragmentGameOptions: descriptor.Key == ManagedToolKey.CrossingVoidPc
                     ? fragmentGameOptions
-                    : null))
+                    : null,
+                globalProgress: GlobalProgress))
             .ToArray();
         CrossingVoidPackage = new CrossingVoidPackageViewModel(
             settings.CrossingVoidPackage,
@@ -113,7 +116,6 @@ public sealed class ApplicationViewModel : ObservableObject
             taskHistoryService: taskHistoryService,
             toolchainStatuses: toolchainStatuses,
             environmentChangeSummary: environmentChangeSummary);
-        GlobalProgress = new GlobalProgressViewModel();
         LogService = logService ?? new LogService(
             () => DateTime.Now,
             Settings.ShouldWriteLog,

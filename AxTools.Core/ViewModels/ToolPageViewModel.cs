@@ -19,6 +19,9 @@ public sealed partial class ToolPageViewModel : ObservableObject
     private readonly CrossingVoidGamePublishState? _gamePublishState;
     private readonly GameWorkbenchProfile? _gameWorkbench;
     private bool _hasAndroidLauncher;
+    private readonly GlobalProgressViewModel? _globalProgress;
+    private readonly GameProjectGitService _gitService = new();
+    private readonly RiderLauncher _riderLauncher = new();
     private bool _isRunning;
     private string _lastResultText = "尚未执行任务。";
     private string _launcherPublishedVersionText = "尚未检查线上发布版本。";
@@ -39,7 +42,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
         PublishedVersionService? publishedVersionService = null,
         CrossingVoidGamePublishState? gamePublishState = null,
         ManagedToolPaths? gamePublishPaths = null,
-        IReadOnlyList<FragmentGameOption>? fragmentGameOptions = null)
+        IReadOnlyList<FragmentGameOption>? fragmentGameOptions = null,
+        GlobalProgressViewModel? globalProgress = null)
     {
         Descriptor = descriptor;
         _paths = paths;
@@ -48,6 +52,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
         _selectedFragmentGame = _fragmentGameOptions.Count > 0 ? _fragmentGameOptions[0] : null;
         _adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
         _gameWorkbench = GameWorkbenchCatalog.Find(descriptor.Key);
+        _globalProgress = globalProgress;
         _hasAndroidLauncher = paths.HasAndroidLauncher
             ?? _gameWorkbench?.HasAndroidLauncherByDefault
             ?? false;
@@ -841,6 +846,158 @@ public sealed partial class ToolPageViewModel : ObservableObject
             message = $"启动 .uproject 失败：{exception.Message}";
             return false;
         }
+    }
+
+    /// <summary>
+    /// 从 GitHub 安装本体项目：clone 到目标目录，成功后把设置里的本体路径同步过去。
+    /// 目标目录必须不存在或为空，避免覆盖已有工程。
+    /// </summary>
+    public async Task InstallClientProjectAsync(string targetPath, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(ClientRepositoryUrl))
+        {
+            ReportActionMessage("本体仓库地址还没配置。");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(targetPath))
+        {
+            ReportActionMessage("没有选择安装路径。");
+            return;
+        }
+
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(targetPath.Trim());
+        }
+        catch (Exception exception)
+        {
+            ReportActionMessage($"安装路径无效：{exception.Message}");
+            return;
+        }
+
+        if (Directory.Exists(fullPath))
+        {
+            var hasContent = Directory.EnumerateFileSystemEntries(fullPath).Any();
+            if (hasContent)
+            {
+                ReportActionMessage($"目标目录不是空的，换一个位置：{fullPath}");
+                return;
+            }
+        }
+
+        var succeeded = await RunGitWithProgressAsync(
+            "安装项目",
+            $"克隆 {ClientRepositoryUrl} 到 {fullPath}",
+            (progress, token) => _gitService.CloneAsync(
+                ClientRepositoryUrl,
+                fullPath,
+                progress,
+                token),
+            cancellationToken);
+        if (succeeded)
+        {
+            // 装完自动同步设置里的本体路径，省得再手动选一次。
+            SetProjectPath("client", fullPath);
+            ReportActionMessage($"安装完成，本体路径已设为：{fullPath}");
+        }
+    }
+
+    /// <summary>检查上游并更新：在项目目录里执行 git pull（默认合并）。</summary>
+    public async Task PullClientProjectAsync(CancellationToken cancellationToken)
+    {
+        var root = ClientProjectPath;
+        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+        {
+            ReportActionMessage("本体路径不存在，先去「设置」里选目录。");
+            return;
+        }
+
+        if (!Directory.Exists(Path.Combine(root, ".git")))
+        {
+            ReportActionMessage("这个目录不是 git 仓库，无法检查上游。");
+            return;
+        }
+
+        await RunGitWithProgressAsync(
+            "检查上游并更新",
+            root,
+            (progress, token) => _gitService.PullAsync(root, progress, token),
+            cancellationToken);
+    }
+
+    /// <summary>用 Rider 打开本体项目（只打开，不编译不运行）。</summary>
+    public bool TryLaunchRider(out string message)
+    {
+        var opened = _riderLauncher.TryOpenProject(ClientProjectPath, out message);
+        ReportActionMessage(message);
+        return opened;
+    }
+
+    /// <summary>查询目标路径所在磁盘的可用空间，供安装弹窗显示。</summary>
+    public static bool TryGetAvailableFreeBytes(string path, out long bytes, out string message)
+    {
+        bytes = 0;
+        try
+        {
+            var fullPath = Path.GetFullPath(path);
+            var root = Path.GetPathRoot(fullPath);
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                message = "路径无效。";
+                return false;
+            }
+
+            var drive = new DriveInfo(root);
+            if (!drive.IsReady)
+            {
+                message = "磁盘未就绪。";
+                return false;
+            }
+
+            bytes = drive.AvailableFreeSpace;
+            message = string.Empty;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            message = exception.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 统一跑 git 操作：全局进度条显示阶段与输出，结束后在结果行留一句结论。
+    /// </summary>
+    private async Task<bool> RunGitWithProgressAsync(
+        string title,
+        string detail,
+        Func<IProgress<ProgressUpdate>, CancellationToken, Task<GameProjectGitResult>> operation,
+        CancellationToken cancellationToken)
+    {
+        var progressViewModel = _globalProgress;
+        progressViewModel?.Start(title, detail);
+        progressViewModel?.SetCancellationMode(
+            AxTaskCancellationMode.Locked,
+            "执行期间请勿关闭窗口。");
+
+        var progress = new Progress<ProgressUpdate>(update => progressViewModel?.Report(update));
+        var result = await operation(progress, cancellationToken);
+
+        progressViewModel?.Complete(
+            result.Success ? $"{title}完成" : $"{title}失败",
+            result.Message);
+        ReportActionMessage(result.Message);
+
+        if (progressViewModel is not null)
+        {
+            // 让用户看到结果再收起，不长时间占着底部。
+            await Task.Delay(2500);
+            progressViewModel.Hide();
+        }
+
+        return result.Success;
     }
 
     /// <summary>安卓启动器的本地路径（设置页可改）。</summary>
