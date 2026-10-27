@@ -229,8 +229,11 @@ public sealed class ToolPageXamlLayoutTests
             .ToArray();
 
         Assert.Equal("ToolPage_SizeChanged", (string?)root.Attribute("SizeChanged"));
-        // 内边距走令牌：数值本身在 DesignTokens.xaml 里锁定，这里是引用契约。
-        Assert.Equal("{StaticResource AxPagePadding}", (string?)scrollViewer.Attribute("Padding"));
+        // 右侧内边距改挂在内容 Grid 的 Margin 上：ScrollViewer.Padding 不参与内容测量，
+        // 右对齐的浏览按钮会顶到滚动条下面被挡住（2026-10-27 实测）。
+        Assert.Null(scrollViewer.Attribute("Padding"));
+        var contentGrid = scrollViewer.Element(presentation + "Grid")!;
+        Assert.Equal("{StaticResource AxPagePadding}", (string?)contentGrid.Attribute("Margin"));
         Assert.Equal("0,0,20,0", ReadTokenValue("AxPagePadding"));
         Assert.Null(actionButton.Attribute("MinWidth"));
         Assert.Equal("Stretch", (string?)actionButton.Attribute("HorizontalAlignment"));
@@ -316,6 +319,11 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains(
             panel.Descendants(presentation + "TextBlock"),
             element => (string?)element.Attribute("Text") == "功能散页");
+
+        // 设置项归到「环境配置」一组下面，避免以后一路平铺。
+        Assert.Contains(
+            panel.Descendants(presentation + "TextBlock"),
+            element => (string?)element.Attribute("Text") == "环境配置");
 
         // 正规设置第一项：是否拥有安卓启动器。
         var toggle = panel.Descendants(presentation + "ToggleSwitch").Single();

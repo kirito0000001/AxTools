@@ -26,9 +26,14 @@
     <ScrollViewer
         x:Name="PageScrollViewer"
         HorizontalScrollBarVisibility="Disabled"
-        Padding="{StaticResource AxPagePadding}"
         VerticalScrollBarVisibility="Auto">
-        <Grid HorizontalAlignment="Stretch" RowSpacing="{StaticResource AxSpace16}">
+        <!-- 右侧留白放在内容 Grid 的 Margin 上，而不是 ScrollViewer.Padding：
+             Padding 不参与内容测量，右对齐的按钮会顶到滚动条下面被挡住。 -->
+        <Grid
+            x:Name="PageContentGrid"
+            HorizontalAlignment="Stretch"
+            Margin="{StaticResource AxPagePadding}"
+            RowSpacing="{StaticResource AxSpace16}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -471,6 +476,12 @@
                      散页整理完就删，别把长期内容放进去。 -->
                 <Border x:Name="SettingsPanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
                     <StackPanel Spacing="{StaticResource AxSpace14}">
+                        <StackPanel Spacing="{StaticResource AxSpace4}">
+                            <TextBlock Text="环境配置" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock
+                                Text="游戏代码项目在哪、有没有安卓启动器。改完立即生效。"
+                                Style="{StaticResource SubtleTextStyle}" />
+                        </StackPanel>
                         <Grid ColumnSpacing="{StaticResource AxSpace12}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -492,7 +503,7 @@
                             <Grid ColumnSpacing="{StaticResource AxSpace10}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="40" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <TextBox
                                     Header="本体路径"
@@ -502,8 +513,7 @@
                                     Grid.Column="1"
                                     Width="40"
                                     Height="40"
-                                    Margin="0,24,0,0"
-                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Bottom"
                                     Tag="client"
                                     Click="ProjectPathBrowse_Click"
                                     Style="{StaticResource PrimaryToolButtonStyle}"
@@ -516,7 +526,7 @@
                                 Visibility="{Binding HasAndroidLauncher, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="40" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <TextBox
                                     Header="安卓启动器路径"
@@ -526,8 +536,7 @@
                                     Grid.Column="1"
                                     Width="40"
                                     Height="40"
-                                    Margin="0,24,0,0"
-                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Bottom"
                                     Tag="android"
                                     Click="ProjectPathBrowse_Click"
                                     Style="{StaticResource PrimaryToolButtonStyle}"

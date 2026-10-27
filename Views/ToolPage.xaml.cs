@@ -282,6 +282,7 @@ public sealed partial class ToolPage : UserControl
 
         // 外面已经套了一层卡片（服务器页的 CreatePanel），这里不要再叠一层边框和底色。
         PageScrollViewer.Padding = new Thickness(0);
+        PageContentGrid.Margin = new Thickness(0);
         PublishPanel.Style = null;
         PublishPanel.Padding = new Thickness(0);
         PublishPanel.BorderThickness = new Thickness(0);
