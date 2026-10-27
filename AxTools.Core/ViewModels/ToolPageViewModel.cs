@@ -338,9 +338,20 @@ public sealed partial class ToolPageViewModel : ObservableObject
 
     public string GamePublishVersion
     {
-        get => _gamePublishState?.Version ?? _paths.GamePublishVersion;
+        get
+        {
+            // 有插件产物 Version.json 时，版本以它为准；旧设置值只在没有版本文件时兜底。
+            var info = GamePackageBuildInfoReader.Read(CurrentGamePackageRoot, out _, PlatformLabel == "安卓" ? "Android" : "Windows");
+            if (info is not null)
+            {
+                return info.Version;
+            }
+
+            return _gamePublishState?.Version ?? _paths.GamePublishVersion;
+        }
         set
         {
+            // 保留 setter 供历史设置/测试走；界面已不再提供手写版本入口。
             if (_gamePublishState is not null)
             {
                 _gamePublishState.Version = value;
@@ -360,6 +371,36 @@ public sealed partial class ToolPageViewModel : ObservableObject
             }
         }
     }
+
+    public string GamePackageVersionText
+    {
+        get
+        {
+            var info = GamePackageBuildInfoReader.Read(CurrentGamePackageRoot, out var error, PlatformLabel == "安卓" ? "Android" : "Windows");
+            if (info is null)
+            {
+                return string.IsNullOrWhiteSpace(error) ? "尚未读取到包内版本。" : error;
+            }
+
+            return $"包内版本：{info.Version}（{info.Mode}，基线 {info.ReleaseVersion}）";
+        }
+    }
+
+    internal void RefreshGamePackageBuildInfo()
+    {
+        OnPropertyChanged(nameof(GamePublishVersion));
+        OnPropertyChanged(nameof(GamePackageVersionText));
+        OnPropertyChanged(nameof(CanPublishWindowsPatch));
+        OnPropertyChanged(nameof(GameVersionMajor));
+        OnPropertyChanged(nameof(GameVersionFeature));
+        OnPropertyChanged(nameof(GameVersionBugFix));
+        OnPropertyChanged(nameof(GameReleaseDescription));
+        RefreshActionAvailability();
+    }
+
+    public bool CanPublishWindowsPatch =>
+        !IsAndroidPlatform &&
+        GamePackageBuildInfoReader.Read(CurrentGamePackageRoot, out _, "Windows") is { IsPatch: true };
 
     public double GameVersionMajor
     {
@@ -411,6 +452,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
                 OnPropertyChanged(nameof(ConfigurationStatus));
                 OnPropertyChanged(nameof(IsExecutionAvailable));
                 OnPropertyChanged(nameof(ExecutionAvailabilityText));
+                RefreshGamePackageBuildInfo();
                 RefreshActionAvailability();
             }
         }
@@ -541,10 +583,14 @@ public sealed partial class ToolPageViewModel : ObservableObject
                 OnPropertyChanged(nameof(IsExecutionAvailable));
                 OnPropertyChanged(nameof(ExecutionAvailabilityText));
                 RefreshFragmentBindings();
+                RefreshGamePackageBuildInfo();
                 RefreshActionAvailability();
             }
         }
     }
+
+    private string CurrentGamePackageRoot =>
+        IsAndroidPlatform ? _paths.GamePackageRootAndroid : _paths.GamePackageRoot;
 
     internal bool IsAndroidPlatform => _paths.GamePublishPlatform is "Android";
 
@@ -867,7 +913,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
         ManagedToolAction.PublishDryRun or
         ManagedToolAction.Publish or
         ManagedToolAction.PublishGameVersion or
-        ManagedToolAction.PublishGameVersionToGitHub;
+        ManagedToolAction.PublishGameVersionToGitHub or
+        ManagedToolAction.PublishGamePatch;
 
     private IReadOnlyList<ToolActionItemViewModel> FilterActions(
         ManagedToolActionSection section) =>
@@ -889,6 +936,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
         foreach (var action in AllActions)
         {
             action.IsEnabled = enabled &&
+                (action.Action != ManagedToolAction.PublishGamePatch || (!IsAndroidPlatform && CanPublishWindowsPatch)) &&
                 (!IsGamePublishingAction(action.Action) ||
                  (!string.IsNullOrWhiteSpace(GamePackageRoot) &&
                   (!action.Definition.RequiresVersion ||
@@ -915,7 +963,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
     {
         if (_gamePublishState is null ||
             action is not (ManagedToolAction.PublishGameVersion or
-                ManagedToolAction.PublishGameVersionToGitHub) ||
+                ManagedToolAction.PublishGameVersionToGitHub or
+                ManagedToolAction.PublishGamePatch) ||
             string.IsNullOrWhiteSpace(GamePublishVersion))
         {
             return false;

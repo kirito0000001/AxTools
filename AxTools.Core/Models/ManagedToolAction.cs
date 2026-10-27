@@ -50,6 +50,7 @@ public enum ManagedToolAction
     CheckGamePackage,
     PublishGameVersion,
     PublishGameVersionToGitHub,
+    PublishGamePatch,
     RebuildGameDownloadRepo,
     EditLauncherReleaseNotes,
     EditGameReleaseNotes

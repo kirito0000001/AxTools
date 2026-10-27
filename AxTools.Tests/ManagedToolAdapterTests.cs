@@ -403,17 +403,19 @@ public sealed class ManagedToolAdapterTests : IDisposable
                 ManagedToolAction.CheckEnvironment,
                 ManagedToolAction.CheckGamePackage,
                 ManagedToolAction.PublishGameVersion,
+                ManagedToolAction.PublishGamePatch,
                 ManagedToolAction.PublishGameVersionToGitHub
             }
             : new[]
             {
                 ManagedToolAction.CheckEnvironment,
                 ManagedToolAction.CheckGamePackage,
-                ManagedToolAction.PublishGameVersion
+                ManagedToolAction.PublishGameVersion,
+                ManagedToolAction.PublishGamePatch
             };
         var expectedNames = supportsGitHub
-            ? new[] { "检查环境", "只检查，不发布", "发布到服务器", "发布到 GitHub" }
-            : new[] { "检查环境", "只检查，不发布", "发布到服务器" };
+            ? new[] { "检查环境", "只检查，不发布", "发布到服务器", "发布 Windows 补丁", "发布到 GitHub" }
+            : new[] { "检查环境", "只检查，不发布", "发布到服务器", "发布 Windows 补丁" };
         Assert.Equal(expectedActions, adapter.Actions.Select(action => action.Action));
         Assert.Equal(expectedNames, adapter.Actions.Select(action => action.DisplayName));
         Assert.All(

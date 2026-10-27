@@ -32,13 +32,55 @@ Set-StrictMode -Version Latest
 $scriptsRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Import-Module (Join-Path $scriptsRoot 'Common\AxTaskProtocol.psm1') -Force
 
+function Read-GamePackageVersion {
+    param([string]$PackageRoot, [string]$ExpectedPlatform)
+
+    $root = [IO.Path]::GetFullPath($PackageRoot)
+    $candidates = @(
+        (Join-Path $root 'Version.json'),
+        (Join-Path (Split-Path -Parent $root) 'Version.json')
+    ) | Select-Object -Unique
+
+    foreach ($candidate in $candidates) {
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+        $data = Get-Content -LiteralPath $candidate -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ([string]::IsNullOrWhiteSpace([string]$data.version)) {
+            throw "版本文件缺少 version：$candidate"
+        }
+
+        $platformOk = if ($ExpectedPlatform -eq 'Android') {
+            ([string]$data.platform) -match 'Android'
+        }
+        else {
+            ([string]$data.platform) -match 'Win'
+        }
+        if (-not $platformOk) {
+            throw "版本文件平台不匹配：期望 $ExpectedPlatform，实际 $($data.platform)（$candidate）"
+        }
+
+        Write-AxTaskStage `
+            -Stage 'version' `
+            -Message "已从打包产物读取版本：$($data.version)" `
+            -Detail ("mode={0}；releaseVersion={1}；文件={2}" -f $data.mode, $data.releaseVersion, $candidate)
+        return [pscustomobject]@{
+            Version        = ([string]$data.version).Trim()
+            ReleaseVersion = [string]$data.releaseVersion
+            Mode           = [string]$data.mode
+            Platform       = [string]$data.platform
+            SourcePath     = $candidate
+        }
+    }
+
+    throw "游戏包里没有 Version.json（包根或上一级），拒绝使用手写版本发布。"
+}
+
 # 三个游戏（零境 / 幻杀 / 火影）共用这一份；每家的产品段名和标记文件名由各自的
 # 包装脚本（Adapters\<游戏>\Invoke-<游戏>Action.ps1）传进来。
 $kernel = Join-Path $scriptsRoot 'Publishing\Games\Publish-GameDownloadRelease.ps1'
 $segment = if ($Platform -eq 'Android') { "$ProductSegment-android" } else { $ProductSegment }
 
 try {
-    if ($Action -notin @('CheckEnvironment', 'CheckGamePackage', 'PublishGameVersion', 'PublishGameVersionToGitHub', 'RebuildGameDownloadRepo')) {
+    if ($Action -notin @('CheckEnvironment', 'CheckGamePackage', 'PublishGameVersion', 'PublishGameVersionToGitHub', 'PublishGamePatch', 'RebuildGameDownloadRepo')) {
         throw "未知的游戏包发布动作：'$Action'。"
     }
     if ([string]::IsNullOrWhiteSpace($ProductSegment)) {
@@ -73,7 +115,36 @@ try {
     }
 
     if ([string]::IsNullOrWhiteSpace($GamePackageRoot)) { throw '请先选择游戏包目录。' }
-    if ([string]::IsNullOrWhiteSpace($Version)) { throw '请先填写游戏版本号。' }
+    $buildInfo = Read-GamePackageVersion -PackageRoot $GamePackageRoot -ExpectedPlatform $Platform
+    $Version = $buildInfo.Version
+
+    if ($Action -eq 'PublishGamePatch') {
+        if ($Platform -ne 'Windows') {
+            throw 'Windows 补丁渠道目前只支持 PC 游戏包。'
+        }
+        if ([string]::IsNullOrWhiteSpace($GitHubRepo)) {
+            throw '当前游戏没有配置 GitHub 仓库，无法发布补丁。'
+        }
+        $patchKernel = Join-Path $scriptsRoot 'Publishing\Games\Publish-GamePatch.ps1'
+        if (-not (Test-Path -LiteralPath $patchKernel -PathType Leaf)) {
+            throw "缺少 Windows 补丁发布脚本：$patchKernel"
+        }
+        $patchParameters = @{
+            GamePackageRoot = $GamePackageRoot
+            ProductSegment  = $segment
+            Channel         = $(if ($Channel -eq 'beta') { 'Test' } else { 'Stable' })
+            GitHubRepo      = $GitHubRepo
+            Version         = $Version
+        }
+        if ($DryRun) { $patchParameters['DryRun'] = $true }
+        Set-AxTaskCancellationMode -Mode 'stop' -Message '可以停止当前 Windows 补丁发布任务。'
+        & $patchKernel @patchParameters
+        if ($LASTEXITCODE -ne 0) {
+            throw "Windows 补丁发布脚本返回退出码 $LASTEXITCODE。"
+        }
+        Write-AxTaskResult -Status 'success' -ExitCode 0 -Message 'Windows 补丁发布完成。'
+        exit 0
+    }
 
     $mode = switch ($Action) {
         'CheckGamePackage' { 'Check' }

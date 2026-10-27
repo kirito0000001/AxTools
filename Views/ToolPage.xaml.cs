@@ -141,10 +141,8 @@ public sealed partial class ToolPage : UserControl
             ManagedToolAction.PublishGameVersionToGitHub or
             ManagedToolAction.RebuildGameDownloadRepo)
         {
-            viewModel.GamePublishVersion = ComposeVersion(
-                GameMajorVersionNumberBox,
-                GameFeatureVersionNumberBox,
-                GameBugFixVersionNumberBox);
+            // 游戏版本以包内 Version.json 为准，界面不再提供手写入口。
+            viewModel.RefreshGamePackageBuildInfo();
             return;
         }
 

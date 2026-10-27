@@ -36,7 +36,8 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
         {
             Action(ManagedToolAction.CheckEnvironment, "检查环境", ManagedToolActionSection.Development, "\uE9D9", false),
             Action(ManagedToolAction.CheckGamePackage, "只检查，不发布", ManagedToolActionSection.Publish, "\uE9D5", false, true),
-            Action(ManagedToolAction.PublishGameVersion, "发布到服务器", ManagedToolActionSection.Publish, "\uE72D", true, true, true)
+            Action(ManagedToolAction.PublishGameVersion, "发布到服务器", ManagedToolActionSection.Publish, "\uE72D", true, true, true),
+            Action(ManagedToolAction.PublishGamePatch, "发布 Windows 补丁", ManagedToolActionSection.Publish, "\uE8B7", true, true, true)
         };
         if (!string.IsNullOrWhiteSpace(gitHubRepository))
         {
@@ -113,12 +114,17 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
                 ManagedToolAction.CheckGamePackage or
                 ManagedToolAction.PublishGameVersion or
                 ManagedToolAction.PublishGameVersionToGitHub or
+                ManagedToolAction.PublishGamePatch or
                 ManagedToolAction.RebuildGameDownloadRepo))
         {
             return task;
         }
 
         var platform = paths.GamePublishPlatform is "Android" ? "Android" : "Windows";
+        if (request.Action == ManagedToolAction.PublishGamePatch && platform != "Windows")
+        {
+            throw new InvalidOperationException("Windows 补丁渠道目前只支持 PC 游戏包。");
+        }
         var packageRoot = platform is "Android" ? paths.GamePackageRootAndroid : paths.GamePackageRoot;
         if (string.IsNullOrWhiteSpace(packageRoot))
         {

@@ -241,20 +241,19 @@
                                     <ComboBoxItem Content="PC" Tag="Windows" />
                                     <ComboBoxItem Content="Android" Tag="Android" />
                                 </ComboBox>
-                                <Grid
+                                <StackPanel
                                     x:Name="GameVersionField"
                                     Grid.Row="1"
                                     Grid.ColumnSpan="2"
-                                    ColumnSpacing="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <NumberBox x:Name="GameMajorVersionNumberBox" Header="主版本" Minimum="0" SpinButtonPlacementMode="Inline" Value="{Binding GameVersionMajor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <NumberBox x:Name="GameFeatureVersionNumberBox" Grid.Column="1" Header="功能更新" Minimum="0" SpinButtonPlacementMode="Inline" Value="{Binding GameVersionFeature, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <NumberBox x:Name="GameBugFixVersionNumberBox" Grid.Column="2" Header="BUG修复" Minimum="0" SpinButtonPlacementMode="Inline" Value="{Binding GameVersionBugFix, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                </Grid>
+                                    Spacing="2">
+                                    <TextBlock
+                                        Text="游戏版本（由打包产物 Version.json 决定，不可手填）"
+                                        Style="{StaticResource SubtleTextStyle}" />
+                                    <TextBlock
+                                        Text="{Binding GamePackageVersionText}"
+                                        FontWeight="SemiBold"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
                             </Grid>
                             <Grid ColumnSpacing="10">
                                 <Grid.ColumnDefinitions>

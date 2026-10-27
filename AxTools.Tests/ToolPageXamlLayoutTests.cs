@@ -278,14 +278,13 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains(
             gameSection.Descendants(presentation + "ItemsControl"),
             element => (string?)element.Attribute("ItemsSource") == "{Binding GamePublishActions}");
-        // 版本号是三段式 NumberBox（主版本 / 功能更新 / BUG修复），不再是一个手填 TextBox。
+        // 游戏版本由打包产物的 Version.json 决定，界面只显示只读结果，不再允许手填。
         var versionField = gameSection.Descendants()
             .Single(element => (string?)element.Attribute(xaml + "Name") == "GameVersionField");
-        Assert.Equal(
-            ["GameVersionMajor", "GameVersionFeature", "GameVersionBugFix"],
-            versionField.Descendants(presentation + "NumberBox")
-                .Select(element => (string?)element.Attribute("Value"))
-                .Select(value => value?.Split(',')[0].Replace("{Binding ", string.Empty)));
+        Assert.DoesNotContain(versionField.Descendants(presentation + "NumberBox"), _ => true);
+        Assert.Contains(
+            versionField.Descendants(presentation + "TextBlock"),
+            element => ((string?)element.Attribute("Text"))?.Contains("GamePackageVersionText") == true);
         // 渠道暂时取消（还没余力开测试服）：界面上没有「游戏通道」，只留平台。
         Assert.DoesNotContain(
             gameSection.Descendants(presentation + "ComboBox"),

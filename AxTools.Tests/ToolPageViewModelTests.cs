@@ -348,6 +348,7 @@ public sealed class ToolPageViewModelTests : IDisposable
                 ManagedToolAction.EditGameReleaseNotes,
                 ManagedToolAction.CheckGamePackage,
                 ManagedToolAction.PublishGameVersion,
+                ManagedToolAction.PublishGamePatch,
                 ManagedToolAction.PublishGameVersionToGitHub
             ],
             viewModel.GamePublishActions.Select(item => item.Action));
