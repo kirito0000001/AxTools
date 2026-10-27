@@ -281,10 +281,17 @@ public sealed class ToolPageXamlLayoutTests
             "{Binding ConfigurationSeverity, Converter={StaticResource OperationNoticeSeverityConverter}}",
             (string?)infoBar.Attribute("Severity"));
 
-        // 缺什么写在顶部通知栏里，开发版面板这一轮不动。
+        // 缺什么写在顶部通知栏里，开发版面板这一轮不动；
+        // 通知栏内容跟着页签走：开发版报“开发环境已就绪”，打包页查游戏包目录。
         var viewModel = File.ReadAllText(FindProjectFile(Path.Combine("AxTools.Core", "ViewModels", "ToolPageViewModel.cs")));
-        Assert.Contains("BuildGameConfigurationReport", viewModel);
-        Assert.Contains("缺少：", viewModel);
+        Assert.Contains("EvaluateGameConfiguration", viewModel);
+        Assert.Contains("开发环境已就绪", viewModel);
+        Assert.Contains("发布环境已就绪", viewModel);
+        Assert.Contains("SelectSection", viewModel);
+
+        var codeBehind = File.ReadAllText(FindProjectFile(Path.Combine("Views", "ToolPage.xaml.cs")));
+        Assert.Contains("sectionViewModel.SelectSection(section)", codeBehind);
+        Assert.Contains("ToolPageSection.Publish", codeBehind);
         Assert.DoesNotContain("GameWorkbenchPanel", File.ReadAllText(FindProjectFile(Path.Combine("Views", "ToolPage.xaml"))));
     }
 

@@ -284,6 +284,18 @@ public sealed partial class ToolPage : UserControl
         SelectorBarSelectionChangedEventArgs args)
     {
         var selectedItem = sender.SelectedItem;
+
+        // 顶部「配置状态」跟着页签走：开发版查项目，打包与发布查游戏包目录。
+        var section = selectedItem == ReleaseSelectorItem ? ToolPageSection.Release
+            : selectedItem == PublishSelectorItem ? ToolPageSection.Publish
+            : selectedItem == FragmentSelectorItem ? ToolPageSection.Fragments
+            : selectedItem == StorageSelectorItem ? ToolPageSection.Storage
+            : ToolPageSection.Development;
+        if (DataContext is ToolPageViewModel sectionViewModel)
+        {
+            sectionViewModel.SelectSection(section);
+        }
+
         DevelopmentPanel.Visibility = selectedItem == DevelopmentSelectorItem
             ? Visibility.Visible
             : Visibility.Collapsed;
