@@ -48,8 +48,8 @@
             Grid.Row="1"
             CompactPaneLength="64"
             OpenPaneLength="286"
-            PaneDisplayMode="Left"
-            IsPaneOpen="True"
+            PaneDisplayMode="LeftCompact"
+            IsPaneOpen="False"
             IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False"
             SelectionFollowsFocus="Disabled"
@@ -73,16 +73,16 @@
                 <NavigationViewItem x:Name="CrossingVoidPcNavItem" Content="TFAC启动平台" Tag="CrossingVoidPc">
                     <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidPc.png" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <!-- 三个游戏项暂时用统一字形：目前没有各自的游戏图标，历史版本是拿工具图标顶的，
-                     会出现两项同图。等补了图标再换 ImageIcon。 -->
+                <!-- 三游戏页：零境用启动器图、幻杀用 PC 启动器图（原安卓项移出后空出），
+                     火影还没有自己的图标，用 Segoe 字形的 Game 占位。 -->
                 <NavigationViewItem x:Name="CrossingVoidGameNavItem" Content="游戏-零境交错" Tag="CrossingVoidGame">
-                    <NavigationViewItem.Icon><SymbolIcon Symbol="Game" /></NavigationViewItem.Icon>
+                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/CrossingVoidPc.png" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem x:Name="FantasyGameNavItem" Content="游戏-幻杀" Tag="FantasyGame">
-                    <NavigationViewItem.Icon><SymbolIcon Symbol="Game" /></NavigationViewItem.Icon>
+                    <NavigationViewItem.Icon><ImageIcon Width="32" Height="32" Source="ms-appx:///Assets/Navigation/FantasyProjectPc.png" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem x:Name="NarutoGameNavItem" Content="游戏-火影BP" Tag="NarutoGame">
-                    <NavigationViewItem.Icon><SymbolIcon Symbol="Game" /></NavigationViewItem.Icon>
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE7FC;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
