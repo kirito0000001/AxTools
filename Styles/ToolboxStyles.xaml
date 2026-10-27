@@ -115,8 +115,13 @@
         <Setter Property="Padding" Value="12" />
     </Style>
 
+    <!--
+        这里不再给 Expander 设默认 IsExpanded。
+        以前全局设 True，导致设置页 10 段全部展开（进页面就是一条几千像素的长滚动），
+        工具页的「维护（额外）」也被顶开。默认折叠是 Expander 自己的默认值，
+        需要默认展开的地方（如「任务运行器自检」）在页面里显式写 IsExpanded="True"。
+    -->
     <Style TargetType="Expander">
-        <Setter Property="IsExpanded" Value="True" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     </Style>
