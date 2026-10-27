@@ -193,7 +193,7 @@
                                     Width="40"
                                     Height="40"
                                     Click="RefreshLauncherVersion_Click"
-                                    Style="{StaticResource PrimaryToolButtonStyle}"
+                                    Style="{StaticResource IconToolButtonStyle}"
                                     ToolTipService.ToolTip="重新检查线上启动器版本">
                                     <SymbolIcon Symbol="Refresh" />
                                 </Button>
@@ -277,7 +277,7 @@
                                     Width="40"
                                     Height="40"
                                     Click="RefreshGameVersion_Click"
-                                    Style="{StaticResource PrimaryToolButtonStyle}"
+                                    Style="{StaticResource IconToolButtonStyle}"
                                     ToolTipService.ToolTip="同时检查 PC 与 Android 线上游戏版本">
                                     <SymbolIcon Symbol="Refresh" />
                                 </Button>
@@ -302,7 +302,7 @@
                                     Margin="0,24,0,0"
                                     HorizontalAlignment="Stretch"
                                     Click="GamePackageRootBrowse_Click"
-                                    Style="{StaticResource PrimaryToolButtonStyle}"
+                                    Style="{StaticResource IconToolButtonStyle}"
                                     ToolTipService.ToolTip="选择游戏打包目录">
                                     <FontIcon Glyph="&#xE8B7;" />
                                 </Button>
@@ -383,7 +383,7 @@
                                 HorizontalAlignment="Stretch"
                                 Click="FragmentPathBrowse_Click"
                                 Tag="SourceDirectory"
-                                Style="{StaticResource PrimaryToolButtonStyle}"
+                                Style="{StaticResource IconToolButtonStyle}"
                                 ToolTipService.ToolTip="选择碎片源目录">
                                 <FontIcon Glyph="&#xE8B7;" />
                             </Button>
@@ -405,7 +405,7 @@
                                 HorizontalAlignment="Stretch"
                                 Click="FragmentPathBrowse_Click"
                                 Tag="OutputDirectory"
-                                Style="{StaticResource PrimaryToolButtonStyle}"
+                                Style="{StaticResource IconToolButtonStyle}"
                                 ToolTipService.ToolTip="选择碎片输出目录">
                                 <FontIcon Glyph="&#xE8B7;" />
                             </Button>
@@ -476,12 +476,7 @@
                      散页整理完就删，别把长期内容放进去。 -->
                 <Border x:Name="SettingsPanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
                     <StackPanel Spacing="{StaticResource AxSpace14}">
-                        <StackPanel Spacing="{StaticResource AxSpace4}">
-                            <TextBlock Text="环境配置" Style="{StaticResource SectionTitleStyle}" />
-                            <TextBlock
-                                Text="游戏代码项目在哪、有没有安卓启动器。改完立即生效。"
-                                Style="{StaticResource SubtleTextStyle}" />
-                        </StackPanel>
+                        <TextBlock Text="环境配置" Style="{StaticResource GroupTitleStyle}" />
                         <Grid ColumnSpacing="{StaticResource AxSpace12}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -511,12 +506,11 @@
                                     Text="{Binding ClientProjectPath, Mode=TwoWay}" />
                                 <Button
                                     Grid.Column="1"
-                                    Width="40"
-                                    Height="40"
+                                    Margin="0,0,8,0"
                                     VerticalAlignment="Bottom"
                                     Tag="client"
                                     Click="ProjectPathBrowse_Click"
-                                    Style="{StaticResource PrimaryToolButtonStyle}"
+                                    Style="{StaticResource IconToolButtonStyle}"
                                     ToolTipService.ToolTip="选择本体项目目录">
                                     <FontIcon Glyph="&#xE8B7;" />
                                 </Button>
@@ -534,12 +528,11 @@
                                     Text="{Binding AndroidLauncherPath, Mode=TwoWay}" />
                                 <Button
                                     Grid.Column="1"
-                                    Width="40"
-                                    Height="40"
+                                    Margin="0,0,8,0"
                                     VerticalAlignment="Bottom"
                                     Tag="android"
                                     Click="ProjectPathBrowse_Click"
-                                    Style="{StaticResource PrimaryToolButtonStyle}"
+                                    Style="{StaticResource IconToolButtonStyle}"
                                     ToolTipService.ToolTip="选择安卓启动器目录">
                                     <FontIcon Glyph="&#xE8B7;" />
                                 </Button>
@@ -549,7 +542,7 @@
                         <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
 
                         <StackPanel Spacing="{StaticResource AxSpace4}">
-                            <TextBlock Text="功能散页" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="功能散页" Style="{StaticResource GroupTitleStyle}" />
                             <TextBlock
                                 Text="临时区：暂时没有正式位置的功能，以及还没抽出来复用的逻辑。整理完这块就删。"
                                 Style="{StaticResource SubtleTextStyle}" />

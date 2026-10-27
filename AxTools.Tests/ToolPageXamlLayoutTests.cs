@@ -320,10 +320,10 @@ public sealed class ToolPageXamlLayoutTests
             panel.Descendants(presentation + "TextBlock"),
             element => (string?)element.Attribute("Text") == "功能散页");
 
-        // 设置项归到「环境配置」一组下面，避免以后一路平铺。
-        Assert.Contains(
-            panel.Descendants(presentation + "TextBlock"),
-            element => (string?)element.Attribute("Text") == "环境配置");
+        // 设置项归到「环境配置」一组下面，且用比小节更大的分组标题样式。
+        var groupTitle = panel.Descendants(presentation + "TextBlock")
+            .Single(element => (string?)element.Attribute("Text") == "环境配置");
+        Assert.Equal("{StaticResource GroupTitleStyle}", (string?)groupTitle.Attribute("Style"));
 
         // 正规设置第一项：是否拥有安卓启动器。
         var toggle = panel.Descendants(presentation + "ToggleSwitch").Single();

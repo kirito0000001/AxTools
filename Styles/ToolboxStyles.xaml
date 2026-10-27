@@ -92,6 +92,13 @@
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
+    <!-- 分组标题：比小节标题大一号，用来区分“分类”和“设置项”。 -->
+    <Style x:Key="GroupTitleStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="{StaticResource AxFontCardTitle}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,0,0,2" />
+    </Style>
+
     <Style x:Key="SubtleTextStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
