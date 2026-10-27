@@ -771,15 +771,21 @@ public sealed partial class ToolPageViewModel : ObservableObject
 
     private ServerPageViewModel? _serverPage;
     private ServerProgramProfile? _serverProfile;
+    private bool _isRefreshingServerState;
 
-    /// <summary>发布区里的「服务器更新」是否可用（游戏页 + 任务运行器可用）。</summary>
+    /// <summary>发布区里的「服务端状态」是否可用（游戏页 + 任务运行器可用）。</summary>
     public bool HasServerUpdate =>
         IsGameTool && _serverProfile is not null && _serverPage?.HasUpdateService == true;
+
+    /// <summary>服务端实例（含端口与运行状态），按当前游戏过滤。</summary>
+    public IReadOnlyList<ServerInstanceViewModel> ServerInstances { get; private set; } = [];
 
     /// <summary>服务器更新的状态行（部署中 / 上一版 / 本机仓库 / 服务器 / 实例）。</summary>
     public IReadOnlyList<ServerUpdateLine> ServerUpdateLines { get; private set; } = [];
 
-    public string ServerUpdateStatusText { get; private set; } = "尚未读取服务端状态。";
+    /// <summary>卡片顶部那句话：没读过、读好了、还是在读，一眼能看出来（旧版空白最难查）。</summary>
+    public string ServerStateStatus { get; private set; } =
+        "尚未读取服务端状态；进入本分区会自动读取，也可以点「立即刷新」。";
 
     /// <summary>
     /// 由 ApplicationViewModel 在服务器页 VM 建好之后调用；只有游戏页会匹配到服务端程序。
@@ -798,41 +804,42 @@ public sealed partial class ToolPageViewModel : ObservableObject
         OnPropertyChanged(nameof(HasServerUpdate));
     }
 
-    /// <summary>读一次远端与本机仓库状态；结果同时写进全局进度条。</summary>
-    public async Task RefreshServerUpdateAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// 读一次服务端状态：实例与端口 + 仓库更新状态。
+    /// 进入「打包与发布」分区时调一次，之后由页面每分钟自动调用。
+    /// </summary>
+    public async Task RefreshServerStateAsync(CancellationToken cancellationToken)
     {
-        if (_serverPage is null || _serverProfile is null)
+        if (_serverPage is null || _serverProfile is null || _isRefreshingServerState)
         {
             return;
         }
 
-        var progress = _globalProgress;
-        progress?.Start("读取服务端更新状态", _serverProfile.DisplayName);
-        progress?.SetCancellationMode(AxTaskCancellationMode.Locked, "只读检查。");
+        _isRefreshingServerState = true;
+        ServerStateStatus = "正在读取服务端状态…";
+        OnPropertyChanged(nameof(ServerStateStatus));
 
         try
         {
+            await _serverPage.RefreshAsync(cancellationToken);
             var state = await _serverPage.RefreshUpdateStateAsync(_serverProfile, cancellationToken);
+
+            ServerInstances = _serverPage.InstancesOf(_serverProfile.Key).ToArray();
+            OnPropertyChanged(nameof(ServerInstances));
             RebuildServerUpdateLines();
-            ServerUpdateStatusText = string.IsNullOrWhiteSpace(state.Error)
-                ? "已读取远端与本机仓库状态。"
+
+            ServerStateStatus = string.IsNullOrWhiteSpace(state.Error)
+                ? $"已更新 · {DateTime.Now:HH:mm:ss}"
                 : $"状态读取不完整：{state.Error}";
-            OnPropertyChanged(nameof(ServerUpdateStatusText));
-            progress?.Complete("服务端状态已更新", ServerUpdateStatusText);
         }
         catch (Exception exception)
         {
-            ServerUpdateStatusText = $"读取失败：{exception.Message}";
-            OnPropertyChanged(nameof(ServerUpdateStatusText));
-            progress?.Complete("读取失败", exception.Message);
+            ServerStateStatus = $"读取失败：{exception.Message}";
         }
         finally
         {
-            if (progress is not null)
-            {
-                await Task.Delay(1200);
-                progress.Hide();
-            }
+            _isRefreshingServerState = false;
+            OnPropertyChanged(nameof(ServerStateStatus));
         }
     }
 

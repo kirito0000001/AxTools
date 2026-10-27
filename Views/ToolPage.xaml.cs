@@ -13,6 +13,7 @@ public sealed partial class ToolPage : UserControl
     private const double WidePublishingFieldsWidth = 720;
     private const double PreferredActionSlotWidth = 220;
     private bool _isDialogOpen;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _serverStateTimer;
     private bool _publishModeSelected;
 
     public event EventHandler<ToolActionRequestedEventArgs>? ToolActionRequested;
@@ -31,6 +32,14 @@ public sealed partial class ToolPage : UserControl
     public ToolPage()
     {
         InitializeComponent();
+        // 页面被切走（Visibility=Collapsed）时停掉自动刷新，别让三个游戏页各自每分钟打一次服务端。
+        RegisterPropertyChangedCallback(VisibilityProperty, (_, _) =>
+        {
+            if (Visibility == Visibility.Collapsed)
+            {
+                _serverStateTimer?.Stop();
+            }
+        });
     }
 
     /// <summary>
@@ -231,12 +240,12 @@ public sealed partial class ToolPage : UserControl
         viewModel.ReportActionMessage($"已复制到剪贴板：{repositoryUrl}");
     }
 
-    /// <summary>发布区「服务器更新」的立即刷新。</summary>
-    private async void RefreshServerUpdate_Click(object sender, RoutedEventArgs e)
+    /// <summary>发布区「服务端状态」的立即刷新。</summary>
+    private async void RefreshServerState_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is ToolPageViewModel viewModel)
         {
-            await viewModel.RefreshServerUpdateAsync(CancellationToken.None);
+            await viewModel.RefreshServerStateAsync(CancellationToken.None);
         }
     }
 
@@ -526,6 +535,39 @@ public sealed partial class ToolPage : UserControl
             // 碎片页的"源文件"复用服务器页那份游戏包目录，隔了一页，进来时重算一次。
             fragmentViewModel.RefreshFragmentBindings();
         }
+
+        // 服务端状态：进入发布分区立刻读一次，之后每分钟自动刷新；离开就停表。
+        if (selectedItem == PublishSelectorItem &&
+            DataContext is ToolPageViewModel { IsGameTool: true } publishServerViewModel)
+        {
+            EnsureServerStateTimer();
+            _serverStateTimer?.Start();
+            await publishServerViewModel.RefreshServerStateAsync(CancellationToken.None);
+        }
+        else
+        {
+            _serverStateTimer?.Stop();
+        }
+    }
+
+    /// <summary>每分钟自动读一次服务端状态；和「立即刷新」走同一条路径。</summary>
+    private void EnsureServerStateTimer()
+    {
+        if (_serverStateTimer is not null)
+        {
+            return;
+        }
+
+        _serverStateTimer = DispatcherQueue.CreateTimer();
+        _serverStateTimer.Interval = TimeSpan.FromMinutes(1);
+        _serverStateTimer.IsRepeating = true;
+        _serverStateTimer.Tick += async (_, _) =>
+        {
+            if (DataContext is ToolPageViewModel viewModel)
+            {
+                await viewModel.RefreshServerStateAsync(CancellationToken.None);
+            }
+        };
     }
 }
 

@@ -157,13 +157,57 @@
 
                 <Border x:Name="PublishPanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
                     <StackPanel Spacing="{StaticResource AxSpace16}">
-                        <!-- 服务器更新：先把 ServerPage 那套状态搬进发布区；旧发布内容暂时收起。 -->
+                        <!-- 服务端状态：实例端口 + 仓库更新状态；进入本分区自动刷新，之后每分钟一次。 -->
                         <StackPanel
-                            Spacing="{StaticResource AxSpace10}"
+                            Spacing="{StaticResource AxSpace12}"
                             Visibility="{Binding IsGameTool, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <TextBlock Text="服务器更新" Style="{StaticResource GroupTitleStyle}" />
-                            <StackPanel Spacing="{StaticResource AxSpace10}" Visibility="{Binding HasServerUpdate, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <TextBlock Text="{Binding ServerUpdateStatusText}" Style="{StaticResource SubtleTextStyle}" />
+                            <TextBlock Text="服务端状态" Style="{StaticResource GroupTitleStyle}" />
+                            <TextBlock Text="{Binding ServerStateStatus}" Style="{StaticResource SubtleTextStyle}" />
+
+                            <StackPanel Spacing="{StaticResource AxSpace12}" Visibility="{Binding HasServerUpdate, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <ItemsControl ItemsSource="{Binding ServerInstances}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border
+                                                Margin="0,0,0,8"
+                                                Padding="12,10,12,10"
+                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="{StaticResource AxRadiusMedium}">
+                                                <Grid ColumnSpacing="{StaticResource AxSpace12}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Ellipse
+                                                        Width="10"
+                                                        Height="10"
+                                                        VerticalAlignment="Center"
+                                                        Fill="{Binding StateKey, Converter={StaticResource ServerInstanceStateBrushConverter}}" />
+                                                    <StackPanel Grid.Column="1" Spacing="{StaticResource AxSpace2}">
+                                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                                                        <TextBlock Text="{Binding EndpointText}" Style="{StaticResource SubtleTextStyle}" />
+                                                    </StackPanel>
+                                                    <StackPanel
+                                                        Grid.Column="2"
+                                                        HorizontalAlignment="Right"
+                                                        Spacing="{StaticResource AxSpace2}">
+                                                        <TextBlock
+                                                            Text="{Binding StatusText}"
+                                                            HorizontalAlignment="Right"
+                                                            FontSize="13" />
+                                                        <TextBlock
+                                                            Text="{Binding DetailText}"
+                                                            HorizontalAlignment="Right"
+                                                            Style="{StaticResource SubtleTextStyle}" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
                                 <ItemsControl ItemsSource="{Binding ServerUpdateLines}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
@@ -178,14 +222,16 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+
                                 <Button
                                     Content="立即刷新"
                                     HorizontalAlignment="Left"
-                                    Click="RefreshServerUpdate_Click"
+                                    Click="RefreshServerState_Click"
                                     Style="{StaticResource PrimaryToolButtonStyle}" />
                             </StackPanel>
+
                             <TextBlock
-                                Text="服务端更新需要任务运行器，当前不可用。"
+                                Text="服务端状态需要任务运行器，当前不可用。"
                                 Visibility="{Binding HasServerUpdate, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
                                 Style="{StaticResource SubtleTextStyle}" />
                         </StackPanel>

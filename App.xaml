@@ -16,6 +16,7 @@
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
             <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
             <converters:GameProjectStateBrushConverter x:Key="GameProjectStateBrushConverter" />
+            <converters:ServerInstanceStateBrushConverter x:Key="ServerInstanceStateBrushConverter" />
             <converters:OperationNoticeSeverityConverter x:Key="OperationNoticeSeverityConverter" />
             <converters:LogKindToStyleConverter x:Key="LogKindToStyleConverter" />
         </ResourceDictionary>

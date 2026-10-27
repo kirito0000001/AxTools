@@ -408,16 +408,19 @@ public sealed class ToolPageXamlLayoutTests
         var panel = document.Descendants(presentation + "Border")
             .Single(element => (string?)element.Attribute(xaml + "Name") == "PublishPanel");
 
-        // 服务器更新排在发布区最上面。
+        // 服务端状态排在发布区最上面：实例端口 + 仓库状态 + 刷新。
         Assert.Contains(
             panel.Descendants(presentation + "TextBlock"),
-            element => (string?)element.Attribute("Text") == "服务器更新");
+            element => (string?)element.Attribute("Text") == "服务端状态");
+        Assert.Contains(
+            panel.Descendants(presentation + "ItemsControl"),
+            element => (string?)element.Attribute("ItemsSource") == "{Binding ServerInstances}");
         Assert.Contains(
             panel.Descendants(presentation + "ItemsControl"),
             element => (string?)element.Attribute("ItemsSource") == "{Binding ServerUpdateLines}");
         Assert.Contains(
             panel.Descendants(presentation + "Button"),
-            element => (string?)element.Attribute("Click") == "RefreshServerUpdate_Click");
+            element => (string?)element.Attribute("Click") == "RefreshServerState_Click");
 
         // 旧的发布内容先整块收起，等重新设计。
         var legacy = panel.Descendants(presentation + "StackPanel")
