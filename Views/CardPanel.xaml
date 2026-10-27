@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="AxTools.Views.CardPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        服务器页的卡片外壳。
+
+        原先由 ServerPage.xaml.cs 的 CreatePanel 用 C# 拼 Border + StackPanel，
+        外观和页头那张用了 PanelBorderStyle 的卡片并不一致（圆角 8 且无底色 vs 圆角 6 且有底色）。
+        现在卡片版式只在这个文件里：改圆角、间距、标题字号都改这里，不用再翻 code-behind。
+    -->
+    <Border Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
+        <StackPanel Spacing="{StaticResource AxSpace14}">
+            <StackPanel x:Name="HeaderPanel" Spacing="{StaticResource AxSpace4}">
+                <TextBlock
+                    x:Name="TitleText"
+                    FontSize="{StaticResource AxFontCardTitle}"
+                    FontWeight="SemiBold"
+                    TextWrapping="Wrap" />
+                <TextBlock x:Name="SubtitleText" Style="{StaticResource SubtleTextStyle}" />
+            </StackPanel>
+            <ContentControl
+                x:Name="BodyHost"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch" />
+            <TextBlock x:Name="FooterText" Style="{StaticResource SubtleTextStyle}" />
+        </StackPanel>
+    </Border>
+</UserControl>

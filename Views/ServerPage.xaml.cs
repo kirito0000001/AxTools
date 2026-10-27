@@ -59,7 +59,7 @@ public sealed partial class ServerPage : UserControl
     private readonly Dictionary<string, ToolPage> _gamePublishPanels = new(StringComparer.Ordinal);
 
     /// <summary>每个产品键已经建好的发布卡片（只建一次，之后只切换显示，不再重挂）。</summary>
-    private readonly Dictionary<string, Border> _gamePublishCards = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CardPanel> _gamePublishCards = new(StringComparer.Ordinal);
 
     /// <summary>当前正挂在发布宿主上的产品键；没换页签就不动宿主，避免打断正在输入的内容。</summary>
     private string? _visibleGamePublishKey;
@@ -328,7 +328,7 @@ public sealed partial class ServerPage : UserControl
             $"{gameViewModel.DisplayName} · 线上版本：{gameViewModel.GamePublishedVersionText}");
     }
 
-    private Border CreateServerPanel(ServerPageViewModel viewModel)
+    private CardPanel CreateServerPanel(ServerPageViewModel viewModel)
     {
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         foreach (var item in viewModel.Actions)
@@ -382,7 +382,7 @@ public sealed partial class ServerPage : UserControl
             "日志与缓存清理会读取服务器上的目录；清理前请先确认扫描结果。");
     }
 
-    private Border CreateProgramPanel(ServerPageViewModel viewModel, string programKey, string title)
+    private CardPanel CreateProgramPanel(ServerPageViewModel viewModel, string programKey, string title)
     {
         var instances = viewModel.InstancesOf(programKey).ToArray();
         var content = new StackPanel { Spacing = 16 };
@@ -622,49 +622,18 @@ public sealed partial class ServerPage : UserControl
         return grid;
     }
 
-    private static Border CreatePanel(string title, string subtitle, UIElement content, string? footer)
-    {
-        var stack = new StackPanel { Spacing = 14 };
-        var header = new StackPanel { Spacing = 4 };
-        header.Children.Add(new TextBlock
+    /// <summary>
+    /// 服务器页的卡片统一走 <see cref="CardPanel"/>：版式在 CardPanel.xaml，
+    /// 这里只负责把标题、说明、内容和脚注递进去。
+    /// </summary>
+    private static CardPanel CreatePanel(string title, string subtitle, UIElement content, string? footer) =>
+        new()
         {
-            Text = title,
-            FontSize = 20,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
-        });
-        if (!string.IsNullOrWhiteSpace(subtitle))
-        {
-            header.Children.Add(new TextBlock
-            {
-                Text = subtitle,
-                FontSize = 12,
-                Opacity = 0.7,
-                TextWrapping = TextWrapping.Wrap
-            });
-        }
-
-        stack.Children.Add(header);
-        stack.Children.Add(content);
-        if (!string.IsNullOrWhiteSpace(footer))
-        {
-            stack.Children.Add(new TextBlock
-            {
-                Text = footer,
-                FontSize = 12,
-                Opacity = 0.7,
-                TextWrapping = TextWrapping.Wrap
-            });
-        }
-
-        return new Border
-        {
-            Padding = new Thickness(18),
-            CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1),
-            BorderBrush = CreateBorderBrush(),
-            Child = stack
+            Title = title,
+            Subtitle = subtitle,
+            Body = content,
+            Footer = footer ?? string.Empty
         };
-    }
 
     private Button CreateActionButton(
         string text,
