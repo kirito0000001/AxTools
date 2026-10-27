@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Text.Json;
 using AxTools.Core.Adapters;
+using AxTools.Core.Catalog;
 using AxTools.Core.Models;
 using AxTools.Core.Services;
 
@@ -16,6 +17,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
     private readonly Func<bool> _pendingPackageAvailable;
     private readonly PublishedVersionService _publishedVersionService;
     private readonly CrossingVoidGamePublishState? _gamePublishState;
+    private readonly GameWorkbenchProfile? _gameWorkbench;
     private bool _isRunning;
     private string _lastResultText = "尚未执行任务。";
     private string _launcherPublishedVersionText = "尚未检查线上发布版本。";
@@ -44,6 +46,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
         _fragmentGameOptions = fragmentGameOptions ?? Array.Empty<FragmentGameOption>();
         _selectedFragmentGame = _fragmentGameOptions.Count > 0 ? _fragmentGameOptions[0] : null;
         _adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
+        _gameWorkbench = GameWorkbenchCatalog.Find(descriptor.Key);
         _isRunnerAvailable = isRunnerAvailable;
         _publishedVersionService = publishedVersionService ?? new PublishedVersionService(
             new HttpClient { Timeout = TimeSpan.FromSeconds(20) });
@@ -127,6 +130,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
             _versionPersistence.Persist(Descriptor.Key, SourceRoot, PublishVersion);
         }
         RefreshActionAvailability();
+        GameProjects = BuildGameProjects();
     }
 
     public ManagedToolDescriptor Descriptor { get; }
@@ -455,7 +459,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
                 // 换平台 = 换一整套产物目录和校验结果，整页状态都要跟着重算
                 OnPropertyChanged(nameof(GamePackageRoot));
                 RefreshFragmentBindings();
-                OnPropertyChanged(nameof(ConfigurationStatus));
+                NotifyConfigurationChanged();
                 OnPropertyChanged(nameof(IsExecutionAvailable));
                 OnPropertyChanged(nameof(ExecutionAvailabilityText));
                 RefreshGamePackageBuildInfo();
@@ -504,7 +508,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
         {
             if (SetProperty(_paths.SourceRoot, value, _paths, static (model, newValue) => model.SourceRoot = newValue))
             {
-                OnPropertyChanged(nameof(ConfigurationStatus));
+                NotifyConfigurationChanged();
                 OnPropertyChanged(nameof(HasValidSourceRoot));
                 OnPropertyChanged(nameof(IsExecutionAvailable));
                 OnPropertyChanged(nameof(ExecutionAvailabilityText));
@@ -556,7 +560,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
                 _paths,
                 static (model, newValue) => model.OutputRoot = newValue))
             {
-                OnPropertyChanged(nameof(ConfigurationStatus));
+                NotifyConfigurationChanged();
                 OnPropertyChanged(nameof(IsExecutionAvailable));
                 OnPropertyChanged(nameof(ExecutionAvailabilityText));
                 RefreshActionAvailability();
@@ -567,7 +571,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
     internal void RefreshWorkspaceOutputRoot()
     {
         OnPropertyChanged(nameof(OutputRoot));
-        OnPropertyChanged(nameof(ConfigurationStatus));
+        NotifyConfigurationChanged();
         OnPropertyChanged(nameof(IsExecutionAvailable));
         OnPropertyChanged(nameof(ExecutionAvailabilityText));
         RefreshActionAvailability();
@@ -585,7 +589,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
                 if (IsAndroidPlatform) { _paths.GamePackageRootAndroid = value; }
                 else { _paths.GamePackageRoot = value; }
                 OnPropertyChanged();
-                OnPropertyChanged(nameof(ConfigurationStatus));
+                NotifyConfigurationChanged();
                 OnPropertyChanged(nameof(IsExecutionAvailable));
                 OnPropertyChanged(nameof(ExecutionAvailabilityText));
                 RefreshFragmentBindings();
@@ -606,6 +610,84 @@ public sealed partial class ToolPageViewModel : ObservableObject
         !string.IsNullOrWhiteSpace(SourceRoot) && Directory.Exists(SourceRoot);
 
     public string ConfigurationStatus => _adapter.Validate(_paths).Message;
+
+    /// <summary>配置状态和它的颜色档位总是一起变，统一从这里发通知，避免只刷新文字不刷新颜色。</summary>
+    private void NotifyConfigurationChanged()
+    {
+        OnPropertyChanged(nameof(ConfigurationStatus));
+        OnPropertyChanged(nameof(ConfigurationSeverity));
+    }
+
+    /// <summary>
+    /// 配置状态通告栏的颜色档位。以前固定 Informational，导致“目录不存在”也显示成绿色提示；
+    /// 这里按校验结果给：通过才算 Success，其余一律 Warning。
+    /// </summary>
+    public OperationNoticeSeverity ConfigurationSeverity =>
+        _adapter.Validate(_paths).IsValid
+            ? OperationNoticeSeverity.Success
+            : OperationNoticeSeverity.Warning;
+
+    /// <summary>这个工具是不是三个游戏之一（决定页面是否走游戏通用面板）。</summary>
+    public bool IsGameTool => _gameWorkbench is not null;
+
+    /// <summary>游戏页要展示的项目（本体 + 启动器）；非游戏工具为空。</summary>
+    public IReadOnlyList<GameProjectStatus> GameProjects { get; private set; } = [];
+
+    /// <summary>
+    /// 重新检查项目是否存在。进游戏页的「开发版」时调一次，
+    /// 免得启动后新建了目录还要重启才认。
+    /// </summary>
+    public void RefreshGameProjects()
+    {
+        if (_gameWorkbench is null)
+        {
+            return;
+        }
+
+        GameProjects = BuildGameProjects();
+        OnPropertyChanged(nameof(GameProjects));
+    }
+
+    private IReadOnlyList<GameProjectStatus> BuildGameProjects()
+    {
+        if (_gameWorkbench is null)
+        {
+            return [];
+        }
+
+        return _gameWorkbench.Projects
+            .Select(project =>
+            {
+                if (string.IsNullOrWhiteSpace(project.DefaultPath))
+                {
+                    return new GameProjectStatus
+                    {
+                        Id = project.Id,
+                        DisplayName = project.DisplayName,
+                        Role = project.Role,
+                        Path = string.Empty,
+                        RepositoryUrl = project.RepositoryUrl,
+                        StateKey = "unconfigured",
+                        StateText = "未配置",
+                        DetailText = "尚未指定本地路径"
+                    };
+                }
+
+                var exists = Directory.Exists(project.DefaultPath);
+                return new GameProjectStatus
+                {
+                    Id = project.Id,
+                    DisplayName = project.DisplayName,
+                    Role = project.Role,
+                    Path = project.DefaultPath,
+                    RepositoryUrl = project.RepositoryUrl,
+                    StateKey = exists ? "exists" : "missing",
+                    StateText = exists ? "存在" : "缺失",
+                    DetailText = project.DefaultPath
+                };
+            })
+            .ToArray();
+    }
 
     public bool IsExecutionAvailable =>
         _isRunnerAvailable &&

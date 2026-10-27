@@ -11,7 +11,7 @@ public sealed partial class ToolPage : UserControl
 {
     private const double WidePublishingFieldsWidth = 720;
     private const double PreferredActionSlotWidth = 220;
-    private bool _isActionHelpOpen;
+    private bool _isDialogOpen;
     private bool _publishModeSelected;
 
     public event EventHandler<ToolActionRequestedEventArgs>? ToolActionRequested;
@@ -66,12 +66,12 @@ public sealed partial class ToolPage : UserControl
 
     private async Task ShowReleaseDescriptionEditorAsync(bool isGame)
     {
-        if (_isActionHelpOpen || DataContext is not ToolPageViewModel viewModel || XamlRoot is null)
+        if (_isDialogOpen || DataContext is not ToolPageViewModel viewModel || XamlRoot is null)
         {
             return;
         }
 
-        _isActionHelpOpen = true;
+        _isDialogOpen = true;
         try
         {
             var editor = new TextBox
@@ -108,7 +108,7 @@ public sealed partial class ToolPage : UserControl
         }
         finally
         {
-            _isActionHelpOpen = false;
+            _isDialogOpen = false;
         }
     }
 
@@ -245,79 +245,6 @@ public sealed partial class ToolPage : UserControl
         panel.ItemWidth = Math.Floor(availableWidth / columnCount);
     }
 
-    private async void ShowActionHelp_Click(object sender, RoutedEventArgs e)
-    {
-        if (_isActionHelpOpen || DataContext is not ToolPageViewModel viewModel || XamlRoot is null)
-        {
-            return;
-        }
-
-        _isActionHelpOpen = true;
-        try
-        {
-            var content = new StackPanel { Spacing = 16 };
-            content.Children.Add(new TextBlock
-            {
-                Text = "演练只执行本地准备、检查和流程模拟，不上传文件，也不修改远端版本、Release 或清单。",
-                TextWrapping = TextWrapping.Wrap
-            });
-
-            foreach (var group in viewModel.AllActions.GroupBy(action => action.Definition.Section))
-            {
-                content.Children.Add(new TextBlock
-                {
-                    Text = GetSectionTitle(group.Key),
-                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                    Margin = new Thickness(0, 4, 0, 0)
-                });
-                foreach (var action in group)
-                {
-                    var actionContent = new StackPanel { Spacing = 2 };
-                    actionContent.Children.Add(new TextBlock
-                    {
-                        Text = action.DisplayName,
-                        FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
-                    });
-                    actionContent.Children.Add(new TextBlock
-                    {
-                        Text = action.Description,
-                        TextWrapping = TextWrapping.Wrap,
-                        Opacity = 0.72
-                    });
-                    content.Children.Add(actionContent);
-                }
-            }
-
-            var dialog = new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                RequestedTheme = ActualTheme,
-                Title = $"{viewModel.DisplayName} · 功能说明",
-                Content = new ScrollViewer
-                {
-                    MaxHeight = 560,
-                    Content = content,
-                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-                },
-                CloseButtonText = "关闭",
-                DefaultButton = ContentDialogButton.Close
-            };
-            await DialogGate.TryShowAsync(dialog);
-        }
-        finally
-        {
-            _isActionHelpOpen = false;
-        }
-    }
-
-    private static string GetSectionTitle(ManagedToolActionSection section) => section switch
-    {
-        ManagedToolActionSection.Development => "开发版",
-        ManagedToolActionSection.Release => "正式版",
-        ManagedToolActionSection.Publish => "打包与发布",
-        _ => section.ToString()
-    };
-
     /// <summary>
     /// 把整页当成"游戏包发布"面板嵌进「服务器」页的游戏页签（零境交错 / 火影BP / 幻杀）。
     ///
@@ -374,6 +301,12 @@ public sealed partial class ToolPage : UserControl
         StoragePanel.Visibility = selectedItem == StorageSelectorItem
             ? Visibility.Visible
             : Visibility.Collapsed;
+
+        if (selectedItem == DevelopmentSelectorItem && DataContext is ToolPageViewModel developmentViewModel)
+        {
+            // 进开发版时重新探一遍项目目录，别让启动后新建的目录一直显示“缺失”。
+            developmentViewModel.RefreshGameProjects();
+        }
 
         if (selectedItem == PublishSelectorItem &&
             DataContext is ToolPageViewModel publishViewModel)

@@ -243,19 +243,56 @@ public sealed class ToolPageXamlLayoutTests
     }
 
     [Fact]
-    public void ToolPage_ProvidesActionHelpButton()
+    public void ToolPage_DropsTheActionHelpButton()
     {
+        // 2026-10-27：「功能说明」属于 AX 自己的元功能，直接删掉，不再占页面位置。
         var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
         XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
-        var helpButton = document.Descendants(presentation + "Button")
-            .Single(element => (string?)element.Attribute(xaml + "Name") == "ActionHelpButton");
-
-        Assert.Equal("ShowActionHelp_Click", (string?)helpButton.Attribute("Click"));
-        Assert.Contains(
-            helpButton.Descendants(presentation + "TextBlock"),
+        Assert.DoesNotContain(
+            document.Descendants(presentation + "Button"),
+            element => (string?)element.Attribute(xaml + "Name") == "ActionHelpButton");
+        Assert.DoesNotContain(
+            document.Descendants(presentation + "TextBlock"),
             element => (string?)element.Attribute("Text") == "功能说明");
+        Assert.DoesNotContain(
+            "ShowActionHelp_Click",
+            File.ReadAllText(FindProjectFile(Path.Combine("Views", "ToolPage.xaml.cs"))));
+    }
+
+    [Fact]
+    public void GameTools_ShareOneWorkbenchPanelAndHideTheToolDescription()
+    {
+        var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XNamespace views = "using:AxTools.Views";
+
+        // 三个游戏共用同一个面板控件，改一处三处生效。
+        var panel = Assert.Single(document.Descendants(views + "GameWorkbenchPanel"));
+        Assert.Equal(
+            "{Binding IsGameTool, Converter={StaticResource BooleanToVisibilityConverter}}",
+            (string?)panel.Attribute("Visibility"));
+
+        // 游戏页不再显示工具描述行。
+        var description = document.Descendants(presentation + "TextBlock")
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "PageDescriptionText");
+        Assert.Equal(
+            "{Binding IsGameTool, Converter={StaticResource InverseBooleanToVisibilityConverter}}",
+            (string?)description.Attribute("Visibility"));
+
+        // 配置状态通告栏按校验结果变色，不再固定绿色。
+        var infoBar = document.Descendants(presentation + "InfoBar").Single();
+        Assert.Equal(
+            "{Binding ConfigurationSeverity, Converter={StaticResource OperationNoticeSeverityConverter}}",
+            (string?)infoBar.Attribute("Severity"));
+
+        // 面板本身只认 GameProjects，不写死某个游戏。
+        var panelXaml = XDocument.Load(FindProjectFile(Path.Combine("Views", "GameWorkbenchPanel.xaml")));
+        Assert.Contains(
+            panelXaml.Descendants(presentation + "ItemsControl"),
+            element => (string?)element.Attribute("ItemsSource") == "{Binding GameProjects}");
     }
 
     [Fact]

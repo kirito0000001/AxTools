@@ -3,6 +3,7 @@
     x:Class="AxTools.Views.ToolPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:AxTools.Views"
     SizeChanged="ToolPage_SizeChanged">
 
     <UserControl.Resources>
@@ -38,26 +39,19 @@
 
             <StackPanel Spacing="{StaticResource AxSpace4}" Margin="0,0,0,2">
                 <TextBlock x:Name="PageTitleText" Text="{Binding DisplayName}" Style="{StaticResource PageTitleStyle}" />
-                <TextBlock x:Name="PageDescriptionText" Text="{Binding Description}" Style="{StaticResource SubtleTextStyle}" />
-                <Button
-                    x:Name="ActionHelpButton"
-                    Margin="0,8,0,0"
-                    HorizontalAlignment="Left"
-                    Click="ShowActionHelp_Click"
-                    Style="{StaticResource PrimaryToolButtonStyle}"
-                    ToolTipService.ToolTip="查看当前工具全部按钮的功能和影响">
-                    <StackPanel Orientation="Horizontal" Spacing="7">
-                        <SymbolIcon Symbol="Help" />
-                        <TextBlock Text="功能说明" />
-                    </StackPanel>
-                </Button>
+                <!-- 游戏页由 GameWorkbenchPanel 承担说明，不再重复一行工具描述。 -->
+                <TextBlock
+                    x:Name="PageDescriptionText"
+                    Text="{Binding Description}"
+                    Visibility="{Binding IsGameTool, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
+                    Style="{StaticResource SubtleTextStyle}" />
             </StackPanel>
 
             <InfoBar
                 Grid.Row="1"
                 IsClosable="False"
                 IsOpen="True"
-                Severity="Informational"
+                Severity="{Binding ConfigurationSeverity, Converter={StaticResource OperationNoticeSeverityConverter}}"
                 Title="配置状态"
                 Message="{Binding ConfigurationStatus}" />
 
@@ -81,11 +75,17 @@
             <Grid Grid.Row="3">
                 <Border x:Name="DevelopmentPanel" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
                     <StackPanel Spacing="{StaticResource AxSpace14}">
-                        <StackPanel Spacing="{StaticResource AxSpace4}">
+                        <!-- 非游戏工具保留原来的开发版说明；游戏页改用下面的通用面板。 -->
+                        <StackPanel
+                            Spacing="{StaticResource AxSpace4}"
+                            Visibility="{Binding IsGameTool, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
                             <TextBlock Text="开发版" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Text="构建和启动源码开发版本。" Style="{StaticResource SubtleTextStyle}" />
                             <TextBlock Text="{Binding DevelopmentVersionText}" Style="{StaticResource SubtleTextStyle}" />
                         </StackPanel>
+                        <!-- 三个游戏共用这一份项目面板：改 GameWorkbenchPanel 即可三处同步。 -->
+                        <views:GameWorkbenchPanel
+                            Visibility="{Binding IsGameTool, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         <ItemsControl
                             ItemsSource="{Binding DevelopmentPanelActions}"
                             Loaded="ActionItemsControl_Loaded"

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="AxTools.Views.GameWorkbenchPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        游戏页的通用面板：三个游戏（零境 / 幻杀 / 火影）共用这一份。
+        数据来自 ToolPageViewModel.GameProjects，项目清单在 GameWorkbenchCatalog 里定义。
+        改这里 = 三个游戏页一起改；不要为某个游戏在页面里写分支。
+    -->
+    <ItemsControl ItemsSource="{Binding GameProjects}">
+        <ItemsControl.ItemTemplate>
+            <DataTemplate>
+                <Border
+                    Margin="0,0,0,8"
+                    Padding="14"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource AxRadiusMedium}">
+                    <StackPanel Spacing="{StaticResource AxSpace4}">
+                        <Grid ColumnSpacing="{StaticResource AxSpace8}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse
+                                Width="8"
+                                Height="8"
+                                VerticalAlignment="Center"
+                                Fill="{Binding StateKey, Converter={StaticResource GameProjectStateBrushConverter}}" />
+                            <StackPanel
+                                Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="{StaticResource AxSpace8}">
+                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                                <TextBlock
+                                    Text="{Binding Role}"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource SubtleTextStyle}" />
+                            </StackPanel>
+                            <TextBlock
+                                Grid.Column="2"
+                                VerticalAlignment="Center"
+                                Text="{Binding StateText}"
+                                FontSize="{StaticResource AxFontCaption}" />
+                        </Grid>
+                        <TextBlock
+                            Text="{Binding DetailText}"
+                            IsTextSelectionEnabled="True"
+                            Style="{StaticResource SubtleTextStyle}" />
+                        <TextBlock
+                            Text="{Binding RepositoryUrl}"
+                            Visibility="{Binding HasRepository, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            IsTextSelectionEnabled="True"
+                            Style="{StaticResource SubtleTextStyle}" />
+                    </StackPanel>
+                </Border>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
+</UserControl>
