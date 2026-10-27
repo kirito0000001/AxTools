@@ -505,6 +505,9 @@ public sealed partial class ToolPageViewModel : ObservableObject
         private set => SetProperty(ref _lastResultText, value);
     }
 
+    /// <summary>页面级动作（复制链接、启动编辑器等）的结果写回这里展示。</summary>
+    public void ReportActionMessage(string message) => LastResultText = message;
+
     public string SourceRoot
     {
         get => _paths.SourceRoot;
@@ -766,6 +769,78 @@ public sealed partial class ToolPageViewModel : ObservableObject
     {
         get => EffectiveProjectPath("client");
         set => SetProjectPath("client", value);
+    }
+
+    /// <summary>项目本体卡片的标题，形如「项目本体-CrossingVoid」（取仓库名）。</summary>
+    public string ClientProjectCardTitle
+    {
+        get
+        {
+            var name = ClientRepositoryUrl.TrimEnd('/');
+            var lastSlash = name.LastIndexOf('/');
+            if (lastSlash >= 0 && lastSlash < name.Length - 1)
+            {
+                name = name[(lastSlash + 1)..];
+            }
+
+            return string.IsNullOrWhiteSpace(name) ? "项目本体" : $"项目本体-{name}";
+        }
+    }
+
+    /// <summary>本体项目的仓库地址；空串表示没配。</summary>
+    public string ClientRepositoryUrl =>
+        _gameWorkbench?.Projects.FirstOrDefault(project => !project.IsAndroidLauncher)?.RepositoryUrl
+            ?? string.Empty;
+
+    /// <summary>开发版卡片上的动作清单；非游戏工具为空。</summary>
+    public IReadOnlyList<GameDevActionItem> GameProjectActions =>
+        IsGameTool ? GameDevActionCatalog.ClientActions : [];
+
+    /// <summary>
+    /// 在项目根目录找 .uproject 并用系统关联打开。
+    /// 找不到文件或启动失败时返回 false，并把原因写进 message。
+    /// </summary>
+    public bool TryLaunchUProject(out string message)
+    {
+        var root = ClientProjectPath;
+        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+        {
+            message = "本体路径不存在，先去「设置」里选目录。";
+            return false;
+        }
+
+        string? uproject;
+        try
+        {
+            uproject = Directory
+                .EnumerateFiles(root, "*.uproject", SearchOption.TopDirectoryOnly)
+                .FirstOrDefault();
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            message = $"读取项目目录失败：{exception.Message}";
+            return false;
+        }
+
+        if (uproject is null)
+        {
+            message = "项目根目录里没有 .uproject 文件。";
+            return false;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(uproject) { UseShellExecute = true });
+            message = $"已用 .uproject 启动：{Path.GetFileName(uproject)}";
+            return true;
+        }
+        catch (Exception exception)
+        {
+            message = $"启动 .uproject 失败：{exception.Message}";
+            return false;
+        }
     }
 
     /// <summary>安卓启动器的本地路径（设置页可改）。</summary>

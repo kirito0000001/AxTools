@@ -224,8 +224,14 @@ public sealed class ToolPageXamlLayoutTests
         var template = document.Descendants(presentation + "DataTemplate")
             .Single(element => (string?)element.Attribute(xaml + "Key") == "ToolActionButtonTemplate");
         var actionButton = template.Element(presentation + "Button")!;
+        // 只有工具动作列表需要按可用宽度算列宽；游戏卡片用的是固定列宽的动作网格。
         var actionLists = document.Descendants(presentation + "ItemsControl")
-            .Where(element => ((string?)element.Attribute("ItemsSource"))?.Contains("Actions}") == true)
+            .Where(element =>
+            {
+                var source = (string?)element.Attribute("ItemsSource");
+                return source?.Contains("Actions}") == true &&
+                    source?.Contains("GameProjectActions") != true;
+            })
             .ToArray();
 
         Assert.Equal("ToolPage_SizeChanged", (string?)root.Attribute("SizeChanged"));
@@ -351,6 +357,33 @@ public sealed class ToolPageXamlLayoutTests
         var codeBehind = File.ReadAllText(FindProjectFile(Path.Combine("Views", "ToolPage.xaml.cs")));
         Assert.Contains("ToolPageSection.Settings", codeBehind);
         Assert.Contains("SettingsPanel.Visibility", codeBehind);
+    }
+
+    [Fact]
+    public void GameTools_DevelopmentPageUsesProjectCardWithTallerButtons()
+    {
+        var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+
+        // 卡片标题是「项目本体-<仓库名>」；原来那行「构建和启动源码开发版本」「开发版版本」只在非游戏页出现。
+        Assert.Contains(
+            document.Descendants(presentation + "TextBlock"),
+            element => (string?)element.Attribute("Text") == "{Binding ClientProjectCardTitle}");
+
+        var cardList = document.Descendants(presentation + "ItemsControl")
+            .Single(element => (string?)element.Attribute("ItemsSource") == "{Binding GameProjectActions}");
+        var cardButton = cardList.Descendants(presentation + "Button").Single();
+        Assert.Equal("{StaticResource CardActionButtonStyle}", (string?)cardButton.Attribute("Style"));
+
+        // 按钮高度由样式统一给 48（1.2 倍），页面里不写乘算、不写高度。
+        var styles = XDocument.Load(FindProjectFile(Path.Combine("Styles", "ToolboxStyles.xaml")));
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var style = styles.Descendants(presentation + "Style")
+            .Single(element => (string?)element.Attribute(xaml + "Key") == "CardActionButtonStyle");
+        var heightSetter = style.Descendants(presentation + "Setter")
+            .Single(element => (string?)element.Attribute("Property") == "Height");
+        Assert.Equal("48", (string?)heightSetter.Attribute("Value"));
+        Assert.Null(cardButton.Attribute("Height"));
     }
 
     [Fact]

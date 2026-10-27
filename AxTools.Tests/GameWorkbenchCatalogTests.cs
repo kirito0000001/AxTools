@@ -37,4 +37,23 @@ public sealed class GameWorkbenchCatalogTests
         Assert.False(GameWorkbenchCatalog.Fantasy.HasAndroidLauncherByDefault);
         Assert.False(GameWorkbenchCatalog.Naruto.HasAndroidLauncherByDefault);
     }
+
+    [Fact]
+    public void DevelopmentCardListsTheSixProjectActions()
+    {
+        Assert.Equal(
+            [
+                "install-from-github",
+                "copy-repo-link",
+                "launch-uproject",
+                "launch-rider",
+                "clean-cache",
+                "check-upstream"
+            ],
+            GameDevActionCatalog.ClientActions.Select(action => action.Key));
+
+        // 清理项目缓存还没接入：按钮要在，但不能点。
+        var cleanCache = GameDevActionCatalog.ClientActions.Single(action => action.Key == "clean-cache");
+        Assert.False(cleanCache.IsEnabled);
+    }
 }

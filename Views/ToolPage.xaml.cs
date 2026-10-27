@@ -4,6 +4,7 @@ using AxTools.Core.Models;
 using AxTools.Core.Services;
 using System.Globalization;
 using AxTools.Core.ViewModels;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace AxTools.Views;
 
@@ -60,6 +61,49 @@ public sealed partial class ToolPage : UserControl
                 this,
                 new ToolProjectPathSelectionRequestedEventArgs(viewModel, projectId));
         }
+    }
+
+    /// <summary>
+    /// 开发版卡片上的动作。已接入的只有「获取项目链接」与「从 UProject 启动」，
+    /// 其余先明确回报“还没接入”，不做假成功。
+    /// </summary>
+    private void GameProjectAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: GameDevActionItem action } ||
+            DataContext is not ToolPageViewModel viewModel)
+        {
+            return;
+        }
+
+        switch (action.Key)
+        {
+            case "copy-repo-link":
+                CopyRepositoryLink(viewModel);
+                break;
+            case "launch-uproject":
+                viewModel.ReportActionMessage(
+                    viewModel.TryLaunchUProject(out var message)
+                        ? message
+                        : $"启动失败：{message}");
+                break;
+            default:
+                viewModel.ReportActionMessage($"「{action.Title}」还没接入。");
+                break;
+        }
+    }
+
+    private static void CopyRepositoryLink(ToolPageViewModel viewModel)
+    {
+        if (string.IsNullOrWhiteSpace(viewModel.ClientRepositoryUrl))
+        {
+            viewModel.ReportActionMessage("本体仓库地址还没配置。");
+            return;
+        }
+
+        var package = new DataPackage();
+        package.SetText(viewModel.ClientRepositoryUrl);
+        Clipboard.SetContent(package);
+        viewModel.ReportActionMessage($"已复制到剪贴板：{viewModel.ClientRepositoryUrl}");
     }
 
     private async void RefreshLauncherVersion_Click(object sender, RoutedEventArgs e)

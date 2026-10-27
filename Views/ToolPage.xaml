@@ -83,7 +83,10 @@
             <Grid Grid.Row="3">
                 <Border x:Name="DevelopmentPanel" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
                     <StackPanel Spacing="{StaticResource AxSpace14}">
-                        <StackPanel Spacing="{StaticResource AxSpace4}">
+                        <!-- 非游戏工具：保留原来的开发版说明与动作列表。 -->
+                        <StackPanel
+                            Spacing="{StaticResource AxSpace4}"
+                            Visibility="{Binding IsGameTool, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
                             <TextBlock Text="开发版" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Text="构建和启动源码开发版本。" Style="{StaticResource SubtleTextStyle}" />
                             <TextBlock Text="{Binding DevelopmentVersionText}" Style="{StaticResource SubtleTextStyle}" />
@@ -92,6 +95,7 @@
                             ItemsSource="{Binding DevelopmentPanelActions}"
                             Loaded="ActionItemsControl_Loaded"
                             SizeChanged="ActionItemsControl_SizeChanged"
+                            Visibility="{Binding IsGameTool, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
                             ItemTemplate="{StaticResource ToolActionButtonTemplate}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -99,7 +103,44 @@
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                         </ItemsControl>
-                        <TextBlock Text="{Binding ExecutionAvailabilityText}" Style="{StaticResource SubtleTextStyle}" />
+                        <TextBlock
+                            Text="{Binding ExecutionAvailabilityText}"
+                            Visibility="{Binding IsGameTool, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
+                            Style="{StaticResource SubtleTextStyle}" />
+
+                        <!-- 游戏页：一片一片的卡片。第一片是项目本体。 -->
+                        <Border
+                            Visibility="{Binding IsGameTool, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource AxRadiusMedium}"
+                            Padding="16">
+                            <StackPanel Spacing="{StaticResource AxSpace12}">
+                                <TextBlock Text="{Binding ClientProjectCardTitle}" Style="{StaticResource GroupTitleStyle}" />
+                                <ItemsControl ItemsSource="{Binding GameProjectActions}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <ItemsWrapGrid Orientation="Horizontal" ItemWidth="220" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button
+                                                Margin="0,0,8,8"
+                                                IsEnabled="{Binding IsEnabled}"
+                                                Click="GameProjectAction_Click"
+                                                Style="{StaticResource CardActionButtonStyle}">
+                                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace8}">
+                                                    <FontIcon Glyph="{Binding Glyph}" FontSize="16" />
+                                                    <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock Text="{Binding LastResultText}" Style="{StaticResource SubtleTextStyle}" />
                     </StackPanel>
                 </Border>
