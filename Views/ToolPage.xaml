@@ -538,11 +538,10 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{StaticResource AxRadiusMedium}"
-                            Padding="16"
-                            Visibility="{Binding PublishPcGame, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            Padding="16">
                             <StackPanel Spacing="{StaticResource AxSpace12}">
                                 <TextBlock Text="{Binding GamePublishCardTitle}" Style="{StaticResource GroupTitleStyle}" />
-                                <TextBlock Text="{Binding GamePublishSummaryText}" Style="{StaticResource SubtleTextStyle}" />
+                                <TextBlock Text="{Binding PcPublishSummaryText}" Style="{StaticResource SubtleTextStyle}" />
                                 <ItemsControl ItemsSource="{Binding GamePublishPcActions}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
@@ -597,9 +596,10 @@
                             BorderThickness="1"
                             CornerRadius="{StaticResource AxRadiusMedium}"
                             Padding="16"
-                            Visibility="{Binding HasAndroidGamePublishCard, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            Visibility="{Binding HasAndroidGameBuild, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <StackPanel Spacing="{StaticResource AxSpace12}">
                                 <TextBlock Text="{Binding GamePublishAndroidCardTitle}" Style="{StaticResource GroupTitleStyle}" />
+                                <TextBlock Text="{Binding AndroidPublishSummaryText}" Style="{StaticResource SubtleTextStyle}" />
                                 <ItemsControl ItemsSource="{Binding GamePublishAndroidActions}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
@@ -853,30 +853,6 @@
                                 Grid.Column="1"
                                 VerticalAlignment="Center"
                                 IsOn="{Binding HasAndroidGameBuild, Mode=TwoWay}" />
-                        </Grid>
-
-                        <Grid ColumnSpacing="{StaticResource AxSpace12}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="发布 PC 版本" VerticalAlignment="Center" />
-                            <ToggleSwitch
-                                Grid.Column="1"
-                                VerticalAlignment="Center"
-                                IsOn="{Binding PublishPcGame, Mode=TwoWay}" />
-                        </Grid>
-                        <Grid ColumnSpacing="{StaticResource AxSpace12}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="发布安卓版本" VerticalAlignment="Center" />
-                            <ToggleSwitch
-                                Grid.Column="1"
-                                VerticalAlignment="Center"
-                                IsEnabled="{Binding HasAndroidGameBuild}"
-                                IsOn="{Binding PublishAndroidGame, Mode=TwoWay}" />
                         </Grid>
 
                         <StackPanel Spacing="{StaticResource AxSpace10}">

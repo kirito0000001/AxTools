@@ -626,7 +626,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(ConfigurationStatus));
         OnPropertyChanged(nameof(ConfigurationSeverity));
-        OnPropertyChanged(nameof(GamePublishSummaryText));
+        OnPropertyChanged(nameof(PcPublishSummaryText));
+        OnPropertyChanged(nameof(AndroidPublishSummaryText));
         // 开发版面板里那行可用性会回落到这份文案；不一起刷新，
         // 切回开发版时还会残留打包页的“缺少游戏包目录”。
         OnPropertyChanged(nameof(ExecutionAvailabilityText));
@@ -757,7 +758,6 @@ public sealed partial class ToolPageViewModel : ObservableObject
             _hasAndroidGameBuild = value;
             _paths.HasAndroidGameBuild = value;
             OnPropertyChanged();
-            OnPropertyChanged(nameof(HasAndroidGamePublishCard));
             NotifyConfigurationChanged();
         }
     }
@@ -830,57 +830,6 @@ public sealed partial class ToolPageViewModel : ObservableObject
             OnPropertyChanged(nameof(GamePublishPcActions));
             OnPropertyChanged(nameof(GamePublishAndroidActions));
         }
-    }
-
-    /// <summary>发布开关：PC 游戏包（第三片）。</summary>
-    public bool PublishPcGame
-    {
-        get => _paths.PublishPcGame ?? true;
-        set
-        {
-            if (_paths.PublishPcGame == value)
-            {
-                return;
-            }
-
-            _paths.PublishPcGame = value;
-            OnPropertyChanged();
-        }
-    }
-
-    /// <summary>发布开关：安卓游戏包（第四片）；没有安卓版本时强制不显示。</summary>
-    public bool PublishAndroidGame
-    {
-        get => _paths.PublishAndroidGame ?? _hasAndroidGameBuild;
-        set
-        {
-            if (_paths.PublishAndroidGame == value)
-            {
-                return;
-            }
-
-            _paths.PublishAndroidGame = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(HasAndroidGamePublishCard));
-        }
-    }
-
-    /// <summary>第四片（安卓游戏推送）是否出现：有安卓版本且发布开关打开。</summary>
-    public bool HasAndroidGamePublishCard => _hasAndroidGameBuild && PublishAndroidGame;
-
-    /// <summary>给当前动作切平台：第三片按钮传 Windows，第四片传 Android。</summary>
-    public void SetPublishPlatform(string platform)
-    {
-        var normalized = string.Equals(platform, "Android", StringComparison.Ordinal)
-            ? "Android"
-            : "Windows";
-        if (string.Equals(_paths.GamePublishPlatform, normalized, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        _paths.GamePublishPlatform = normalized;
-        NotifyConfigurationChanged();
     }
 
     /// <summary>第三片 PC 游戏推送的按钮：按渠道开关过滤。</summary>
@@ -1004,18 +953,21 @@ public sealed partial class ToolPageViewModel : ObservableObject
 
     public string GamePublishAndroidCardTitle => $"{DisplayName}安卓游戏推送";
 
-    /// <summary>
-    /// 游戏本体发布的一句话摘要（平台 · 版本 · 通道）；未就绪时说明缺什么。
-    /// 与适配器共用 GamePublishRequestBuilder，页面不再自己拼平台判断。
-    /// </summary>
-    public string GamePublishSummaryText =>
+    /// <summary>PC 游戏包的发布摘要；固定按 Windows 算，不受当前操作平台影响。</summary>
+    public string PcPublishSummaryText => BuildPublishSummary("Windows");
+
+    /// <summary>安卓游戏包的发布摘要；固定按 Android 算。</summary>
+    public string AndroidPublishSummaryText => BuildPublishSummary("Android");
+
+    private string BuildPublishSummary(string platform) =>
         GamePublishRequestBuilder.TryBuild(
             Descriptor.Key,
             _paths,
             ManagedToolAction.PublishGameVersion,
             GamePublishReleaseNotes,
             out var request,
-            out var error)
+            out var error,
+            platform)
             ? request.Summary
             : $"尚未就绪：{error}";
 

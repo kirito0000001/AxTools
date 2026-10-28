@@ -14,12 +14,15 @@ public static class GamePublishRequestBuilder
         ManagedToolAction action,
         string releaseNotes,
         out GamePublishRequest request,
-        out string error)
+        out string error,
+        string? platformOverride = null)
     {
         request = null!;
         error = string.Empty;
 
-        var platform = paths.GamePublishPlatform is "Android" ? "Android" : "Windows";
+        var platform = (platformOverride ?? paths.GamePublishPlatform) is "Android"
+            ? "Android"
+            : "Windows";
         var isPatch = action is ManagedToolAction.PublishGamePatch or
             ManagedToolAction.GenerateGamePatchFragments;
 
