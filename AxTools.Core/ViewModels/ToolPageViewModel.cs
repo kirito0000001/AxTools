@@ -19,6 +19,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
     private readonly CrossingVoidGamePublishState? _gamePublishState;
     private readonly GameWorkbenchProfile? _gameWorkbench;
     private bool _hasAndroidLauncher;
+    private bool _hasAndroidGameBuild;
     private readonly GlobalProgressViewModel? _globalProgress;
     private readonly AppSettings? _appSettings;
     private readonly GameProjectGitService _gitService = new();
@@ -58,6 +59,9 @@ public sealed partial class ToolPageViewModel : ObservableObject
         _appSettings = appSettings;
         _hasAndroidLauncher = paths.HasAndroidLauncher
             ?? _gameWorkbench?.HasAndroidLauncherByDefault
+            ?? false;
+        _hasAndroidGameBuild = paths.HasAndroidGameBuild
+            ?? _gameWorkbench?.HasAndroidGameBuildByDefault
             ?? false;
         _isRunnerAvailable = isRunnerAvailable;
         _publishedVersionService = publishedVersionService ?? new PublishedVersionService(
@@ -735,6 +739,127 @@ public sealed partial class ToolPageViewModel : ObservableObject
             RefreshGameProjects();
         }
     }
+
+    /// <summary>
+    /// 这个游戏是否有安卓版本（安卓游戏包）。与「是否有安卓启动器」互相独立：
+    /// 有安卓游戏不一定有安卓启动器，反之亦然。
+    /// </summary>
+    public bool HasAndroidGameBuild
+    {
+        get => _hasAndroidGameBuild;
+        set
+        {
+            if (_hasAndroidGameBuild == value)
+            {
+                return;
+            }
+
+            _hasAndroidGameBuild = value;
+            _paths.HasAndroidGameBuild = value;
+            OnPropertyChanged();
+            NotifyConfigurationChanged();
+        }
+    }
+
+    /// <summary>PC 游戏包目录（发布到下载站用的那份产物）。</summary>
+    public string PcGamePackageRoot
+    {
+        get => _paths.GamePackageRoot;
+        set
+        {
+            if (SetProperty(
+                    _paths.GamePackageRoot,
+                    value,
+                    _paths,
+                    static (model, newValue) => model.GamePackageRoot = newValue))
+            {
+                NotifyConfigurationChanged();
+            }
+        }
+    }
+
+    /// <summary>安卓游戏包目录；开关关掉时界面不显示。</summary>
+    public string AndroidGamePackageRoot
+    {
+        get => _paths.GamePackageRootAndroid;
+        set
+        {
+            if (SetProperty(
+                    _paths.GamePackageRootAndroid,
+                    value,
+                    _paths,
+                    static (model, newValue) => model.GamePackageRootAndroid = newValue))
+            {
+                NotifyConfigurationChanged();
+            }
+        }
+    }
+
+    /// <summary>上传渠道：下载站（野草云）。</summary>
+    public bool PublishToDownloadSite
+    {
+        get => _paths.PublishGameToDownloadSite ?? true;
+        set
+        {
+            if (_paths.PublishGameToDownloadSite == value)
+            {
+                return;
+            }
+
+            _paths.PublishGameToDownloadSite = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(GamePublishCardActions));
+        }
+    }
+
+    /// <summary>上传渠道：GitHub Release。</summary>
+    public bool PublishToGitHub
+    {
+        get => _paths.PublishGameToGitHub ?? true;
+        set
+        {
+            if (_paths.PublishGameToGitHub == value)
+            {
+                return;
+            }
+
+            _paths.PublishGameToGitHub = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(GamePublishCardActions));
+        }
+    }
+
+    /// <summary>发布平台选项；与 GamePublishPlatform 对应。</summary>
+    public IReadOnlyList<string> PublishPlatformOptions { get; } = ["PC", "安卓"];
+
+    public string SelectedPublishPlatform
+    {
+        get => IsAndroidPlatform ? "安卓" : "PC";
+        set
+        {
+            _paths.GamePublishPlatform = string.Equals(value, "安卓", StringComparison.Ordinal)
+                ? "Android"
+                : "Windows";
+            OnPropertyChanged();
+            NotifyConfigurationChanged();
+        }
+    }
+
+    /// <summary>
+    /// 第三张卡实际显示的按钮：按上传渠道开关过滤。
+    /// 关掉野草云就不显示「发布到服务器」，关掉 GitHub 就不显示「发布到 GitHub」。
+    /// </summary>
+    public IReadOnlyList<ToolActionItemViewModel> GamePublishCardActions =>
+        IsGameTool
+            ? GamePublishActions.Where(IsPublishChannelEnabled).ToArray()
+            : [];
+
+    private bool IsPublishChannelEnabled(ToolActionItemViewModel item) => item.Action switch
+    {
+        ManagedToolAction.PublishGameVersion => PublishToDownloadSite,
+        ManagedToolAction.PublishGameVersionToGitHub => PublishToGitHub,
+        _ => true
+    };
 
     /// <summary>游戏本体的本地路径（设置页可改）。</summary>
     public string ClientProjectPath

@@ -48,14 +48,21 @@ public sealed partial class MainWindow
         var folder = await folderPicker.PickSingleFolderAsync();
         if (folder is not null)
         {
-            // server-root 不是游戏项目，是本机服务端仓库根目录（全局设置）。
-            if (string.Equals(args.ProjectId, "server-root", StringComparison.Ordinal))
+            // 这几个不是游戏项目：server-root 是本机服务端仓库，另外两个是游戏包目录。
+            switch (args.ProjectId)
             {
-                args.ViewModel.ServerLocalRepoRoot = folder.Path;
-            }
-            else
-            {
-                args.ViewModel.SetProjectPath(args.ProjectId, folder.Path);
+                case "server-root":
+                    args.ViewModel.ServerLocalRepoRoot = folder.Path;
+                    break;
+                case "game-pc-package":
+                    args.ViewModel.PcGamePackageRoot = folder.Path;
+                    break;
+                case "game-android-package":
+                    args.ViewModel.AndroidGamePackageRoot = folder.Path;
+                    break;
+                default:
+                    args.ViewModel.SetProjectPath(args.ProjectId, folder.Path);
+                    break;
             }
         }
     }

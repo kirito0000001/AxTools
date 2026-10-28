@@ -29,7 +29,8 @@ public static class GameWorkbenchCatalog
                 "https://github.com/kirito0000001/CrossingVoid-Downloader-Android",
                 IsAndroidLauncher: true)
         ],
-        HasAndroidLauncherByDefault: true);
+        HasAndroidLauncherByDefault: true,
+        HasAndroidGameBuildByDefault: true);
 
     public static GameWorkbenchProfile Fantasy { get; } = new(
         ManagedToolKey.FantasyGame,

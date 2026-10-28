@@ -341,7 +341,7 @@
                                 </Button>
                             </Grid>
                             <ItemsControl
-                                ItemsSource="{Binding GamePublishActions}"
+                                ItemsSource="{Binding GamePublishCardActions}"
                                 Loaded="ActionItemsControl_Loaded"
                                 SizeChanged="ActionItemsControl_SizeChanged"
                                 ItemTemplate="{StaticResource ToolActionButtonTemplate}">
@@ -799,10 +799,113 @@
                             </Grid>
                         </StackPanel>
 
+                        <!-- 游戏打包与上传：安卓游戏与安卓启动器是两件事，这里只管游戏包。 -->
+                        <TextBlock Text="游戏打包与上传" Style="{StaticResource GroupTitleStyle}" Margin="0,8,0,0" />
+
+                        <Grid ColumnSpacing="{StaticResource AxSpace12}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="{StaticResource AxSpace2}">
+                                <TextBlock Text="是否有安卓游戏版本" />
+                                <TextBlock
+                                    Text="只影响游戏本体；安卓启动器是另一套设置。"
+                                    Style="{StaticResource SubtleTextStyle}" />
+                            </StackPanel>
+                            <ToggleSwitch
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                IsOn="{Binding HasAndroidGameBuild, Mode=TwoWay}" />
+                        </Grid>
+
+                        <Grid
+                            ColumnSpacing="{StaticResource AxSpace12}"
+                            Visibility="{Binding HasAndroidGameBuild, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox
+                                Header="发布平台"
+                                HorizontalAlignment="Stretch"
+                                ItemsSource="{Binding PublishPlatformOptions}"
+                                SelectedItem="{Binding SelectedPublishPlatform, Mode=TwoWay}" />
+                        </Grid>
+
+                        <StackPanel Spacing="{StaticResource AxSpace10}">
+                            <Grid ColumnSpacing="{StaticResource AxSpace10}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox
+                                    Header="PC 游戏包目录"
+                                    PlaceholderText="打包产物目录（发布到下载站用）"
+                                    Text="{Binding PcGamePackageRoot, Mode=TwoWay}" />
+                                <Button
+                                    Grid.Column="1"
+                                    Margin="0,0,8,0"
+                                    VerticalAlignment="Bottom"
+                                    Tag="game-pc-package"
+                                    Click="ProjectPathBrowse_Click"
+                                    Style="{StaticResource IconToolButtonStyle}"
+                                    ToolTipService.ToolTip="选择 PC 游戏包目录">
+                                    <FontIcon Glyph="&#xE8B7;" />
+                                </Button>
+                            </Grid>
+                            <Grid
+                                ColumnSpacing="{StaticResource AxSpace10}"
+                                Visibility="{Binding HasAndroidGameBuild, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox
+                                    Header="安卓游戏包目录"
+                                    PlaceholderText="安卓打包产物目录"
+                                    Text="{Binding AndroidGamePackageRoot, Mode=TwoWay}" />
+                                <Button
+                                    Grid.Column="1"
+                                    Margin="0,0,8,0"
+                                    VerticalAlignment="Bottom"
+                                    Tag="game-android-package"
+                                    Click="ProjectPathBrowse_Click"
+                                    Style="{StaticResource IconToolButtonStyle}"
+                                    ToolTipService.ToolTip="选择安卓游戏包目录">
+                                    <FontIcon Glyph="&#xE8B7;" />
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+
+                        <Grid ColumnSpacing="{StaticResource AxSpace12}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="上传到野草云（下载站）" VerticalAlignment="Center" />
+                            <ToggleSwitch
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                IsOn="{Binding PublishToDownloadSite, Mode=TwoWay}" />
+                        </Grid>
+                        <Grid ColumnSpacing="{StaticResource AxSpace12}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="上传到 GitHub Release" VerticalAlignment="Center" />
+                            <ToggleSwitch
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                IsOn="{Binding PublishToGitHub, Mode=TwoWay}" />
+                        </Grid>
+
                         <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
 
                         <StackPanel Spacing="{StaticResource AxSpace4}">
                             <TextBlock Text="功能散页" Style="{StaticResource GroupTitleStyle}" />
+
                             <TextBlock
                                 Text="临时区：暂时没有正式位置的功能，以及还没抽出来复用的逻辑。整理完这块就删。"
                                 Style="{StaticResource SubtleTextStyle}" />

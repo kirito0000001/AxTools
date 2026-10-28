@@ -19,7 +19,8 @@ public sealed record GameWorkbenchProfile(
     ManagedToolKey GameToolKey,
     string DisplayName,
     IReadOnlyList<GameProjectDefinition> Projects,
-    bool HasAndroidLauncherByDefault = false);
+    bool HasAndroidLauncherByDefault = false,
+    bool HasAndroidGameBuildByDefault = false);
 
 /// <summary>
 /// 项目在磁盘上的当前状态，供游戏页的通用面板直接绑定。

@@ -345,6 +345,32 @@ public sealed class ToolPageViewModelTests : IDisposable
     }
 
     [Fact]
+    public void GamePublishCardActions_FollowChannelSwitches()
+    {
+        var viewModel = new ToolPageViewModel(
+            GetDescriptor(ManagedToolKey.CrossingVoidGame),
+            new ManagedToolPaths(),
+            new CrossingVoidGameAdapter(Path.Combine(_root, "Scripts")));
+
+        Assert.Contains(
+            viewModel.GamePublishCardActions,
+            action => action.Action == ManagedToolAction.PublishGameVersion);
+        Assert.Contains(
+            viewModel.GamePublishCardActions,
+            action => action.Action == ManagedToolAction.PublishGameVersionToGitHub);
+
+        viewModel.PublishToDownloadSite = false;
+        Assert.DoesNotContain(
+            viewModel.GamePublishCardActions,
+            action => action.Action == ManagedToolAction.PublishGameVersion);
+
+        viewModel.PublishToGitHub = false;
+        Assert.DoesNotContain(
+            viewModel.GamePublishCardActions,
+            action => action.Action == ManagedToolAction.PublishGameVersionToGitHub);
+    }
+
+    [Fact]
     public void CrossingVoidGame_OwnsGamePublishingSection()
     {
         var paths = CreateCrossingGamePackage();

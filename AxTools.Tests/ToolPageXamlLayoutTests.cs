@@ -234,7 +234,7 @@ public sealed class ToolPageXamlLayoutTests
                     source != "{Binding Actions}" &&
                     source != "{Binding ServerActions}" &&
                     source != "{Binding ServerManagementActions}" &&
-                    source != "{Binding GamePublishActions}" &&
+                    source != "{Binding GamePublishCardActions}" &&
                     source != "{Binding GameMaintenanceActions}";
             })
             .ToArray();
@@ -351,7 +351,7 @@ public sealed class ToolPageXamlLayoutTests
             .Where(element => (string?)element.Attribute("Click") == "ProjectPathBrowse_Click")
             .Select(element => (string?)element.Attribute("Tag"))
             .ToArray();
-        Assert.Equal(new string?[] { "client", "android", "server-root" }, browseTags);
+        Assert.Equal(new string?[] { "client", "android", "server-root", "game-pc-package", "game-android-package" }, browseTags);
 
         // 暂存清单绑定到 GameScratchItems。
         Assert.Contains(
@@ -444,7 +444,7 @@ public sealed class ToolPageXamlLayoutTests
             element => (string?)element.Attribute("ItemsSource") == "{Binding ServerManagementActions}");
         Assert.Contains(
             panel.Descendants(presentation + "ItemsControl"),
-            element => (string?)element.Attribute("ItemsSource") == "{Binding GamePublishActions}");
+            element => (string?)element.Attribute("ItemsSource") == "{Binding GamePublishCardActions}");
         // 实例行四个管理按钮：日志 / 启动 / 停止 / 重启。
         var instanceButtons = panel.Descendants(presentation + "Button")
             .Where(element => (string?)element.Attribute("Click") == "InstanceAction_Click")
