@@ -1,4 +1,5 @@
 using AxTools.Core.Models;
+using AxTools.Core.Services;
 
 namespace AxTools.Core.Adapters;
 
@@ -122,21 +123,16 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
             return task;
         }
 
-        var platform = paths.GamePublishPlatform is "Android" ? "Android" : "Windows";
-        if (request.Action == ManagedToolAction.PublishGamePatch && platform != "Windows")
+        // 平台、产物目录、补丁限制、版本与通道统一由发布请求组装，页面门禁也用同一份规则。
+        if (!GamePublishRequestBuilder.TryBuild(
+                Key,
+                paths,
+                request.Action,
+                request.ReleaseNotes,
+                out var publish,
+                out var error))
         {
-            throw new InvalidOperationException("Windows 补丁渠道目前只支持 PC 游戏包。");
-        }
-        if (request.Action == ManagedToolAction.GenerateGamePatchFragments && platform != "Windows")
-        {
-            throw new InvalidOperationException("补丁碎片目前只支持 PC 游戏包。");
-        }
-        var packageRoot = platform is "Android" ? paths.GamePackageRootAndroid : paths.GamePackageRoot;
-        if (string.IsNullOrWhiteSpace(packageRoot))
-        {
-            throw new InvalidOperationException(platform is "Android"
-                ? "请先选择安卓游戏包目录。"
-                : "请先选择 PC 游戏包目录。");
+            throw new InvalidOperationException(error);
         }
 
         // 产品段名和版本标记文件名**不从这里下发**：每个游戏的包装脚本自己带
@@ -146,9 +142,9 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
         {
             Arguments = task.Arguments.Concat(
             [
-                "-Platform", platform,
-                "-GamePackageRoot", packageRoot,
-                "-ReleaseNotes", request.ReleaseNotes,
+                "-Platform", publish.Platform,
+                "-GamePackageRoot", publish.PackageRoot,
+                "-ReleaseNotes", publish.ReleaseNotes,
                 "-FragmentOutputDirectory", paths.FragmentOutputDirectory
             ]).ToArray()
         };

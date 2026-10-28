@@ -622,6 +622,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(ConfigurationStatus));
         OnPropertyChanged(nameof(ConfigurationSeverity));
+        OnPropertyChanged(nameof(GamePublishSummaryText));
         // 开发版面板里那行可用性会回落到这份文案；不一起刷新，
         // 切回开发版时还会残留打包页的“缺少游戏包目录”。
         OnPropertyChanged(nameof(ExecutionAvailabilityText));
@@ -831,6 +832,34 @@ public sealed partial class ToolPageViewModel : ObservableObject
     public string ServerManagementCardTitle => $"{DisplayName}服务器管理";
 
     public string GamePublishCardTitle => $"{DisplayName}游戏本体推送";
+
+    /// <summary>
+    /// 游戏本体发布的一句话摘要（平台 · 版本 · 通道）；未就绪时说明缺什么。
+    /// 与适配器共用 GamePublishRequestBuilder，页面不再自己拼平台判断。
+    /// </summary>
+    public string GamePublishSummaryText =>
+        GamePublishRequestBuilder.TryBuild(
+            Descriptor.Key,
+            _paths,
+            ManagedToolAction.PublishGameVersion,
+            GamePublishReleaseNotes,
+            out var request,
+            out var error)
+            ? request.Summary
+            : $"尚未就绪：{error}";
+
+    /// <summary>当前设置能组装出的发布请求；页面门禁与适配器共用这一份规则。</summary>
+    public bool TryBuildGamePublishRequest(
+        ManagedToolAction action,
+        out GamePublishRequest request,
+        out string error) =>
+        GamePublishRequestBuilder.TryBuild(
+            Descriptor.Key,
+            _paths,
+            action,
+            GamePublishReleaseNotes,
+            out request,
+            out error);
 
     /// <summary>本次会话是否导入过新构建（推完清掉，决定推送/预览按钮灰不灰）。</summary>
     private bool _serverImportPending;

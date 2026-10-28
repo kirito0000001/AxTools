@@ -535,6 +535,7 @@
                             Padding="16">
                             <StackPanel Spacing="{StaticResource AxSpace12}">
                                 <TextBlock Text="{Binding GamePublishCardTitle}" Style="{StaticResource GroupTitleStyle}" />
+                                <TextBlock Text="{Binding GamePublishSummaryText}" Style="{StaticResource SubtleTextStyle}" />
                                 <ItemsControl
                                     ItemsSource="{Binding GamePublishActions}"
                                     Loaded="ActionItemsControl_Loaded"
