@@ -319,10 +319,12 @@
                                     <SymbolIcon Symbol="Refresh" />
                                 </Button>
                             </Grid>
+                            <!-- 游戏包目录已经挪到设置页「游戏打包与上传」，这里不再重复展示。 -->
                             <Grid
                                 x:Name="GamePackagePathRow"
                                 ColumnSpacing="{StaticResource AxSpace10}"
-                                Margin="0">
+                                Margin="0"
+                                Visibility="Collapsed">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="40" />
