@@ -9,6 +9,8 @@ public enum ToolPageSection
     Development,
     Release,
     Publish,
+    /// <summary>游戏页的「服务器」分区：服务端状态与操作。</summary>
+    Server,
     Fragments,
     Storage,
     /// <summary>游戏页的「设置」页：正规设置项 + 临时的「功能散页」，不参与环境校验。</summary>

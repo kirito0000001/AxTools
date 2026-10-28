@@ -399,16 +399,16 @@ public sealed class ToolPageXamlLayoutTests
     }
 
     [Fact]
-    public void PublishPanel_PutsServerUpdateFirstAndHidesLegacySections()
+    public void ServerPanel_HoldsServerStateAndActions()
     {
         var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
         XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
         var panel = document.Descendants(presentation + "Border")
-            .Single(element => (string?)element.Attribute(xaml + "Name") == "PublishPanel");
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "ServerPanel");
 
-        // 服务端状态排在发布区最上面：实例端口 + 仓库状态 + 刷新。
+        // 服务器单独一页：实例端口 + 仓库状态 + 功能按钮。
         Assert.Contains(
             panel.Descendants(presentation + "TextBlock"),
             element => (string?)element.Attribute("Text") == "服务端状态");
@@ -435,8 +435,10 @@ public sealed class ToolPageXamlLayoutTests
             panel.Descendants(presentation + "Button"),
             element => (string?)element.Attribute("Click") == "RefreshServerState_Click");
 
-        // 旧的发布内容先整块收起，等重新设计。
-        var legacy = panel.Descendants(presentation + "StackPanel")
+        // 发布页仍保留旧内容，但整块是收起的，等重新设计。
+        var publishPanel = document.Descendants(presentation + "Border")
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "PublishPanel");
+        var legacy = publishPanel.Descendants(presentation + "StackPanel")
             .Single(element => (string?)element.Attribute(xaml + "Name") == "LegacyPublishSection");
         Assert.Equal("Collapsed", (string?)legacy.Attribute("Visibility"));
         Assert.Contains(
@@ -540,11 +542,13 @@ public sealed class ToolPageXamlLayoutTests
 
         var tabs = document.Descendants(presentation + "SelectorBarItem").ToList();
         var publishIndex = tabs.FindIndex(item => (string?)item.Attribute(xaml + "Name") == "PublishSelectorItem");
+        var serverIndex = tabs.FindIndex(item => (string?)item.Attribute(xaml + "Name") == "ServerSelectorItem");
         var fragmentIndex = tabs.FindIndex(item => (string?)item.Attribute(xaml + "Name") == "FragmentSelectorItem");
         var storageIndex = tabs.FindIndex(item => (string?)item.Attribute(xaml + "Name") == "StorageSelectorItem");
 
         Assert.True(publishIndex >= 0);
-        Assert.Equal(publishIndex + 1, fragmentIndex);
+        Assert.Equal(publishIndex + 1, serverIndex);
+        Assert.Equal(serverIndex + 1, fragmentIndex);
         Assert.Equal(fragmentIndex + 1, storageIndex);
 
         var fragmentTab = tabs[fragmentIndex];

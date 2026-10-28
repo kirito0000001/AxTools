@@ -656,9 +656,9 @@ public sealed partial class ToolPageViewModel : ObservableObject
                 : ($"缺少：{string.Join("；", missingProjects)}", false);
         }
 
-        if (CurrentSection is ToolPageSection.Publish)
+        if (CurrentSection is ToolPageSection.Server)
         {
-            // 发布页现在管的是服务端：只有「推送了但没切」才值得提醒。
+            // 服务器页：只有「推送了但没切」才值得提醒。
             var updateState = _serverProfile is null
                 ? null
                 : _serverPage?.GetUpdateState(_serverProfile.Key);
@@ -667,6 +667,11 @@ public sealed partial class ToolPageViewModel : ObservableObject
                 return ($"服务器有待应用版本：{updateState.PendingText}；切到最新版本后生效。", false);
             }
 
+            return ("服务端状态正常", true);
+        }
+
+        if (CurrentSection is ToolPageSection.Publish)
+        {
             return ("发布环境已就绪", true);
         }
 

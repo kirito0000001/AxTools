@@ -493,6 +493,7 @@ public sealed partial class ToolPage : UserControl
 
         // 顶部「配置状态」跟着页签走：开发版查项目，打包与发布查游戏包目录。
         var section = selectedItem == PublishSelectorItem ? ToolPageSection.Publish
+            : selectedItem == ServerSelectorItem ? ToolPageSection.Server
             : selectedItem == FragmentSelectorItem ? ToolPageSection.Fragments
             : selectedItem == StorageSelectorItem ? ToolPageSection.Storage
             : selectedItem == SettingsSelectorItem ? ToolPageSection.Settings
@@ -507,6 +508,10 @@ public sealed partial class ToolPage : UserControl
             : Visibility.Collapsed;
         PublishPanel.Visibility = selectedItem == PublishSelectorItem &&
             DataContext is ToolPageViewModel { HasPublishActions: true }
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        ServerPanel.Visibility = selectedItem == ServerSelectorItem &&
+            DataContext is ToolPageViewModel { IsGameTool: true }
                 ? Visibility.Visible
                 : Visibility.Collapsed;
         FragmentPanel.Visibility = selectedItem == FragmentSelectorItem &&
@@ -542,7 +547,7 @@ public sealed partial class ToolPage : UserControl
         }
 
         // 服务端状态：进入发布分区立刻读一次，之后每分钟自动刷新；离开就停表。
-        if (selectedItem == PublishSelectorItem &&
+        if (selectedItem == ServerSelectorItem &&
             DataContext is ToolPageViewModel { IsGameTool: true } publishServerViewModel)
         {
             EnsureServerStateTimer();
