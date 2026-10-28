@@ -498,6 +498,40 @@ public sealed class ToolPageXamlLayoutTests
     }
 
     [Fact]
+    public void PublishPanel_GameToolsUseTwoPackagingCards()
+    {
+        var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+        var section = document.Descendants(presentation + "StackPanel")
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "GamePackagingSection");
+        Assert.Equal(
+            "{Binding IsGameTool, Converter={StaticResource BooleanToVisibilityConverter}}",
+            (string?)section.Attribute("Visibility"));
+
+        var lists = section.Descendants(presentation + "ItemsControl")
+            .Select(element => (string?)element.Attribute("ItemsSource"))
+            .ToArray();
+        Assert.Contains("{Binding PublishPcCommands}", lists);
+        Assert.Contains("{Binding PublishAndroidCommands}", lists);
+
+        var platforms = section.Descendants(presentation + "Button")
+            .Where(element => (string?)element.Attribute("Click") == "PublishCommand_Click")
+            .Select(element => (string?)element.Attribute("Tag"))
+            .Distinct()
+            .ToArray();
+        Assert.Equal(new string?[] { "Windows", "Android" }, platforms);
+
+        // 旧的发布面板只在非游戏工具上出现。
+        var legacy = document.Descendants(presentation + "StackPanel")
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "LegacyPublishSection");
+        Assert.Equal(
+            "{Binding IsGameTool, Converter={StaticResource InverseBooleanToVisibilityConverter}}",
+            (string?)legacy.Attribute("Visibility"));
+    }
+
+    [Fact]
     public void PublishPanel_SeparatesLauncherAndGamePublishingWorkflows()
     {
         var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));

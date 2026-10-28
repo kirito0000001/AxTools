@@ -349,6 +349,28 @@ public sealed partial class ToolPage : UserControl
         }
     }
 
+    /// <summary>本体打包卡片上的按钮：先按平台切好，再交给原发布管道。</summary>
+    private void PublishCommand_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: ServerActionCommand command, Tag: string platform } &&
+            DataContext is ToolPageViewModel viewModel)
+        {
+            viewModel.SetPublishPlatform(platform);
+            if (ToolPageViewModel.ResolvePublishCommand(command.Key) is not { } action)
+            {
+                return;
+            }
+
+            var item = viewModel.AllActions.FirstOrDefault(candidate => candidate.Action == action);
+            if (item is null)
+            {
+                return;
+            }
+
+            ToolActionRequested?.Invoke(this, new ToolActionRequestedEventArgs(viewModel, item));
+        }
+    }
+
     private void ToolAction_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: ToolActionItemViewModel action } &&

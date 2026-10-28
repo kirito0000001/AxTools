@@ -854,6 +854,59 @@ public sealed partial class ToolPageViewModel : ObservableObject
         NotifyConfigurationChanged();
     }
 
+    /// <summary>本体打包（PC 卡）的按钮：顺序即界面顺序。</summary>
+    public IReadOnlyList<ServerActionCommand> PublishPcCommands { get; } =
+    [
+        new("check", "体检", "\uE9D5"),
+        new("publish", "发布新版本", "\uE72D"),
+        new("patch", "发布补丁包", "\uE8B7"),
+        new("patch-fragments", "生成补丁碎片", "\uE7B8"),
+        new("body-fragments", "生成本体碎片", "\uE898") { IsEnabled = false }
+    ];
+
+    /// <summary>本体打包（安卓卡）的按钮：补丁类只支持 PC。</summary>
+    public IReadOnlyList<ServerActionCommand> PublishAndroidCommands { get; } =
+    [
+        new("check", "体检", "\uE9D5"),
+        new("publish", "发布新版本", "\uE72D")
+    ];
+
+    /// <summary>PC 产物摘要：版本 · 模式 · 文件数 · 总大小。</summary>
+    public string PcProductSummary => BuildProductSummary(_paths.GamePackageRoot, "Windows");
+
+    /// <summary>安卓产物摘要。</summary>
+    public string AndroidProductSummary => BuildProductSummary(_paths.GamePackageRootAndroid, "Android");
+
+    private static string BuildProductSummary(string? packageRoot, string platform)
+    {
+        var info = GamePackageBuildInfoReader.Read(packageRoot, out var error, platform);
+        if (info is null)
+        {
+            return $"读取失败：{error}";
+        }
+
+        var size = FormatBytes(info.TotalBytes);
+        return $"版本 {info.Version} · {info.Kind} · {info.Files.Count} 个文件 · {size}";
+    }
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        >= 1024L * 1024 * 1024 => $"{bytes / 1024d / 1024 / 1024:N2} GB",
+        >= 1024L * 1024 => $"{bytes / 1024d / 1024:N1} MB",
+        >= 1024 => $"{bytes / 1024d:N1} KB",
+        _ => $"{bytes} B"
+    };
+
+    /// <summary>本体打包按钮 → 动作；「生成本体碎片」暂无脚本入口，返回 null。</summary>
+    public static ManagedToolAction? ResolvePublishCommand(string key) => key switch
+    {
+        "check" => ManagedToolAction.CheckGamePackage,
+        "publish" => ManagedToolAction.PublishGameVersion,
+        "patch" => ManagedToolAction.PublishGamePatch,
+        "patch-fragments" => ManagedToolAction.GenerateGamePatchFragments,
+        _ => null
+    };
+
     /// <summary>第三片 PC 游戏推送的按钮：按渠道开关过滤。</summary>
     public IReadOnlyList<ToolActionItemViewModel> GamePublishPcActions =>
         IsGameTool ? GamePublishActions.Where(IsPublishChannelEnabled).ToArray() : [];
