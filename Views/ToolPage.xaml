@@ -276,18 +276,9 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <ComboBox
-                                    x:Name="LauncherChannelField"
-                                    Header="启动器通道"
-                                    HorizontalAlignment="Stretch"
-                                    SelectedValue="{Binding PublishChannel, Mode=TwoWay}"
-                                    SelectedValuePath="Tag">
-                                    <ComboBoxItem Content="正式版" Tag="stable" />
-                                    <ComboBoxItem Content="测试版" Tag="beta" />
-                                </ComboBox>
                                 <Grid
                                     x:Name="LauncherVersionField"
-                                    Grid.Column="1"
+                                    Grid.ColumnSpan="2"
                                     ColumnSpacing="{StaticResource AxSpace8}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />

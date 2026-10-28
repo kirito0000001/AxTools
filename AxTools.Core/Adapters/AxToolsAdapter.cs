@@ -19,7 +19,6 @@ public sealed class AxToolsAdapter(string scriptsRoot) : ManagedToolAdapterBase(
         Action(ManagedToolAction.Test, "执行测试", ManagedToolActionSection.Development, "\uE9D5", true),
         Action(ManagedToolAction.RunRelease, "启动正式版", ManagedToolActionSection.Release, "\uE768", false),
         Action(ManagedToolAction.PackageStable, "打包正式版", ManagedToolActionSection.Publish, "\uE7B8", true, true),
-        Action(ManagedToolAction.PackageBeta, "打包测试版", ManagedToolActionSection.Publish, "\uE7B8", true, true),
         Action(ManagedToolAction.ValidatePackage, "校验产物", ManagedToolActionSection.Publish, "\uE9D5", true),
         Action(ManagedToolAction.UploadDryRun, "上传演练", ManagedToolActionSection.Publish, "\uE898", true, true),
         Action(ManagedToolAction.Upload, "单独上传", ManagedToolActionSection.Publish, "\uE898", true, true, true),

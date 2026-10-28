@@ -557,7 +557,8 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains(
             launcherSection.Descendants(presentation + "TextBlock"),
             element => ((string?)element.Attribute("Text"))?.Contains("LauncherVersionStateText") == true);
-        Assert.Contains(
+        // 启动器只发正式版：不再有通道下拉。
+        Assert.DoesNotContain(
             launcherSection.Descendants(presentation + "ComboBox"),
             element => ((string?)element.Attribute("SelectedValue"))?.Contains("PublishChannel") == true);
 

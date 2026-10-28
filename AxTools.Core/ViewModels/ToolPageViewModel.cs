@@ -1681,7 +1681,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
             ManagedToolAction.PackageStable => "stable",
             ManagedToolAction.PackageBeta => "beta",
             _ when isGameAction => GamePublishChannel,
-            _ => PublishChannel
+            _ => "stable"
         };
         return new ManagedToolActionRequest(
             action,
@@ -1870,7 +1870,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
             var channel = action switch
             {
                 ManagedToolAction.PackageStable => "stable",
-                ManagedToolAction.PackageBeta => "beta",
+                ManagedToolAction.PackageBeta => "stable",
                 _ => PublishChannel
             };
             await CheckLauncherPublishedVersionCoreAsync(channel, cancellationToken);
