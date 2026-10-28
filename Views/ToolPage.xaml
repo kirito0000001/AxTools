@@ -218,21 +218,18 @@
                                         <DataTemplate>
                                             <Grid Margin="0,0,0,4" ColumnSpacing="{StaticResource AxSpace12}">
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="96" />
+                                                    <ColumnDefinition Width="120" />
                                                     <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Label}" Style="{StaticResource SubtleTextStyle}" />
+                                                <TextBlock
+                                                    Text="{Binding Label}"
+                                                    TextWrapping="NoWrap"
+                                                    Style="{StaticResource SubtleTextStyle}" />
                                                 <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
                                             </Grid>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
-
-                                <Button
-                                    Content="立即刷新"
-                                    HorizontalAlignment="Left"
-                                    Click="RefreshServerState_Click"
-                                    Style="{StaticResource PrimaryToolButtonStyle}" />
                             </StackPanel>
 
                             <TextBlock
@@ -648,6 +645,26 @@
                                     Click="ProjectPathBrowse_Click"
                                     Style="{StaticResource IconToolButtonStyle}"
                                     ToolTipService.ToolTip="选择安卓启动器目录">
+                                    <FontIcon Glyph="&#xE8B7;" />
+                                </Button>
+                            </Grid>
+                            <Grid ColumnSpacing="{StaticResource AxSpace10}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox
+                                    Header="本机服务端仓库"
+                                    PlaceholderText="三个游戏的裸仓库都放在这个目录下"
+                                    Text="{Binding ServerLocalRepoRoot, Mode=TwoWay}" />
+                                <Button
+                                    Grid.Column="1"
+                                    Margin="0,0,8,0"
+                                    VerticalAlignment="Bottom"
+                                    Tag="server-root"
+                                    Click="ProjectPathBrowse_Click"
+                                    Style="{StaticResource IconToolButtonStyle}"
+                                    ToolTipService.ToolTip="选择本机服务端仓库目录">
                                     <FontIcon Glyph="&#xE8B7;" />
                                 </Button>
                             </Grid>

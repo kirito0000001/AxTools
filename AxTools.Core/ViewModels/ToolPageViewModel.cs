@@ -20,6 +20,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
     private readonly GameWorkbenchProfile? _gameWorkbench;
     private bool _hasAndroidLauncher;
     private readonly GlobalProgressViewModel? _globalProgress;
+    private readonly AppSettings? _appSettings;
     private readonly GameProjectGitService _gitService = new();
     private readonly RiderLauncher _riderLauncher = new();
     private bool _isRunning;
@@ -43,7 +44,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
         CrossingVoidGamePublishState? gamePublishState = null,
         ManagedToolPaths? gamePublishPaths = null,
         IReadOnlyList<FragmentGameOption>? fragmentGameOptions = null,
-        GlobalProgressViewModel? globalProgress = null)
+        GlobalProgressViewModel? globalProgress = null,
+        AppSettings? appSettings = null)
     {
         Descriptor = descriptor;
         _paths = paths;
@@ -53,6 +55,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
         _adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
         _gameWorkbench = GameWorkbenchCatalog.Find(descriptor.Key);
         _globalProgress = globalProgress;
+        _appSettings = appSettings;
         _hasAndroidLauncher = paths.HasAndroidLauncher
             ?? _gameWorkbench?.HasAndroidLauncherByDefault
             ?? false;
@@ -655,10 +658,16 @@ public sealed partial class ToolPageViewModel : ObservableObject
 
         if (CurrentSection is ToolPageSection.Publish)
         {
-            var missingPublish = MissingGamePackageItems();
-            return missingPublish.Count == 0
-                ? ("发布环境已就绪", true)
-                : ($"缺少：{string.Join("；", missingPublish)}", false);
+            // 发布页现在管的是服务端：只有「推送了但没切」才值得提醒。
+            var updateState = _serverProfile is null
+                ? null
+                : _serverPage?.GetUpdateState(_serverProfile.Key);
+            if (updateState?.Remote?.PendingCommit == true)
+            {
+                return ($"服务器有待应用版本：{updateState.PendingText}；切到最新版本后生效。", false);
+            }
+
+            return ("发布环境已就绪", true);
         }
 
         if (CurrentSection is ToolPageSection.Settings)
@@ -685,23 +694,6 @@ public sealed partial class ToolPageViewModel : ObservableObject
             {
                 missing.Add($"{project.DisplayName}（{project.Path} 不存在）");
             }
-        }
-
-        return missing;
-    }
-
-    /// <summary>打包与发布要查的：当前平台的游戏包目录。</summary>
-    private List<string> MissingGamePackageItems()
-    {
-        var missing = new List<string>();
-        var packageRoot = CurrentGamePackageRoot;
-        if (string.IsNullOrWhiteSpace(packageRoot))
-        {
-            missing.Add("游戏包目录");
-        }
-        else if (!Directory.Exists(packageRoot))
-        {
-            missing.Add($"游戏包目录（{packageRoot} 不存在）");
         }
 
         return missing;
@@ -797,6 +789,28 @@ public sealed partial class ToolPageViewModel : ObservableObject
     public string ServerStateStatus { get; private set; } =
         "尚未读取服务端状态；进入本分区会自动读取，也可以点「立即刷新」。";
 
+    /// <summary>本机服务端仓库根目录（设置页可改）；留空时用默认目录。</summary>
+    public string ServerLocalRepoRoot
+    {
+        get => string.IsNullOrWhiteSpace(_appSettings?.ServerLocalRepoRoot)
+            ? ServerProgramCatalog.DefaultLocalRoot
+            : _appSettings!.ServerLocalRepoRoot;
+        set
+        {
+            if (_appSettings is null)
+            {
+                return;
+            }
+
+            _appSettings.ServerLocalRepoRoot = value ?? string.Empty;
+            OnPropertyChanged();
+            // 换目录后旧缓存不成立：清掉，并按新目录重读一次。
+            _serverPage?.InvalidateUpdateStates();
+            RebuildServerUpdateLines();
+            NotifyConfigurationChanged();
+        }
+    }
+
     /// <summary>
     /// 由 ApplicationViewModel 在服务器页 VM 建好之后调用；只有游戏页会匹配到服务端程序。
     /// </summary>
@@ -851,6 +865,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
         {
             _isRefreshingServerState = false;
             OnPropertyChanged(nameof(ServerStateStatus));
+            // 「有待应用版本」显示在顶部通告栏里，读完要一起刷新。
+            NotifyConfigurationChanged();
         }
     }
 

@@ -176,6 +176,15 @@ public sealed class ServerPageViewModel(
     public ServerProgramUpdateState? GetUpdateState(string programKey) =>
         _updateStates.GetValueOrDefault(programKey);
 
+    /// <summary>本机服务端仓库根目录：设置里填了就用它，否则用默认目录。</summary>
+    public string LocalRepoRoot =>
+        string.IsNullOrWhiteSpace(_appSettings?.ServerLocalRepoRoot)
+            ? ServerProgramCatalog.DefaultLocalRoot
+            : _appSettings!.ServerLocalRepoRoot;
+
+    /// <summary>设置里改了仓库根目录后清掉缓存，下一次刷新按新目录重读。</summary>
+    public void InvalidateUpdateStates() => _updateStates.Clear();
+
     /// <summary>
     /// 只刷新一个程序的服务端更新状态。远端状态要起一次 SSH，因此只在用户进入
     /// 对应页签或执行动作后调用，不跟着看门狗轮询一起跑。
@@ -187,7 +196,7 @@ public sealed class ServerPageViewModel(
         var state = new ServerProgramUpdateState
         {
             Profile = profile,
-            LocalRepoPath = ServerProgramCatalog.GetLocalRepoPath(profile)
+            LocalRepoPath = ServerProgramCatalog.GetLocalRepoPath(profile, LocalRepoRoot)
         };
 
         if (_updateService is null)
@@ -208,7 +217,7 @@ public sealed class ServerPageViewModel(
 
         try
         {
-            state.Local = await _updateService.ReadLocalStatusAsync(profile, null, cancellationToken);
+            state.Local = await _updateService.ReadLocalStatusAsync(profile, LocalRepoRoot, cancellationToken);
         }
         catch (Exception exception)
         {

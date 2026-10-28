@@ -38,7 +38,15 @@ public sealed partial class MainWindow
         var folder = await folderPicker.PickSingleFolderAsync();
         if (folder is not null)
         {
-            args.ViewModel.SetProjectPath(args.ProjectId, folder.Path);
+            // server-root 不是游戏项目，是本机服务端仓库根目录（全局设置）。
+            if (string.Equals(args.ProjectId, "server-root", StringComparison.Ordinal))
+            {
+                args.ViewModel.ServerLocalRepoRoot = folder.Path;
+            }
+            else
+            {
+                args.ViewModel.SetProjectPath(args.ProjectId, folder.Path);
+            }
         }
     }
 

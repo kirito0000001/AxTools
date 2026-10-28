@@ -347,7 +347,7 @@ public sealed class ToolPageXamlLayoutTests
             .Where(element => (string?)element.Attribute("Click") == "ProjectPathBrowse_Click")
             .Select(element => (string?)element.Attribute("Tag"))
             .ToArray();
-        Assert.Equal(new string?[] { "client", "android" }, browseTags);
+        Assert.Equal(new string?[] { "client", "android", "server-root" }, browseTags);
 
         // 暂存清单绑定到 GameScratchItems。
         Assert.Contains(
@@ -422,7 +422,8 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains(
             panel.Descendants(presentation + "TextBlock"),
             element => (string?)element.Attribute("Text") == "尚未读取到实例信息。");
-        Assert.Contains(
+        // 手动刷新按钮已删：进入分区自动读，之后 15 秒一次。
+        Assert.DoesNotContain(
             panel.Descendants(presentation + "Button"),
             element => (string?)element.Attribute("Click") == "RefreshServerState_Click");
 

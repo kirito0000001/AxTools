@@ -240,15 +240,6 @@ public sealed partial class ToolPage : UserControl
         viewModel.ReportActionMessage($"已复制到剪贴板：{repositoryUrl}");
     }
 
-    /// <summary>发布区「服务端状态」的立即刷新。</summary>
-    private async void RefreshServerState_Click(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is ToolPageViewModel viewModel)
-        {
-            await viewModel.RefreshServerStateAsync(CancellationToken.None);
-        }
-    }
-
     private async void RefreshLauncherVersion_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is ToolPageViewModel viewModel)
@@ -559,7 +550,7 @@ public sealed partial class ToolPage : UserControl
         }
 
         _serverStateTimer = DispatcherQueue.CreateTimer();
-        _serverStateTimer.Interval = TimeSpan.FromMinutes(1);
+        _serverStateTimer.Interval = TimeSpan.FromSeconds(15);
         _serverStateTimer.IsRepeating = true;
         _serverStateTimer.Tick += async (_, _) =>
         {

@@ -101,7 +101,8 @@ public sealed class ApplicationViewModel : ObservableObject
                 fragmentGameOptions: descriptor.Key == ManagedToolKey.CrossingVoidPc
                     ? fragmentGameOptions
                     : null,
-                globalProgress: GlobalProgress))
+                globalProgress: GlobalProgress,
+                appSettings: settings))
             .ToArray();
         CrossingVoidPackage = new CrossingVoidPackageViewModel(
             settings.CrossingVoidPackage,

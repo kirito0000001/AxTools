@@ -52,6 +52,12 @@ public sealed class AppSettings
     /// </summary>
     public Dictionary<string, string> ServerImportSources { get; set; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// 本机服务端仓库根目录（三个程序的裸仓库都放在它下面）。
+    /// 留空时用 ServerProgramCatalog.DefaultLocalRoot，换盘或换目录时只改这一处。
+    /// </summary>
+    public string ServerLocalRepoRoot { get; set; } = string.Empty;
+
     public static Dictionary<string, ManagedToolPaths> CreateManagedTools() =>
         ManagedToolCatalog.All.ToDictionary(
             tool => tool.StableKey,
