@@ -82,6 +82,20 @@ public sealed partial class MainWindow
         await args.ViewModel.RefreshServerStateAsync(CancellationToken.None);
     }
 
+    /// <summary>实例状态行上的日志 / 启动 / 停止 / 重启，交给旧服务器页执行。</summary>
+    private async void ToolPage_InstanceActionRequested(
+        object? sender,
+        ToolInstanceActionRequestedEventArgs args)
+    {
+        if (args.ViewModel.ServerViewModel is not { } server)
+        {
+            return;
+        }
+
+        await ServerAliyunPage.RunInstanceCommandAsync(args.InstanceName, args.Command);
+        await args.ViewModel.RefreshServerStateAsync(CancellationToken.None);
+    }
+
     private async void GlobalSettingsPage_ProjectRootSelectionRequested(
         object? sender,
         EventArgs args)

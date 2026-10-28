@@ -35,6 +35,9 @@ public sealed partial class ToolPage : UserControl
     /// <summary>服务器管理卡片的动作（看门狗日志、日志与缓存清理等）。</summary>
     public event EventHandler<ToolServerManagementActionRequestedEventArgs>? ServerManagementActionRequested;
 
+    /// <summary>实例行上的日志 / 启动 / 停止 / 重启。</summary>
+    public event EventHandler<ToolInstanceActionRequestedEventArgs>? InstanceActionRequested;
+
     public ToolPage()
     {
         InitializeComponent();
@@ -75,6 +78,17 @@ public sealed partial class ToolPage : UserControl
             ProjectPathSelectionRequested?.Invoke(
                 this,
                 new ToolProjectPathSelectionRequestedEventArgs(viewModel, projectId));
+        }
+    }
+
+    private void InstanceAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: ServerInstanceViewModel instance, Tag: string command } &&
+            DataContext is ToolPageViewModel viewModel)
+        {
+            InstanceActionRequested?.Invoke(
+                this,
+                new ToolInstanceActionRequestedEventArgs(viewModel, instance.Name, command));
         }
     }
 
@@ -641,4 +655,17 @@ public sealed class ToolServerManagementActionRequestedEventArgs(
     public ToolPageViewModel ViewModel { get; } = viewModel;
 
     public string ActionKey { get; } = actionKey;
+}
+
+/// <summary>实例行动作：instanceName 对应 ServerInstanceViewModel.Name，command 为 log/start/stop/restart。</summary>
+public sealed class ToolInstanceActionRequestedEventArgs(
+    ToolPageViewModel viewModel,
+    string instanceName,
+    string command) : EventArgs
+{
+    public ToolPageViewModel ViewModel { get; } = viewModel;
+
+    public string InstanceName { get; } = instanceName;
+
+    public string Command { get; } = command;
 }

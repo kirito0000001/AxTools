@@ -473,6 +473,36 @@ public sealed partial class ServerPage : UserControl
     }
 
     /// <summary>
+    /// 实例级动作（日志 / 启动 / 停止 / 重启），按实例名定位后交给现有实现。
+    /// 停止与重启的确认弹窗在 RunInstanceActionAsync 里，仍然生效。
+    /// </summary>
+    internal async Task RunInstanceCommandAsync(string instanceName, string command)
+    {
+        var instance = ViewModel?.Instances.FirstOrDefault(
+            item => string.Equals(item.Name, instanceName, StringComparison.Ordinal));
+        if (instance is null)
+        {
+            return;
+        }
+
+        switch (command)
+        {
+            case "log":
+                await ShowInstanceLogAsync(instance);
+                break;
+            case "start":
+                await RunInstanceActionAsync(instance, "start", "启动");
+                break;
+            case "stop":
+                await RunInstanceActionAsync(instance, "stop", "停止");
+                break;
+            case "restart":
+                await RunInstanceActionAsync(instance, "restart", "重启");
+                break;
+        }
+    }
+
+    /// <summary>
     /// 服务器级动作（看门狗日志、日志/缓存/崩溃清理、暂停监控），供其它页面调用。
     /// 与 RunProgramActionAsync 一样复用现有实现，不重写。
     /// </summary>

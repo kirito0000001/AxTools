@@ -1383,6 +1383,91 @@ public sealed partial class ToolPageViewModel : ObservableObject
         await CheckLauncherPublishedVersionCoreAsync(PublishChannel, cancellationToken);
     }
 
+    /// <summary>
+    /// 动作预检：版本门禁 → 生成请求 → 需要确认时把确认内容一起算好。
+    /// 这三步原先散在 MainWindow.ToolActions 里，界面只负责渲染。
+    /// </summary>
+    public async Task<ToolActionPreflightResult> PrepareActionAsync(
+        ManagedToolAction action,
+        CancellationToken cancellationToken)
+    {
+        var validation = await ValidatePublishingVersionAsync(action, cancellationToken);
+        if (!validation.IsAllowed)
+        {
+            return ToolActionPreflightResult.Block("版本检查未通过", validation.Message);
+        }
+
+        ManagedToolActionRequest request;
+        try
+        {
+            request = CreateRequest(action);
+        }
+        catch (Exception exception)
+        {
+            return ToolActionPreflightResult.Block("无法创建任务", exception.Message);
+        }
+
+        if (action == ManagedToolAction.ReplaceRelease)
+        {
+            var pendingService = new PendingPackageService();
+            if (!pendingService.TryGetValidSummary(
+                    StableKey,
+                    OutputRoot,
+                    out var pending,
+                    out var validationMessage))
+            {
+                return ToolActionPreflightResult.Block("无法替换正式版", validationMessage);
+            }
+
+            return ToolActionPreflightResult.Ready(new ToolActionConfirmation(
+                "确认替换正式版",
+                "替换正式版",
+                [
+                    new("工具", DisplayName),
+                    new("版本", pending!.Version),
+                    new("已验证临时包", pending.PackageRoot),
+                    new("正式版目标", pending.TargetRoot)
+                ],
+                "替换期间旧目录会被临时改名；新目录就位后立即删除临时备份。若操作失败，AxTools 会恢复旧正式版。"),
+                request);
+        }
+
+        var isGameAction = PublishTargetCatalog.IsGamePublishingAction(action);
+        var lines = new List<ToolActionConfirmationLine>
+        {
+            new("工具", DisplayName),
+            new(isGameAction ? "游戏版本" : "启动器版本",
+                string.IsNullOrWhiteSpace(request.Version) ? "未填写" : request.Version),
+            new("通道", request.Channel),
+            new("输出目录", string.IsNullOrWhiteSpace(OutputRoot) ? "未配置" : OutputRoot)
+        };
+        if (isGameAction)
+        {
+            lines.Add(new ToolActionConfirmationLine(
+                "游戏目录",
+                string.IsNullOrWhiteSpace(GamePackageRoot) ? "未配置" : GamePackageRoot));
+        }
+
+        lines.Add(new ToolActionConfirmationLine(
+            "发布目标",
+            action == ManagedToolAction.PublishGameVersionToGitHub
+                ? "GitHub Release（游戏适配器配置的仓库）"
+                : action == ManagedToolAction.PublishGamePatch
+                    ? "GitHub Release（Windows 补丁包）"
+                    : action == ManagedToolAction.GenerateGamePatchFragments
+                        ? "本机补丁碎片输出目录"
+                        : PublishTargetCatalog.GetPublishTarget(Descriptor.Key)));
+
+        return ToolActionPreflightResult.Ready(new ToolActionConfirmation(
+            "确认真实上传",
+            "确认真实上传",
+            lines,
+            isGameAction
+                ? PublishTargetCatalog.GetIntent(action)
+                : "这是实际上传操作，将写入远端发布目标。请确认以上信息无误。"),
+            request);
+    }
+
     public async Task<PublishingVersionValidationResult> ValidatePublishingVersionAsync(
         ManagedToolAction action,
         CancellationToken cancellationToken)

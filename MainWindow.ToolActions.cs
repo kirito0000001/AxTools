@@ -33,35 +33,23 @@ public sealed partial class MainWindow
 
         try
         {
-            var versionValidation = await args.ViewModel.ValidatePublishingVersionAsync(
+            // 版本门禁、请求组装、确认内容都下沉到 Core：这里只负责显示与放行。
+            var preflight = await args.ViewModel.PrepareActionAsync(
                 args.Action.Action,
                 _windowTaskCancellation.Token);
-            if (!versionValidation.IsAllowed)
+            if (!preflight.Allowed || preflight.Request is null)
             {
                 _viewModel.LogService.Write(
                     LogKind.Warning,
-                    $"已阻止倒序打包或发布：{args.ViewModel.DisplayName} · {versionValidation.Message}");
-                await ShowMessageDialogAsync("版本检查未通过", versionValidation.Message);
+                    $"{args.ViewModel.DisplayName} · {args.Action.DisplayName} 未通过预检：{preflight.BlockedMessage}");
+                await ShowMessageDialogAsync(preflight.BlockedTitle, preflight.BlockedMessage);
                 return;
             }
 
-            ManagedToolActionRequest request;
-            try
-            {
-                request = args.ViewModel.CreateRequest(args.Action.Action);
-            }
-            catch (Exception exception)
-            {
-                _viewModel.LogService.Write(
-                    LogKind.Warning,
-                    $"{args.ViewModel.DisplayName} 动作参数无效。",
-                    exception);
-                await ShowMessageDialogAsync("无法创建任务", exception.Message);
-                return;
-            }
-
+            var request = preflight.Request;
             if (args.Action.RequiresConfirmation &&
-                !await ConfirmRealPublishAsync(args.ViewModel, request))
+                preflight.Confirmation is { } confirmation &&
+                !await ShowActionConfirmationAsync(confirmation))
             {
                 _viewModel.LogService.Write(
                     LogKind.Warning,
@@ -308,104 +296,34 @@ public sealed partial class MainWindow
         await CompleteAndHideGlobalProgressAsync();
     }
 
-    private async Task<bool> ConfirmRealPublishAsync(
-        ToolPageViewModel tool,
-        ManagedToolActionRequest request)
+    /// <summary>
+    /// 按 Core 给的确认内容渲染弹窗：行由 <see cref="ToolActionConfirmation"/> 决定，
+    /// 这里不再判断动作类型，也不再拼文案。
+    /// </summary>
+    private async Task<bool> ShowActionConfirmationAsync(ToolActionConfirmation confirmation)
     {
-        if (request.Action == ManagedToolAction.ReplaceRelease)
+        var content = new StackPanel { Spacing = 8 };
+        foreach (var line in confirmation.Lines)
         {
-            var pendingService = new PendingPackageService();
-            if (!pendingService.TryGetValidSummary(
-                tool.StableKey,
-                tool.OutputRoot,
-                out var pending,
-                out var validationMessage))
-            {
-                await ShowMessageDialogAsync("无法替换正式版", validationMessage);
-                return false;
-            }
+            content.Children.Add(CreateDialogLine(line.Label, line.Value));
+        }
 
-            var replacementContent = new StackPanel { Spacing = 8 };
-            replacementContent.Children.Add(CreateDialogLine("工具", tool.DisplayName));
-            replacementContent.Children.Add(CreateDialogLine("版本", pending!.Version));
-            replacementContent.Children.Add(CreateDialogLine("已验证临时包", pending.PackageRoot));
-            replacementContent.Children.Add(CreateDialogLine("正式版目标", pending.TargetRoot));
-            replacementContent.Children.Add(new TextBlock
+        if (!string.IsNullOrWhiteSpace(confirmation.Note))
+        {
+            content.Children.Add(new TextBlock
             {
-                Text = "替换期间旧目录会被临时改名；新目录就位后立即删除临时备份。若操作失败，AxTools 会恢复旧正式版。",
+                Text = confirmation.Note,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 8, 0, 0)
             });
-            var replacementDialog = new ContentDialog
-            {
-                XamlRoot = RootGrid.XamlRoot,
-                Title = "确认替换正式版",
-                Content = replacementContent,
-                PrimaryButtonText = "替换正式版",
-                CloseButtonText = "取消",
-                DefaultButton = ContentDialogButton.Close
-            };
-            return await TryShowDialogAsync(replacementDialog) == ContentDialogResult.Primary;
         }
-
-        var isGamePublishingAction = request.Action is
-            ManagedToolAction.CheckGamePackage or
-            ManagedToolAction.PublishGameVersion or
-            ManagedToolAction.PublishGameVersionToGitHub or
-            ManagedToolAction.PublishGamePatch or
-            ManagedToolAction.GenerateGamePatchFragments or
-            ManagedToolAction.RebuildGameDownloadRepo;
-        var content = new StackPanel { Spacing = 8 };
-        content.Children.Add(CreateDialogLine("工具", tool.DisplayName));
-        content.Children.Add(CreateDialogLine(
-            isGamePublishingAction ? "游戏版本" : "启动器版本",
-            string.IsNullOrWhiteSpace(request.Version) ? "未填写" : request.Version));
-        content.Children.Add(CreateDialogLine("通道", request.Channel));
-        content.Children.Add(CreateDialogLine(
-            "输出目录",
-            string.IsNullOrWhiteSpace(tool.OutputRoot) ? "未配置" : tool.OutputRoot));
-        if (isGamePublishingAction)
-        {
-            content.Children.Add(CreateDialogLine("游戏目录", tool.GamePackageRoot));
-        }
-        content.Children.Add(CreateDialogLine(
-            "发布目标",
-            request.Action == ManagedToolAction.PublishGameVersionToGitHub
-                ? "GitHub Release（游戏适配器配置的仓库）"
-                : request.Action == ManagedToolAction.PublishGamePatch
-                    ? "GitHub Release（Windows 补丁包）"
-                    : request.Action == ManagedToolAction.GenerateGamePatchFragments
-                        ? "本机补丁碎片输出目录"
-                        : GetPublishTarget(tool.Descriptor.Key)));
-        var gameIntentText = request.Action switch
-        {
-            ManagedToolAction.CheckGamePackage =>
-                "这一步只在本机扫描产物、算哈希、生成清单，不会提交也不会联网。",
-            ManagedToolAction.PublishGameVersionToGitHub =>
-                "这一步只在本机生成清单和版本目录，然后上传到 GitHub Release；不连下载站、不走 SFTP。",
-            ManagedToolAction.PublishGamePatch =>
-                "这一步只读取打包插件的 Version.json 和补丁文件，生成 Windows 补丁包并发布到 GitHub；不上传完整游戏包。",
-            ManagedToolAction.GenerateGamePatchFragments =>
-                "这一步只在本机按线上基线的变化文件生成补丁碎片 zip，不上传任何文件。",
-            ManagedToolAction.RebuildGameDownloadRepo =>
-                "这一步会重建本机暂存仓库、压成单提交（清掉历史对象）；代价是这次必须全量重传一次，耗时最长。只在仓库体积顶不住时用。",
-            _ => "这是实际上传操作：按文件清单把这一版增量推到下载站，没有变化的文件不会重复上传。"
-        };
-        content.Children.Add(new TextBlock
-        {
-            Text = isGamePublishingAction
-                ? gameIntentText
-                : "这是实际上传操作，将写入远端发布目标。请确认以上信息无误。",
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 8, 0, 0)
-        });
 
         var dialog = new ContentDialog
         {
             XamlRoot = RootGrid.XamlRoot,
-            Title = "确认真实上传",
+            Title = confirmation.Title,
             Content = content,
-            PrimaryButtonText = "确认真实上传",
+            PrimaryButtonText = confirmation.PrimaryButtonText,
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close
         };
@@ -605,11 +523,4 @@ public sealed partial class MainWindow
             TextWrapping = TextWrapping.Wrap
         };
 
-    private static string GetPublishTarget(ManagedToolKey key) => key switch
-    {
-        ManagedToolKey.FantasyTools => "FantasyTools 的 GitHub / Gitee 发布资产",
-        ManagedToolKey.CrossingVoidPc => "零境启动器 PC 的 Gitee 发布资产",
-        ManagedToolKey.CrossingVoidAndroid => "零境启动器 Android 的 Gitee 发布资产",
-        _ => "该工具配置的远端发布目标"
-    };
 }

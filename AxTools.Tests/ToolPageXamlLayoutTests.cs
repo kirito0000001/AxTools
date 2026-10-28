@@ -233,7 +233,9 @@ public sealed class ToolPageXamlLayoutTests
                     source?.Contains("GameProjectActions") != true &&
                     source != "{Binding Actions}" &&
                     source != "{Binding ServerActions}" &&
-                    source != "{Binding ServerManagementActions}";
+                    source != "{Binding ServerManagementActions}" &&
+                    source != "{Binding GamePublishActions}" &&
+                    source != "{Binding GameMaintenanceActions}";
             })
             .ToArray();
 
@@ -443,6 +445,12 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains(
             panel.Descendants(presentation + "ItemsControl"),
             element => (string?)element.Attribute("ItemsSource") == "{Binding GamePublishActions}");
+        // 实例行四个管理按钮：日志 / 启动 / 停止 / 重启。
+        var instanceButtons = panel.Descendants(presentation + "Button")
+            .Where(element => (string?)element.Attribute("Click") == "InstanceAction_Click")
+            .Select(element => (string?)element.Attribute("Tag"))
+            .ToArray();
+        Assert.Equal(new string?[] { "log", "start", "stop", "restart" }, instanceButtons);
 
         // 手动刷新按钮已删：进入分区自动读，之后 15 秒一次。
         Assert.DoesNotContain(

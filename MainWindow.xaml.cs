@@ -103,6 +103,9 @@ public sealed partial class MainWindow : Window
         CrossingVoidGamePage.ServerManagementActionRequested += ToolPage_ServerManagementActionRequested;
         FantasyGamePage.ServerManagementActionRequested += ToolPage_ServerManagementActionRequested;
         NarutoGamePage.ServerManagementActionRequested += ToolPage_ServerManagementActionRequested;
+        CrossingVoidGamePage.InstanceActionRequested += ToolPage_InstanceActionRequested;
+        FantasyGamePage.InstanceActionRequested += ToolPage_InstanceActionRequested;
+        NarutoGamePage.InstanceActionRequested += ToolPage_InstanceActionRequested;
         // 《生成碎片》的页面由 GameProfileCatalog 决定（零境/幻杀 PC/安卓）；
         // 接线、确认弹窗、执行和进度全在 MainWindow.Fragments.cs 里。
         AttachFragmentGenerationHandlers();
@@ -227,6 +230,9 @@ public sealed partial class MainWindow : Window
         CrossingVoidGamePage.ServerManagementActionRequested -= ToolPage_ServerManagementActionRequested;
         FantasyGamePage.ServerManagementActionRequested -= ToolPage_ServerManagementActionRequested;
         NarutoGamePage.ServerManagementActionRequested -= ToolPage_ServerManagementActionRequested;
+        CrossingVoidGamePage.InstanceActionRequested -= ToolPage_InstanceActionRequested;
+        FantasyGamePage.InstanceActionRequested -= ToolPage_InstanceActionRequested;
+        NarutoGamePage.InstanceActionRequested -= ToolPage_InstanceActionRequested;
         if (_viewModel.TaskRunner is not null)
         {
             _viewModel.TaskRunner.EventReceived -= TaskRunner_EventReceived;

@@ -419,9 +419,15 @@
                                                             Height="10"
                                                             VerticalAlignment="Center"
                                                             Fill="{Binding StateKey, Converter={StaticResource ServerInstanceStateBrushConverter}}" />
-                                                        <StackPanel Grid.Column="1" Spacing="{StaticResource AxSpace2}">
+                                                        <StackPanel Grid.Column="1" Spacing="{StaticResource AxSpace6}">
                                                             <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
                                                             <TextBlock Text="{Binding EndpointText}" Style="{StaticResource SubtleTextStyle}" />
+                                                            <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace8}">
+                                                                <Button Content="日志" Tag="log" Click="InstanceAction_Click" Style="{StaticResource PrimaryToolButtonStyle}" />
+                                                                <Button Content="启动" Tag="start" Click="InstanceAction_Click" Style="{StaticResource PrimaryToolButtonStyle}" />
+                                                                <Button Content="停止" Tag="stop" Click="InstanceAction_Click" Style="{StaticResource PrimaryToolButtonStyle}" />
+                                                                <Button Content="重启" Tag="restart" Click="InstanceAction_Click" Style="{StaticResource PrimaryToolButtonStyle}" />
+                                                            </StackPanel>
                                                         </StackPanel>
                                                         <StackPanel
                                                             Grid.Column="2"
@@ -536,28 +542,49 @@
                             <StackPanel Spacing="{StaticResource AxSpace12}">
                                 <TextBlock Text="{Binding GamePublishCardTitle}" Style="{StaticResource GroupTitleStyle}" />
                                 <TextBlock Text="{Binding GamePublishSummaryText}" Style="{StaticResource SubtleTextStyle}" />
-                                <ItemsControl
-                                    ItemsSource="{Binding GamePublishActions}"
-                                    Loaded="ActionItemsControl_Loaded"
-                                    SizeChanged="ActionItemsControl_SizeChanged"
-                                    ItemTemplate="{StaticResource ToolActionButtonTemplate}">
+                                <ItemsControl ItemsSource="{Binding GamePublishActions}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
-                                            <ItemsWrapGrid Orientation="Horizontal" />
+                                            <ItemsWrapGrid Orientation="Horizontal" ItemWidth="200" />
                                         </ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button
+                                                Margin="0,0,8,8"
+                                                IsEnabled="{Binding IsEnabled}"
+                                                Click="ToolAction_Click"
+                                                Style="{StaticResource CardActionButtonStyle}">
+                                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace8}">
+                                                    <FontIcon Glyph="{Binding IconGlyph}" FontSize="16" />
+                                                    <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                                 <ItemsControl
                                     ItemsSource="{Binding GameMaintenanceActions}"
-                                    Loaded="ActionItemsControl_Loaded"
-                                    SizeChanged="ActionItemsControl_SizeChanged"
-                                    Visibility="{Binding HasGameMaintenanceActions, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                    ItemTemplate="{StaticResource ToolActionButtonTemplate}">
+                                    Visibility="{Binding HasGameMaintenanceActions, Converter={StaticResource BooleanToVisibilityConverter}}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
-                                            <ItemsWrapGrid Orientation="Horizontal" />
+                                            <ItemsWrapGrid Orientation="Horizontal" ItemWidth="200" />
                                         </ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button
+                                                Margin="0,0,8,8"
+                                                IsEnabled="{Binding IsEnabled}"
+                                                Click="ToolAction_Click"
+                                                Style="{StaticResource CardActionButtonStyle}">
+                                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace8}">
+                                                    <FontIcon Glyph="{Binding IconGlyph}" FontSize="16" />
+                                                    <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </StackPanel>
                         </Border>
