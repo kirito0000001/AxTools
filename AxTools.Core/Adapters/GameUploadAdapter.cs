@@ -135,6 +135,26 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
             throw new InvalidOperationException(error);
         }
 
+        // 本次渠道选择（仅这一次）：脚本支持 -SkipGitHub / -GitHubOnly。
+        var channelArguments = new List<string>();
+        if (request.Action == ManagedToolAction.PublishGameVersion &&
+            request.Channels is { } channels)
+        {
+            if (!channels.IsValid)
+            {
+                throw new InvalidOperationException("至少选择一个发布渠道。");
+            }
+
+            if (!channels.DownloadSite)
+            {
+                channelArguments.Add("-GitHubOnly");
+            }
+            else if (!channels.GitHub)
+            {
+                channelArguments.Add("-SkipGitHub");
+            }
+        }
+
         // 产品段名和版本标记文件名**不从这里下发**：每个游戏的包装脚本自己带
         // （Scripts\Adapters\<游戏>\Invoke-<游戏>Action.ps1），内核再从包装脚本接手。
         // 同一份信息下发两次会打架——踩过的坑：包装脚本不认识 -ProductSegment，直接绑参失败。
@@ -146,7 +166,7 @@ public abstract class GameUploadAdapter : ManagedToolAdapterBase
                 "-GamePackageRoot", publish.PackageRoot,
                 "-ReleaseNotes", publish.ReleaseNotes,
                 "-FragmentOutputDirectory", paths.FragmentOutputDirectory
-            ]).ToArray()
+            ].Concat(channelArguments)).ToArray()
         };
     }
 }

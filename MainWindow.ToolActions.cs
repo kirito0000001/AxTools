@@ -36,7 +36,8 @@ public sealed partial class MainWindow
             // 版本门禁、请求组装、确认内容都下沉到 Core：这里只负责显示与放行。
             var preflight = await args.ViewModel.PrepareActionAsync(
                 args.Action.Action,
-                _windowTaskCancellation.Token);
+                _windowTaskCancellation.Token,
+                args.Channels);
             if (!preflight.Allowed || preflight.Request is null)
             {
                 _viewModel.LogService.Write(

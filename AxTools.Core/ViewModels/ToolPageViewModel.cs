@@ -1661,7 +1661,9 @@ public sealed partial class ToolPageViewModel : ObservableObject
             ? "项目特征已通过检查，可以执行适配器动作。"
             : ConfigurationStatus;
 
-    public ManagedToolActionRequest CreateRequest(ManagedToolAction action)
+    public ManagedToolActionRequest CreateRequest(
+        ManagedToolAction action,
+        PublishChannelChoice? channels = null)
     {
         var definition = _adapter.Actions.SingleOrDefault(item => item.Action == action)
             ?? throw new NotSupportedException($"{DisplayName} 不支持动作 {action}。");
@@ -1687,7 +1689,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
             channel,
             isGameAction
                 ? GameReleaseDescription.Trim()
-                : LauncherReleaseDescription.Trim());
+                : LauncherReleaseDescription.Trim(),
+            channels);
     }
 
     public void RefreshLauncherPublishSettings()
@@ -1742,7 +1745,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
     /// </summary>
     public async Task<ToolActionPreflightResult> PrepareActionAsync(
         ManagedToolAction action,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        PublishChannelChoice? channels = null)
     {
         var validation = await ValidatePublishingVersionAsync(action, cancellationToken);
         if (!validation.IsAllowed)
@@ -1753,7 +1757,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
         ManagedToolActionRequest request;
         try
         {
-            request = CreateRequest(action);
+            request = CreateRequest(action, channels);
         }
         catch (Exception exception)
         {
@@ -1810,6 +1814,11 @@ public sealed partial class ToolPageViewModel : ObservableObject
                     : action == ManagedToolAction.GenerateGamePatchFragments
                         ? "本机补丁碎片输出目录"
                         : PublishTargetCatalog.GetPublishTarget(Descriptor.Key)));
+
+        if (channels is not null)
+        {
+            lines.Add(new ToolActionConfirmationLine("本次渠道", channels.Describe()));
+        }
 
         return ToolActionPreflightResult.Ready(new ToolActionConfirmation(
             "确认真实上传",

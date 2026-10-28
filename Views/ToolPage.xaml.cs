@@ -106,6 +106,49 @@ public sealed partial class ToolPage : UserControl
         }
     }
 
+    /// <summary>本次发布渠道：默认取设置里的渠道开关，勾选只影响这一次。</summary>
+    private async Task<PublishChannelChoice?> PickPublishChannelsAsync(ToolPageViewModel viewModel)
+    {
+        var download = new CheckBox
+        {
+            Content = "野草云（下载站）",
+            IsChecked = viewModel.PublishToDownloadSite
+        };
+        var github = new CheckBox
+        {
+            Content = "GitHub Release",
+            IsChecked = viewModel.PublishToGitHub
+        };
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(download);
+        content.Children.Add(github);
+        content.Children.Add(new TextBlock
+        {
+            Text = "只影响这一次发布，不会改动设置。",
+            Opacity = 0.72,
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "本次发布渠道",
+            Content = content,
+            PrimaryButtonText = "开始发布",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        if (await DialogGate.TryShowAsync(dialog) != ContentDialogResult.Primary)
+        {
+            return null;
+        }
+
+        var choice = new PublishChannelChoice(download.IsChecked == true, github.IsChecked == true);
+        return choice.IsValid ? choice : null;
+    }
+
     /// <summary>体检结果：一行一条，通过/问题都列出来，只给关闭按钮。</summary>
     private async Task ShowHealthReportAsync(GamePackageHealthReport report)
     {
@@ -400,7 +443,19 @@ public sealed partial class ToolPage : UserControl
                 return;
             }
 
-            ToolActionRequested?.Invoke(this, new ToolActionRequestedEventArgs(viewModel, item));
+            PublishChannelChoice? channels = null;
+            if (command.Key == "publish")
+            {
+                channels = await PickPublishChannelsAsync(viewModel);
+                if (channels is null)
+                {
+                    return;
+                }
+            }
+
+            ToolActionRequested?.Invoke(
+                this,
+                new ToolActionRequestedEventArgs(viewModel, item) { Channels = channels });
         }
     }
 
@@ -701,6 +756,9 @@ public sealed class ToolDownloadRequestedEventArgs(
     public ToolPageViewModel ViewModel { get; } = viewModel;
 
     public ToolActionItemViewModel Action { get; } = action;
+
+    /// <summary>本次发布渠道；为空表示按设置默认。</summary>
+    public PublishChannelChoice? Channels { get; init; }
 }
 
 public sealed class ToolActionRequestedEventArgs(
