@@ -388,82 +388,123 @@
                 <!-- 服务器：服务端状态与操作单独一页，不再挤在发布区里。 -->
                 <Border x:Name="ServerPanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
                     <StackPanel Spacing="{StaticResource AxSpace16}">
-                        <!-- 服务端状态：实例端口 + 仓库更新状态；进入本分区自动刷新，之后每分钟一次。 -->
-                        <StackPanel
-                            Spacing="{StaticResource AxSpace12}"
-                            Visibility="{Binding IsGameTool, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <TextBlock Text="服务端状态" Style="{StaticResource GroupTitleStyle}" />
-                            <TextBlock Text="{Binding ServerStateStatus}" Style="{StaticResource SubtleTextStyle}" />
+                        <!-- 第一片：服务端推送（版本状态 + 实例 + 七个动作）。 -->
+                        <Border
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource AxRadiusMedium}"
+                            Padding="16">
+                            <StackPanel Spacing="{StaticResource AxSpace12}">
+                                <TextBlock Text="{Binding ServerPushCardTitle}" Style="{StaticResource GroupTitleStyle}" />
+                                <TextBlock Text="{Binding ServerStateStatus}" Style="{StaticResource SubtleTextStyle}" />
 
-                            <StackPanel Spacing="{StaticResource AxSpace12}" Visibility="{Binding HasServerUpdate, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <ItemsControl ItemsSource="{Binding ServerInstances}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border
-                                                Margin="0,0,0,8"
-                                                Padding="12,10,12,10"
-                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="{StaticResource AxRadiusMedium}">
-                                                <Grid ColumnSpacing="{StaticResource AxSpace12}">
+                                <StackPanel Spacing="{StaticResource AxSpace12}" Visibility="{Binding HasServerUpdate, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <ItemsControl ItemsSource="{Binding ServerInstances}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border
+                                                    Margin="0,0,0,8"
+                                                    Padding="12,10,12,10"
+                                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="{StaticResource AxRadiusMedium}">
+                                                    <Grid ColumnSpacing="{StaticResource AxSpace12}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Ellipse
+                                                            Width="10"
+                                                            Height="10"
+                                                            VerticalAlignment="Center"
+                                                            Fill="{Binding StateKey, Converter={StaticResource ServerInstanceStateBrushConverter}}" />
+                                                        <StackPanel Grid.Column="1" Spacing="{StaticResource AxSpace2}">
+                                                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                                                            <TextBlock Text="{Binding EndpointText}" Style="{StaticResource SubtleTextStyle}" />
+                                                        </StackPanel>
+                                                        <StackPanel
+                                                            Grid.Column="2"
+                                                            HorizontalAlignment="Right"
+                                                            Spacing="{StaticResource AxSpace2}">
+                                                            <TextBlock
+                                                                Text="{Binding StatusText}"
+                                                                HorizontalAlignment="Right"
+                                                                FontSize="13" />
+                                                            <TextBlock
+                                                                Text="{Binding DetailText}"
+                                                                HorizontalAlignment="Right"
+                                                                Style="{StaticResource SubtleTextStyle}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <TextBlock
+                                        Text="尚未读取到实例信息。"
+                                        Visibility="{Binding HasServerInstances, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
+                                        Style="{StaticResource SubtleTextStyle}" />
+
+                                    <ItemsControl ItemsSource="{Binding ServerUpdateLines}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,0,0,4" ColumnSpacing="{StaticResource AxSpace12}">
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="120" />
                                                         <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-                                                    <Ellipse
-                                                        Width="10"
-                                                        Height="10"
-                                                        VerticalAlignment="Center"
-                                                        Fill="{Binding StateKey, Converter={StaticResource ServerInstanceStateBrushConverter}}" />
-                                                    <StackPanel Grid.Column="1" Spacing="{StaticResource AxSpace2}">
-                                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
-                                                        <TextBlock Text="{Binding EndpointText}" Style="{StaticResource SubtleTextStyle}" />
-                                                    </StackPanel>
-                                                    <StackPanel
-                                                        Grid.Column="2"
-                                                        HorizontalAlignment="Right"
-                                                        Spacing="{StaticResource AxSpace2}">
-                                                        <TextBlock
-                                                            Text="{Binding StatusText}"
-                                                            HorizontalAlignment="Right"
-                                                            FontSize="13" />
-                                                        <TextBlock
-                                                            Text="{Binding DetailText}"
-                                                            HorizontalAlignment="Right"
-                                                            Style="{StaticResource SubtleTextStyle}" />
-                                                    </StackPanel>
+                                                    <TextBlock
+                                                        Text="{Binding Label}"
+                                                        TextWrapping="NoWrap"
+                                                        Style="{StaticResource SubtleTextStyle}" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
                                                 </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- 功能按钮：执行逻辑复用旧服务器页那套，不在这里重写。 -->
+                                    <ItemsControl ItemsSource="{Binding ServerActions}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <ItemsWrapGrid Orientation="Horizontal" ItemWidth="200" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button
+                                                    Margin="0,0,8,8"
+                                                    IsEnabled="{Binding IsEnabled}"
+                                                    Click="ServerAction_Click"
+                                                    Style="{StaticResource CardActionButtonStyle}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace8}">
+                                                        <FontIcon Glyph="{Binding Glyph}" FontSize="16" />
+                                                        <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
 
                                 <TextBlock
-                                    Text="尚未读取到实例信息。"
-                                    Visibility="{Binding HasServerInstances, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
+                                    Text="服务端状态需要任务运行器，当前不可用。"
+                                    Visibility="{Binding HasServerUpdate, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
                                     Style="{StaticResource SubtleTextStyle}" />
+                            </StackPanel>
+                        </Border>
 
-                                <ItemsControl ItemsSource="{Binding ServerUpdateLines}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Margin="0,0,0,4" ColumnSpacing="{StaticResource AxSpace12}">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="120" />
-                                                    <ColumnDefinition Width="*" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock
-                                                    Text="{Binding Label}"
-                                                    TextWrapping="NoWrap"
-                                                    Style="{StaticResource SubtleTextStyle}" />
-                                                <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-
-                                <!-- 功能按钮：执行逻辑复用旧服务器页那套，不在这里重写。 -->
-                                <ItemsControl ItemsSource="{Binding ServerActions}">
+                        <!-- 第二片：服务器管理（看门狗日志、日志与缓存清理、暂停监控）。 -->
+                        <Border
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource AxRadiusMedium}"
+                            Padding="16">
+                            <StackPanel Spacing="{StaticResource AxSpace12}">
+                                <TextBlock Text="{Binding ServerManagementCardTitle}" Style="{StaticResource GroupTitleStyle}" />
+                                <ItemsControl ItemsSource="{Binding ServerManagementActions}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
                                             <ItemsWrapGrid Orientation="Horizontal" ItemWidth="200" />
@@ -473,8 +514,7 @@
                                         <DataTemplate>
                                             <Button
                                                 Margin="0,0,8,8"
-                                                IsEnabled="{Binding IsEnabled}"
-                                                Click="ServerAction_Click"
+                                                Click="ServerManagementAction_Click"
                                                 Style="{StaticResource CardActionButtonStyle}">
                                                 <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace8}">
                                                     <FontIcon Glyph="{Binding Glyph}" FontSize="16" />
@@ -485,12 +525,41 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </StackPanel>
+                        </Border>
 
-                            <TextBlock
-                                Text="服务端状态需要任务运行器，当前不可用。"
-                                Visibility="{Binding HasServerUpdate, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
-                                Style="{StaticResource SubtleTextStyle}" />
-                        </StackPanel>
+                        <!-- 第三片：游戏本体推送（PC / 安卓本体 -> 野草云，清单 -> 阿里云）。 -->
+                        <Border
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource AxRadiusMedium}"
+                            Padding="16">
+                            <StackPanel Spacing="{StaticResource AxSpace12}">
+                                <TextBlock Text="{Binding GamePublishCardTitle}" Style="{StaticResource GroupTitleStyle}" />
+                                <ItemsControl
+                                    ItemsSource="{Binding GamePublishActions}"
+                                    Loaded="ActionItemsControl_Loaded"
+                                    SizeChanged="ActionItemsControl_SizeChanged"
+                                    ItemTemplate="{StaticResource ToolActionButtonTemplate}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <ItemsWrapGrid Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                                <ItemsControl
+                                    ItemsSource="{Binding GameMaintenanceActions}"
+                                    Loaded="ActionItemsControl_Loaded"
+                                    SizeChanged="ActionItemsControl_SizeChanged"
+                                    Visibility="{Binding HasGameMaintenanceActions, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                    ItemTemplate="{StaticResource ToolActionButtonTemplate}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <ItemsWrapGrid Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Border>
 

@@ -472,6 +472,51 @@ public sealed partial class ServerPage : UserControl
         }
     }
 
+    /// <summary>
+    /// 服务器级动作（看门狗日志、日志/缓存/崩溃清理、暂停监控），供其它页面调用。
+    /// 与 RunProgramActionAsync 一样复用现有实现，不重写。
+    /// </summary>
+    internal async Task RunServerLevelActionAsync(string actionKey, ServerPageViewModel viewModel)
+    {
+        switch (actionKey)
+        {
+            case "watchdog-log":
+                await ShowWatchdogLogAsync();
+                break;
+            case "old-logs":
+                await ShowCleanupDialogAsync(
+                    "scan-old-logs",
+                    "clean-old-logs",
+                    "清除过期日志",
+                    "将删除看门狗日志与 IIS 日志中超过 7 天的文件，正在写入的 watchdog.log 不受影响。");
+                break;
+            case "all-logs":
+                await ShowCleanupDialogAsync(
+                    "scan-all-logs",
+                    "clean-all-logs",
+                    "清除全部日志",
+                    "将删除看门狗日志与 IIS 日志的全部文件，正在写入的 watchdog.log 会被清空，历史内容无法恢复。");
+                break;
+            case "caches":
+                await ShowCleanupDialogAsync(
+                    "scan-caches",
+                    "clean-caches",
+                    "清理缓存",
+                    "将清空系统临时文件中超过 1 天的文件，并保留最新 5 份看门狗脚本备份。");
+                break;
+            case "crashes":
+                await ShowCleanupDialogAsync(
+                    "scan-crashes",
+                    "clean-crashes",
+                    "清理崩溃文件",
+                    "将删除各服务端 Saved\\Crashes 下较旧的目录，每个项目保留最近 20 个。这些目录包含崩溃原因、调用栈与内存转储。");
+                break;
+            case "watchdog-task":
+                await ToggleWatchdogTaskAsync();
+                break;
+        }
+    }
+
     /// <summary>先用缓存渲染，避免看门狗轮询把 SSH 也一起拉起来。</summary>
     private void RenderUpdateFromCache(
         StackPanel host,

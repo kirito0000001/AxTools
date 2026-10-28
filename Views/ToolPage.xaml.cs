@@ -32,6 +32,9 @@ public sealed partial class ToolPage : UserControl
     /// <summary>发布区点了服务端操作按钮；交给主窗口转给服务器页执行（复用旧实现）。</summary>
     public event EventHandler<ToolServerActionRequestedEventArgs>? ServerActionRequested;
 
+    /// <summary>服务器管理卡片的动作（看门狗日志、日志与缓存清理等）。</summary>
+    public event EventHandler<ToolServerManagementActionRequestedEventArgs>? ServerManagementActionRequested;
+
     public ToolPage()
     {
         InitializeComponent();
@@ -72,6 +75,17 @@ public sealed partial class ToolPage : UserControl
             ProjectPathSelectionRequested?.Invoke(
                 this,
                 new ToolProjectPathSelectionRequestedEventArgs(viewModel, projectId));
+        }
+    }
+
+    private void ServerManagementAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: ServerActionCommand command } &&
+            DataContext is ToolPageViewModel viewModel)
+        {
+            ServerManagementActionRequested?.Invoke(
+                this,
+                new ToolServerManagementActionRequestedEventArgs(viewModel, command.Key));
         }
     }
 
@@ -611,6 +625,16 @@ public sealed class ToolProjectPathSelectionRequestedEventArgs(
 
 /// <summary>发布区点了服务端操作按钮：actionKey 与 ServerActionCommand.Key 对应。</summary>
 public sealed class ToolServerActionRequestedEventArgs(
+    ToolPageViewModel viewModel,
+    string actionKey) : EventArgs
+{
+    public ToolPageViewModel ViewModel { get; } = viewModel;
+
+    public string ActionKey { get; } = actionKey;
+}
+
+/// <summary>服务器管理卡片点了动作：actionKey 与 ServerActionItem.Key 对应。</summary>
+public sealed class ToolServerManagementActionRequestedEventArgs(
     ToolPageViewModel viewModel,
     string actionKey) : EventArgs
 {

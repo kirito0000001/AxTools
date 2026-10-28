@@ -231,7 +231,9 @@ public sealed class ToolPageXamlLayoutTests
                 var source = (string?)element.Attribute("ItemsSource");
                 return source?.Contains("Actions}") == true &&
                     source?.Contains("GameProjectActions") != true &&
-                    source != "{Binding Actions}";
+                    source != "{Binding Actions}" &&
+                    source != "{Binding ServerActions}" &&
+                    source != "{Binding ServerManagementActions}";
             })
             .ToArray();
 
@@ -408,10 +410,16 @@ public sealed class ToolPageXamlLayoutTests
         var panel = document.Descendants(presentation + "Border")
             .Single(element => (string?)element.Attribute(xaml + "Name") == "ServerPanel");
 
-        // 服务器单独一页：实例端口 + 仓库状态 + 功能按钮。
+        // 服务器页三张卡：服务端推送 / 服务器管理 / 游戏本体推送。
         Assert.Contains(
             panel.Descendants(presentation + "TextBlock"),
-            element => (string?)element.Attribute("Text") == "服务端状态");
+            element => (string?)element.Attribute("Text") == "{Binding ServerPushCardTitle}");
+        Assert.Contains(
+            panel.Descendants(presentation + "TextBlock"),
+            element => (string?)element.Attribute("Text") == "{Binding ServerManagementCardTitle}");
+        Assert.Contains(
+            panel.Descendants(presentation + "TextBlock"),
+            element => (string?)element.Attribute("Text") == "{Binding GamePublishCardTitle}");
         Assert.Contains(
             panel.Descendants(presentation + "ItemsControl"),
             element => (string?)element.Attribute("ItemsSource") == "{Binding ServerInstances}");
@@ -429,6 +437,12 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains(
             panel.Descendants(presentation + "Button"),
             element => (string?)element.Attribute("Click") == "ServerAction_Click");
+        Assert.Contains(
+            panel.Descendants(presentation + "ItemsControl"),
+            element => (string?)element.Attribute("ItemsSource") == "{Binding ServerManagementActions}");
+        Assert.Contains(
+            panel.Descendants(presentation + "ItemsControl"),
+            element => (string?)element.Attribute("ItemsSource") == "{Binding GamePublishActions}");
 
         // 手动刷新按钮已删：进入分区自动读，之后 15 秒一次。
         Assert.DoesNotContain(

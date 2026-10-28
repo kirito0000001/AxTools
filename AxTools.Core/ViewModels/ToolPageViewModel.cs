@@ -822,6 +822,16 @@ public sealed partial class ToolPageViewModel : ObservableObject
     /// <summary>服务器页 VM（执行服务端操作要靠它的 UpdateService）。</summary>
     public ServerPageViewModel? ServerViewModel => _serverPage;
 
+    /// <summary>服务器级动作（看门狗日志、日志/缓存清理等）；挂上服务器 VM 后填充。</summary>
+    public IReadOnlyList<ServerActionCommand> ServerManagementActions { get; private set; } = [];
+
+    /// <summary>服务器页三张卡的标题，跟着游戏名走。</summary>
+    public string ServerPushCardTitle => $"{DisplayName}服务端推送";
+
+    public string ServerManagementCardTitle => $"{DisplayName}服务器管理";
+
+    public string GamePublishCardTitle => $"{DisplayName}游戏本体推送";
+
     /// <summary>本次会话是否导入过新构建（推完清掉，决定推送/预览按钮灰不灰）。</summary>
     private bool _serverImportPending;
 
@@ -866,6 +876,10 @@ public sealed partial class ToolPageViewModel : ObservableObject
             _ => null
         };
         RebuildServerUpdateLines();
+        ServerManagementActions = _serverPage?.Actions
+            .Select(action => new ServerActionCommand(action.Key, action.DisplayName, action.IconGlyph))
+            .ToArray() ?? [];
+        OnPropertyChanged(nameof(ServerManagementActions));
         OnPropertyChanged(nameof(HasServerUpdate));
     }
 

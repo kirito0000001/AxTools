@@ -68,6 +68,20 @@ public sealed partial class MainWindow
         await args.ViewModel.RefreshServerStateAsync(CancellationToken.None);
     }
 
+    /// <summary>服务器管理动作：交给旧服务器页执行（日志查看与清理逻辑都在那边）。</summary>
+    private async void ToolPage_ServerManagementActionRequested(
+        object? sender,
+        ToolServerManagementActionRequestedEventArgs args)
+    {
+        if (args.ViewModel.ServerViewModel is not { } server)
+        {
+            return;
+        }
+
+        await ServerAliyunPage.RunServerLevelActionAsync(args.ActionKey, server);
+        await args.ViewModel.RefreshServerStateAsync(CancellationToken.None);
+    }
+
     private async void GlobalSettingsPage_ProjectRootSelectionRequested(
         object? sender,
         EventArgs args)
