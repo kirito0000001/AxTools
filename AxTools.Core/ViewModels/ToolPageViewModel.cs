@@ -1815,18 +1815,16 @@ public sealed partial class ToolPageViewModel : ObservableObject
                         ? "本机补丁碎片输出目录"
                         : PublishTargetCatalog.GetPublishTarget(Descriptor.Key)));
 
-        if (channels is not null)
-        {
-            lines.Add(new ToolActionConfirmationLine("本次渠道", channels.Describe()));
-        }
-
         return ToolActionPreflightResult.Ready(new ToolActionConfirmation(
             "确认真实上传",
             "确认真实上传",
             lines,
             isGameAction
                 ? PublishTargetCatalog.GetIntent(action)
-                : "这是实际上传操作，将写入远端发布目标。请确认以上信息无误。"),
+                : "这是实际上传操作，将写入远端发布目标。请确认以上信息无误。",
+            AllowChannelChoice: action == ManagedToolAction.PublishGameVersion,
+            DefaultDownloadSite: PublishToDownloadSite,
+            DefaultGitHub: PublishToGitHub),
             request);
     }
 

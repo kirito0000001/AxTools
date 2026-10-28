@@ -11,7 +11,10 @@ public sealed record ToolActionConfirmation(
     string Title,
     string PrimaryButtonText,
     IReadOnlyList<ToolActionConfirmationLine> Lines,
-    string Note);
+    string Note,
+    bool AllowChannelChoice = false,
+    bool DefaultDownloadSite = true,
+    bool DefaultGitHub = true);
 
 /// <summary>动作预检结果：能不能执行、被挡的原因、需要确认时给什么内容。</summary>
 public sealed record ToolActionPreflightResult(

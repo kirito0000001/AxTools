@@ -36,8 +36,7 @@ public sealed partial class MainWindow
             // 版本门禁、请求组装、确认内容都下沉到 Core：这里只负责显示与放行。
             var preflight = await args.ViewModel.PrepareActionAsync(
                 args.Action.Action,
-                _windowTaskCancellation.Token,
-                args.Channels);
+                _windowTaskCancellation.Token);
             if (!preflight.Allowed || preflight.Request is null)
             {
                 _viewModel.LogService.Write(
@@ -49,13 +48,22 @@ public sealed partial class MainWindow
 
             var request = preflight.Request;
             if (args.Action.RequiresConfirmation &&
-                preflight.Confirmation is { } confirmation &&
-                !await ShowActionConfirmationAsync(confirmation))
+                preflight.Confirmation is { } confirmation)
             {
-                _viewModel.LogService.Write(
-                    LogKind.Warning,
-                    $"用户取消真实发布：{args.ViewModel.DisplayName} · {args.Action.DisplayName}");
-                return;
+                var (confirmed, channels) = await ShowActionConfirmationAsync(confirmation);
+                if (!confirmed)
+                {
+                    _viewModel.LogService.Write(
+                        LogKind.Warning,
+                        $"用户取消真实发布：{args.ViewModel.DisplayName} · {args.Action.DisplayName}");
+                    return;
+                }
+
+                // 渠道只影响这一次：按勾选重建请求，覆盖设置里的默认值。
+                if (channels is not null)
+                {
+                    request = args.ViewModel.CreateRequest(args.Action.Action, channels);
+                }
             }
 
             IReadOnlyList<ProcessSnapshot> DetectConflicts() =>
@@ -301,12 +309,32 @@ public sealed partial class MainWindow
     /// 按 Core 给的确认内容渲染弹窗：行由 <see cref="ToolActionConfirmation"/> 决定，
     /// 这里不再判断动作类型，也不再拼文案。
     /// </summary>
-    private async Task<bool> ShowActionConfirmationAsync(ToolActionConfirmation confirmation)
+    private async Task<(bool Confirmed, PublishChannelChoice? Channels)> ShowActionConfirmationAsync(
+        ToolActionConfirmation confirmation)
     {
         var content = new StackPanel { Spacing = 8 };
         foreach (var line in confirmation.Lines)
         {
             content.Children.Add(CreateDialogLine(line.Label, line.Value));
+        }
+
+        CheckBox? downloadSite = null;
+        CheckBox? github = null;
+        if (confirmation.AllowChannelChoice)
+        {
+            downloadSite = new CheckBox
+            {
+                Content = "野草云（下载站）",
+                IsChecked = confirmation.DefaultDownloadSite,
+                Margin = new Thickness(0, 8, 0, 0)
+            };
+            github = new CheckBox
+            {
+                Content = "GitHub Release",
+                IsChecked = confirmation.DefaultGitHub
+            };
+            content.Children.Add(downloadSite);
+            content.Children.Add(github);
         }
 
         if (!string.IsNullOrWhiteSpace(confirmation.Note))
@@ -328,7 +356,19 @@ public sealed partial class MainWindow
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close
         };
-        return await TryShowDialogAsync(dialog) == ContentDialogResult.Primary;
+        if (await TryShowDialogAsync(dialog) != ContentDialogResult.Primary)
+        {
+            return (false, null);
+        }
+
+        if (downloadSite is null || github is null)
+        {
+            return (true, null);
+        }
+
+        var choice = new PublishChannelChoice(downloadSite.IsChecked == true, github.IsChecked == true);
+        // 两个都不勾等于什么都不发，按取消处理。
+        return choice.IsValid ? (true, choice) : (false, null);
     }
 
     /// <summary>
