@@ -353,20 +353,20 @@ public sealed class ToolPageViewModelTests : IDisposable
             new CrossingVoidGameAdapter(Path.Combine(_root, "Scripts")));
 
         Assert.Contains(
-            viewModel.GamePublishCardActions,
+            viewModel.GamePublishPcActions,
             action => action.Action == ManagedToolAction.PublishGameVersion);
         Assert.Contains(
-            viewModel.GamePublishCardActions,
+            viewModel.GamePublishPcActions,
             action => action.Action == ManagedToolAction.PublishGameVersionToGitHub);
 
         viewModel.PublishToDownloadSite = false;
         Assert.DoesNotContain(
-            viewModel.GamePublishCardActions,
+            viewModel.GamePublishPcActions,
             action => action.Action == ManagedToolAction.PublishGameVersion);
 
         viewModel.PublishToGitHub = false;
         Assert.DoesNotContain(
-            viewModel.GamePublishCardActions,
+            viewModel.GamePublishPcActions,
             action => action.Action == ManagedToolAction.PublishGameVersionToGitHub);
     }
 

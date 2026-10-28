@@ -341,7 +341,7 @@
                                 </Button>
                             </Grid>
                             <ItemsControl
-                                ItemsSource="{Binding GamePublishCardActions}"
+                                ItemsSource="{Binding GamePublishActions}"
                                 Loaded="ActionItemsControl_Loaded"
                                 SizeChanged="ActionItemsControl_SizeChanged"
                                 ItemTemplate="{StaticResource ToolActionButtonTemplate}">
@@ -533,16 +533,17 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- 第三片：游戏本体推送（PC / 安卓本体 -> 野草云，清单 -> 阿里云）。 -->
+                        <!-- 第三片：PC 游戏本体推送（-> 野草云，清单 -> 阿里云）。 -->
                         <Border
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="{StaticResource AxRadiusMedium}"
-                            Padding="16">
+                            Padding="16"
+                            Visibility="{Binding PublishPcGame, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <StackPanel Spacing="{StaticResource AxSpace12}">
                                 <TextBlock Text="{Binding GamePublishCardTitle}" Style="{StaticResource GroupTitleStyle}" />
                                 <TextBlock Text="{Binding GamePublishSummaryText}" Style="{StaticResource SubtleTextStyle}" />
-                                <ItemsControl ItemsSource="{Binding GamePublishActions}">
+                                <ItemsControl ItemsSource="{Binding GamePublishPcActions}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
                                             <ItemsWrapGrid Orientation="Horizontal" ItemWidth="200" />
@@ -553,6 +554,7 @@
                                             <Button
                                                 Margin="0,0,8,8"
                                                 IsEnabled="{Binding IsEnabled}"
+                                                Tag="Windows"
                                                 Click="ToolAction_Click"
                                                 Style="{StaticResource CardActionButtonStyle}">
                                                 <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace8}">
@@ -576,6 +578,40 @@
                                             <Button
                                                 Margin="0,0,8,8"
                                                 IsEnabled="{Binding IsEnabled}"
+                                                Tag="Windows"
+                                                Click="ToolAction_Click"
+                                                Style="{StaticResource CardActionButtonStyle}">
+                                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace8}">
+                                                    <FontIcon Glyph="{Binding IconGlyph}" FontSize="16" />
+                                                    <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                        <!-- 第四片：安卓游戏本体推送；有安卓版本且发布开关打开才出现。 -->
+                        <Border
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource AxRadiusMedium}"
+                            Padding="16"
+                            Visibility="{Binding HasAndroidGamePublishCard, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <StackPanel Spacing="{StaticResource AxSpace12}">
+                                <TextBlock Text="{Binding GamePublishAndroidCardTitle}" Style="{StaticResource GroupTitleStyle}" />
+                                <ItemsControl ItemsSource="{Binding GamePublishAndroidActions}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <ItemsWrapGrid Orientation="Horizontal" ItemWidth="200" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button
+                                                Margin="0,0,8,8"
+                                                IsEnabled="{Binding IsEnabled}"
+                                                Tag="Android"
                                                 Click="ToolAction_Click"
                                                 Style="{StaticResource CardActionButtonStyle}">
                                                 <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace8}">
@@ -819,18 +855,28 @@
                                 IsOn="{Binding HasAndroidGameBuild, Mode=TwoWay}" />
                         </Grid>
 
-                        <Grid
-                            ColumnSpacing="{StaticResource AxSpace12}"
-                            Visibility="{Binding HasAndroidGameBuild, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Grid ColumnSpacing="{StaticResource AxSpace12}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <ComboBox
-                                Header="发布平台"
-                                HorizontalAlignment="Stretch"
-                                ItemsSource="{Binding PublishPlatformOptions}"
-                                SelectedItem="{Binding SelectedPublishPlatform, Mode=TwoWay}" />
+                            <TextBlock Text="发布 PC 版本" VerticalAlignment="Center" />
+                            <ToggleSwitch
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                IsOn="{Binding PublishPcGame, Mode=TwoWay}" />
+                        </Grid>
+                        <Grid ColumnSpacing="{StaticResource AxSpace12}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="发布安卓版本" VerticalAlignment="Center" />
+                            <ToggleSwitch
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                IsEnabled="{Binding HasAndroidGameBuild}"
+                                IsOn="{Binding PublishAndroidGame, Mode=TwoWay}" />
                         </Grid>
 
                         <StackPanel Spacing="{StaticResource AxSpace10}">

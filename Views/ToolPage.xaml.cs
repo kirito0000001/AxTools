@@ -351,6 +351,12 @@ public sealed partial class ToolPage : UserControl
         if (sender is Button { DataContext: ToolActionItemViewModel action } &&
             DataContext is ToolPageViewModel viewModel)
         {
+            // 第三片按钮带 Tag=Windows、第四片带 Tag=Android：点哪个就按哪个平台发。
+            if (sender is Button { Tag: string platform } && !string.IsNullOrWhiteSpace(platform))
+            {
+                viewModel.SetPublishPlatform(platform);
+            }
+
             CommitCurrentVersionEditors(viewModel, action.Action);
             if (action.Action == ManagedToolAction.DownloadSource)
             {

@@ -56,6 +56,12 @@ public sealed class ManagedToolPaths
     /// </summary>
     public bool? HasAndroidGameBuild { get; set; }
 
+    /// <summary>发布开关：PC 游戏包（第三片）。null = 开启。</summary>
+    public bool? PublishPcGame { get; set; }
+
+    /// <summary>发布开关：安卓游戏包（第四片）。null = 跟随是否有安卓游戏。</summary>
+    public bool? PublishAndroidGame { get; set; }
+
     /// <summary>上传渠道开关：是否允许发布到下载站（野草云）。null = 开启。</summary>
     public bool? PublishGameToDownloadSite { get; set; }
 

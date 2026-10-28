@@ -757,6 +757,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
             _hasAndroidGameBuild = value;
             _paths.HasAndroidGameBuild = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(HasAndroidGamePublishCard));
             NotifyConfigurationChanged();
         }
     }
@@ -808,7 +809,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
 
             _paths.PublishGameToDownloadSite = value;
             OnPropertyChanged();
-            OnPropertyChanged(nameof(GamePublishCardActions));
+            OnPropertyChanged(nameof(GamePublishPcActions));
+            OnPropertyChanged(nameof(GamePublishAndroidActions));
         }
     }
 
@@ -825,33 +827,75 @@ public sealed partial class ToolPageViewModel : ObservableObject
 
             _paths.PublishGameToGitHub = value;
             OnPropertyChanged();
-            OnPropertyChanged(nameof(GamePublishCardActions));
+            OnPropertyChanged(nameof(GamePublishPcActions));
+            OnPropertyChanged(nameof(GamePublishAndroidActions));
         }
     }
 
-    /// <summary>发布平台选项；与 GamePublishPlatform 对应。</summary>
-    public IReadOnlyList<string> PublishPlatformOptions { get; } = ["PC", "安卓"];
-
-    public string SelectedPublishPlatform
+    /// <summary>发布开关：PC 游戏包（第三片）。</summary>
+    public bool PublishPcGame
     {
-        get => IsAndroidPlatform ? "安卓" : "PC";
+        get => _paths.PublishPcGame ?? true;
         set
         {
-            _paths.GamePublishPlatform = string.Equals(value, "安卓", StringComparison.Ordinal)
-                ? "Android"
-                : "Windows";
+            if (_paths.PublishPcGame == value)
+            {
+                return;
+            }
+
+            _paths.PublishPcGame = value;
             OnPropertyChanged();
-            NotifyConfigurationChanged();
         }
     }
 
-    /// <summary>
-    /// 第三张卡实际显示的按钮：按上传渠道开关过滤。
-    /// 关掉野草云就不显示「发布到服务器」，关掉 GitHub 就不显示「发布到 GitHub」。
-    /// </summary>
-    public IReadOnlyList<ToolActionItemViewModel> GamePublishCardActions =>
+    /// <summary>发布开关：安卓游戏包（第四片）；没有安卓版本时强制不显示。</summary>
+    public bool PublishAndroidGame
+    {
+        get => _paths.PublishAndroidGame ?? _hasAndroidGameBuild;
+        set
+        {
+            if (_paths.PublishAndroidGame == value)
+            {
+                return;
+            }
+
+            _paths.PublishAndroidGame = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasAndroidGamePublishCard));
+        }
+    }
+
+    /// <summary>第四片（安卓游戏推送）是否出现：有安卓版本且发布开关打开。</summary>
+    public bool HasAndroidGamePublishCard => _hasAndroidGameBuild && PublishAndroidGame;
+
+    /// <summary>给当前动作切平台：第三片按钮传 Windows，第四片传 Android。</summary>
+    public void SetPublishPlatform(string platform)
+    {
+        var normalized = string.Equals(platform, "Android", StringComparison.Ordinal)
+            ? "Android"
+            : "Windows";
+        if (string.Equals(_paths.GamePublishPlatform, normalized, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _paths.GamePublishPlatform = normalized;
+        NotifyConfigurationChanged();
+    }
+
+    /// <summary>第三片 PC 游戏推送的按钮：按渠道开关过滤。</summary>
+    public IReadOnlyList<ToolActionItemViewModel> GamePublishPcActions =>
+        IsGameTool ? GamePublishActions.Where(IsPublishChannelEnabled).ToArray() : [];
+
+    /// <summary>第四片安卓游戏推送的按钮：补丁类动作只支持 PC，这里排除。</summary>
+    public IReadOnlyList<ToolActionItemViewModel> GamePublishAndroidActions =>
         IsGameTool
-            ? GamePublishActions.Where(IsPublishChannelEnabled).ToArray()
+            ? GamePublishActions
+                .Where(IsPublishChannelEnabled)
+                .Where(item => item.Action is not (
+                    ManagedToolAction.PublishGamePatch or
+                    ManagedToolAction.GenerateGamePatchFragments))
+                .ToArray()
             : [];
 
     private bool IsPublishChannelEnabled(ToolActionItemViewModel item) => item.Action switch
@@ -957,6 +1001,8 @@ public sealed partial class ToolPageViewModel : ObservableObject
     public string ServerManagementCardTitle => $"{DisplayName}服务器管理";
 
     public string GamePublishCardTitle => $"{DisplayName}游戏本体推送";
+
+    public string GamePublishAndroidCardTitle => $"{DisplayName}安卓游戏推送";
 
     /// <summary>
     /// 游戏本体发布的一句话摘要（平台 · 版本 · 通道）；未就绪时说明缺什么。
