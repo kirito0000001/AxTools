@@ -106,6 +106,29 @@ public sealed partial class ToolPage : UserControl
         }
     }
 
+    /// <summary>体检结果：一行一条，通过/问题都列出来，只给关闭按钮。</summary>
+    private async Task ShowHealthReportAsync(GamePackageHealthReport report)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = report.Summary,
+            Content = new TextBox
+            {
+                Text = string.Join(Environment.NewLine, report.Lines),
+                IsReadOnly = true,
+                AcceptsReturn = true,
+                TextWrapping = TextWrapping.Wrap,
+                BorderThickness = new Thickness(0),
+                Background = null,
+                MaxHeight = 420,
+                MinWidth = 520
+            },
+            CloseButtonText = "关闭"
+        };
+        await DialogGate.TryShowAsync(dialog);
+    }
+
     private void ServerAction_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: ServerActionCommand command } &&
@@ -350,12 +373,22 @@ public sealed partial class ToolPage : UserControl
     }
 
     /// <summary>本体打包卡片上的按钮：先按平台切好，再交给原发布管道。</summary>
-    private void PublishCommand_Click(object sender, RoutedEventArgs e)
+    private async void PublishCommand_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: ServerActionCommand command, Tag: string platform } &&
             DataContext is ToolPageViewModel viewModel)
         {
             viewModel.SetPublishPlatform(platform);
+
+            if (command.Key == "check")
+            {
+                var report = await viewModel.CheckGamePackageHealthAsync(
+                    string.Equals(platform, "Android", StringComparison.Ordinal),
+                    CancellationToken.None);
+                await ShowHealthReportAsync(report);
+                return;
+            }
+
             if (ToolPageViewModel.ResolvePublishCommand(command.Key) is not { } action)
             {
                 return;

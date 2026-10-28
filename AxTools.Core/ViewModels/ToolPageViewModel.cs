@@ -897,6 +897,58 @@ public sealed partial class ToolPageViewModel : ObservableObject
         _ => $"{bytes} B"
     };
 
+    /// <summary>
+    /// 游戏包体检：本地打包戳 ↔ 线上下载站清单，逐文件比对 sha256。
+    /// 不重新扫盘（戳里已经有哈希），所以很快；进度仍写全局进度条。
+    /// </summary>
+    public async Task<GamePackageHealthReport> CheckGamePackageHealthAsync(
+        bool android,
+        CancellationToken cancellationToken)
+    {
+        var root = android ? _paths.GamePackageRootAndroid : _paths.GamePackageRoot;
+        var info = GamePackageBuildInfoReader.Read(root, out var error, android ? "Android" : "Windows");
+        if (info is null)
+        {
+            return new GamePackageHealthReport(
+                false,
+                "体检无法开始",
+                ["✗ " + (error ?? "读不到产物版本信息。")]);
+        }
+
+        var segment = (_adapter as GameUploadAdapter)?.GameProductSegment ?? "crossingvoid";
+        if (android)
+        {
+            segment += "-android";
+        }
+
+        var progress = _globalProgress;
+        progress?.Start("游戏包体检", $"{DisplayName} · {segment}");
+        progress?.SetCancellationMode(AxTaskCancellationMode.Locked, "正在比对线上清单。");
+        try
+        {
+            var report = await GamePackageHealthService.CheckAsync(info, segment, cancellationToken);
+            progress?.Complete(
+                report.Healthy ? "体检通过" : "体检发现问题",
+                report.Summary);
+            return report;
+        }
+        catch (Exception exception)
+        {
+            return new GamePackageHealthReport(
+                false,
+                "体检失败",
+                ["✗ " + exception.Message]);
+        }
+        finally
+        {
+            if (progress is not null)
+            {
+                await Task.Delay(1200);
+                progress.Hide();
+            }
+        }
+    }
+
     /// <summary>本体打包按钮 → 动作；「生成本体碎片」暂无脚本入口，返回 null。</summary>
     public static ManagedToolAction? ResolvePublishCommand(string key) => key switch
     {
