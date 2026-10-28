@@ -2,21 +2,33 @@ using System.Text.Json;
 
 namespace AxTools.Core.Services;
 
-/// <summary>打包插件（CrossingChunkEditor）在产物根目录写出的 Version.json。</summary>
+/// <summary>打包插件在归档根写出的产物信息（新版由 Version/&lt;Scope&gt;/Latest.json 指路）。</summary>
 public sealed record GamePackageBuildInfo(
     string Version,
     string ReleaseVersion,
     string Mode,
     string Platform,
     string ArtifactDirectory,
-    string SourcePath)
+    string SourcePath,
+    IReadOnlyList<GamePackageFileEntry> Files,
+    string Kind)
 {
-    public bool IsPatch => string.Equals(Mode, "Patch", StringComparison.OrdinalIgnoreCase);
+    public bool IsPatch => string.Equals(Kind, "Patch", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(Mode, "Patch", StringComparison.OrdinalIgnoreCase);
 }
 
+/// <summary>产物清单里的一个文件；Path 相对归档根，不是 scope 目录。</summary>
+public sealed record GamePackageFileEntry(string Path, long Size, string Sha256);
+
 /// <summary>
-/// 游戏版本只认打包产物：优先 &lt;包根&gt;\Version.json，其次包根上一级。
-/// AxTools 不再自己维护一份可编辑的版本号，避免出现"旧包写新版本号"。
+/// 读取游戏打包产物版本。
+///
+/// 新契约（插件改造后）：&lt;归档根&gt;\Version\&lt;Scope&gt;\Latest.json
+///   - Latest.json.latestFile 指向本次产物清单
+///   - Latest.json.latestKind 为 Full 或 Patch（Base 与 Patch 共用目录，发整包时要核对）
+///   - 清单里的 files[].path 相对**归档根**，不是 scope 目录
+///
+/// 旧格式仍兼容：包根或上一级的 Version.json / Version-Windows.json / Version-Android.json。
 /// </summary>
 public static class GamePackageBuildInfoReader
 {
@@ -50,6 +62,131 @@ public static class GamePackageBuildInfoReader
             return null;
         }
 
+        if (TryReadLatest(root, expectedPlatform, out var latest, out var latestError))
+        {
+            return latest;
+        }
+
+        var legacy = ReadLegacy(root, expectedPlatform, out var legacyError);
+        if (legacy is not null)
+        {
+            return legacy;
+        }
+
+        error = latestError ?? legacyError;
+        return null;
+    }
+
+    /// <summary>新格式：Version\&lt;Scope&gt;\Latest.json → latestFile → 清单。</summary>
+    private static bool TryReadLatest(
+        string root,
+        string? expectedPlatform,
+        out GamePackageBuildInfo? info,
+        out string? error)
+    {
+        info = null;
+        error = null;
+
+        var versionRoot = Path.Combine(root, "Version");
+        if (!Directory.Exists(versionRoot))
+        {
+            return false;
+        }
+
+        var scopeNames = expectedPlatform?.Equals("Android", StringComparison.OrdinalIgnoreCase) == true
+            ? new[] { "Android" }
+            : new[] { "Windows", "Win64", "Win" };
+
+        var candidates = new List<string>();
+        foreach (var scope in scopeNames)
+        {
+            candidates.Add(Path.Combine(versionRoot, scope, "Latest.json"));
+        }
+
+        // 只配了一个平台目录时也能读出来，避免 Scope 命名不一致就完全失效。
+        if (Directory.Exists(versionRoot))
+        {
+            candidates.AddRange(Directory
+                .EnumerateFiles(versionRoot, "Latest.json", SearchOption.AllDirectories)
+                .Take(8));
+        }
+
+        foreach (var candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (!File.Exists(candidate))
+            {
+                continue;
+            }
+
+            try
+            {
+                using var latestDocument = JsonDocument.Parse(File.ReadAllText(candidate));
+                var latestData = latestDocument.RootElement;
+                var latestKind = ReadString(latestData, "latestKind");
+                var latestFile = ReadString(latestData, "latestFile");
+                if (string.IsNullOrWhiteSpace(latestFile))
+                {
+                    error = $"Latest.json 缺少 latestFile：{candidate}";
+                    continue;
+                }
+
+                var manifestPath = Path.IsPathRooted(latestFile)
+                    ? latestFile
+                    : Path.Combine(root, latestFile.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(manifestPath))
+                {
+                    error = $"Latest.json 指向的清单不存在：{manifestPath}";
+                    continue;
+                }
+
+                using var manifestDocument = JsonDocument.Parse(File.ReadAllText(manifestPath));
+                var data = manifestDocument.RootElement;
+                var version = ReadString(data, "version");
+                if (string.IsNullOrWhiteSpace(version))
+                {
+                    error = $"产物清单缺少 version：{manifestPath}";
+                    continue;
+                }
+
+                var platform = ReadString(data, "platform");
+                if (!string.IsNullOrWhiteSpace(expectedPlatform) &&
+                    !string.IsNullOrWhiteSpace(platform) &&
+                    !PlatformMatches(platform, expectedPlatform))
+                {
+                    error = $"产物清单平台不匹配：期望 {expectedPlatform}，实际 {platform}（{manifestPath}）";
+                    continue;
+                }
+
+                info = new GamePackageBuildInfo(
+                    version.Trim(),
+                    ReadString(data, "releaseVersion").Trim(),
+                    ReadString(data, "mode"),
+                    platform,
+                    ReadString(data, "artifactDir"),
+                    manifestPath,
+                    ReadFiles(data),
+                    string.IsNullOrWhiteSpace(latestKind) ? ReadString(data, "mode") : latestKind);
+                return true;
+            }
+            catch (JsonException exception)
+            {
+                error = $"产物清单解析失败：{candidate}（{exception.Message}）";
+            }
+            catch (IOException exception)
+            {
+                error = $"产物清单读取失败：{candidate}（{exception.Message}）";
+            }
+        }
+
+        return false;
+    }
+
+    private static GamePackageBuildInfo? ReadLegacy(
+        string root,
+        string? expectedPlatform,
+        out string? error)
+    {
+        error = null;
         var candidates = new List<string>();
         var platformNames = expectedPlatform?.Equals("Android", StringComparison.OrdinalIgnoreCase) == true
             ? new[] { "Version-Android.json", "Version.Android.json" }
@@ -98,19 +235,20 @@ public static class GamePackageBuildInfoReader
                 if (!string.IsNullOrWhiteSpace(expectedPlatform) &&
                     !PlatformMatches(platform, expectedPlatform))
                 {
-                    // 公共父目录的 Version.json 可能是另一平台的最近一次构建；
-                    // 继续找 Version-Windows.json / Version-Android.json。
                     lastPlatformError = $"版本文件平台不匹配：期望 {expectedPlatform}，实际 {platform}（{candidate}）";
                     continue;
                 }
 
+                var mode = ReadString(data, "mode");
                 return new GamePackageBuildInfo(
                     version.Trim(),
                     ReadString(data, "releaseVersion").Trim(),
-                    ReadString(data, "mode"),
+                    mode,
                     platform,
                     ReadString(data, "artifactDir"),
-                    candidate);
+                    candidate,
+                    ReadFiles(data),
+                    mode);
             }
             catch (JsonException exception)
             {
@@ -125,9 +263,42 @@ public static class GamePackageBuildInfoReader
         }
 
         error = string.IsNullOrWhiteSpace(lastPlatformError)
-            ? "游戏包里没有 Version.json（应在包根或上一级），无法确定版本。"
+            ? "没有找到产物版本信息（Version\\<Scope>\\Latest.json 或 Version.json）。"
             : lastPlatformError;
         return null;
+    }
+
+    private static IReadOnlyList<GamePackageFileEntry> ReadFiles(JsonElement data)
+    {
+        if (!data.TryGetProperty("files", out var files) || files.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var list = new List<GamePackageFileEntry>();
+        foreach (var file in files.EnumerateArray())
+        {
+            if (file.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var path = ReadString(file, "path");
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                continue;
+            }
+
+            var size = file.TryGetProperty("sizeBytes", out var sizeNode) && sizeNode.ValueKind == JsonValueKind.Number
+                ? sizeNode.GetInt64()
+                : 0;
+            list.Add(new GamePackageFileEntry(
+                path.Replace('\\', '/'),
+                size,
+                ReadString(file, "sha256").ToLowerInvariant()));
+        }
+
+        return list;
     }
 
     private static bool PlatformMatches(string? value, string expected) =>
