@@ -1792,28 +1792,24 @@ public sealed partial class ToolPageViewModel : ObservableObject
         var isGameAction = PublishTargetCatalog.IsGamePublishingAction(action);
         var lines = new List<ToolActionConfirmationLine>
         {
-            new("工具", DisplayName),
             new(isGameAction ? "游戏版本" : "启动器版本",
-                string.IsNullOrWhiteSpace(request.Version) ? "未填写" : request.Version),
-            new("通道", request.Channel),
-            new("输出目录", string.IsNullOrWhiteSpace(OutputRoot) ? "未配置" : OutputRoot)
+                string.IsNullOrWhiteSpace(request.Version) ? "未填写" : request.Version)
         };
-        if (isGameAction)
+
+        // 渠道勾选框本身就说明了目标，不再重复列「发布目标」；
+        // 没有渠道可选的动作用一行说明发到哪里。
+        if (action != ManagedToolAction.PublishGameVersion)
         {
             lines.Add(new ToolActionConfirmationLine(
-                "游戏目录",
-                string.IsNullOrWhiteSpace(GamePackageRoot) ? "未配置" : GamePackageRoot));
+                "发布目标",
+                action == ManagedToolAction.PublishGameVersionToGitHub
+                    ? "GitHub Release（游戏适配器配置的仓库）"
+                    : action == ManagedToolAction.PublishGamePatch
+                        ? "GitHub Release（Windows 补丁包）"
+                        : action == ManagedToolAction.GenerateGamePatchFragments
+                            ? "本机补丁碎片输出目录"
+                            : PublishTargetCatalog.GetPublishTarget(Descriptor.Key)));
         }
-
-        lines.Add(new ToolActionConfirmationLine(
-            "发布目标",
-            action == ManagedToolAction.PublishGameVersionToGitHub
-                ? "GitHub Release（游戏适配器配置的仓库）"
-                : action == ManagedToolAction.PublishGamePatch
-                    ? "GitHub Release（Windows 补丁包）"
-                    : action == ManagedToolAction.GenerateGamePatchFragments
-                        ? "本机补丁碎片输出目录"
-                        : PublishTargetCatalog.GetPublishTarget(Descriptor.Key)));
 
         return ToolActionPreflightResult.Ready(new ToolActionConfirmation(
             "确认真实上传",
