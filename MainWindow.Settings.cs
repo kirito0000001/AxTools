@@ -64,6 +64,7 @@ public sealed partial class MainWindow
         }
 
         await ServerAliyunPage.RunProgramActionAsync(args.ActionKey, server, profile);
+        args.ViewModel.MarkServerActionCompleted(args.ActionKey);
         await args.ViewModel.RefreshServerStateAsync(CancellationToken.None);
     }
 

@@ -817,15 +817,33 @@ public sealed partial class ToolPageViewModel : ObservableObject
     /// <summary>服务器页 VM（执行服务端操作要靠它的 UpdateService）。</summary>
     public ServerPageViewModel? ServerViewModel => _serverPage;
 
+    /// <summary>本次会话是否导入过新构建（推完清掉，决定推送/预览按钮灰不灰）。</summary>
+    private bool _serverImportPending;
+
+    /// <summary>页面上的服务端操作执行完后回报一句，用来更新按钮可点状态。</summary>
+    public void MarkServerActionCompleted(string actionKey)
+    {
+        if (string.Equals(actionKey, "import", StringComparison.Ordinal))
+        {
+            _serverImportPending = true;
+        }
+        else if (string.Equals(actionKey, "push", StringComparison.Ordinal))
+        {
+            _serverImportPending = false;
+        }
+
+        RebuildServerUpdateLines();
+    }
+
     /// <summary>服务端更新按钮；可点状态跟着刷新结果变。</summary>
     public IReadOnlyList<ServerActionCommand> ServerActions { get; } =
     [
         new("import", "导入新构建", "\uE8E5"),
-        new("push", "推送新版本", "\uE72A"),
+        new("preview", "查看待更新内容", "\uE8A5") { IsEnabled = false },
+        new("push", "推送新版本", "\uE72A") { IsEnabled = false },
         new("apply", "切换最新版本", "\uE72C") { IsEnabled = false },
         new("rollback", "回退上个版本", "\uE7A7") { IsEnabled = false },
         new("recover", "恢复服务端", "\uE777") { IsEnabled = false },
-        new("preview", "查看待更新内容", "\uE8A5"),
         new("cleanup", "清理本地仓库", "\uE74D") { IsEnabled = false }
     ];
 
@@ -904,6 +922,10 @@ public sealed partial class ToolPageViewModel : ObservableObject
 
         // 按钮可点状态跟旧页面一致：切换看能否前进、回退看能否后退、
         // 恢复要求远端仓库已初始化、清理要求本机仓库存在。
+        // 推送与预览：本次会话里导入过、且本机确实领先服务器才亮；推完立刻灰回去。
+        var hasUnpushedCommits = _serverImportPending && state?.Local?.Ahead > 0;
+        SetServerActionEnabled("preview", hasUnpushedCommits);
+        SetServerActionEnabled("push", hasUnpushedCommits);
         SetServerActionEnabled("apply", state?.CanSwitchLatest == true);
         SetServerActionEnabled("rollback", state?.CanRollback == true);
         SetServerActionEnabled("recover", state?.Remote is { Initialized: true });

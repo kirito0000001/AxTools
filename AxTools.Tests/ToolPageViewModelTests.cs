@@ -327,6 +327,24 @@ public sealed class ToolPageViewModelTests : IDisposable
     }
 
     [Fact]
+    public void ServerActions_KeepPushAndPreviewDisabledUntilImport()
+    {
+        var viewModel = new ToolPageViewModel(
+            GetDescriptor(ManagedToolKey.CrossingVoidGame),
+            new ManagedToolPaths(),
+            new CrossingVoidGameAdapter(Path.Combine(_root, "Scripts")));
+
+        // 顺序即界面顺序：导入 → 预览 → 推送 → 切换 → 回退 → 恢复 → 清理。
+        Assert.Equal(
+            ["import", "preview", "push", "apply", "rollback", "recover", "cleanup"],
+            viewModel.ServerActions.Select(action => action.Key));
+
+        Assert.True(viewModel.ServerActions[0].IsEnabled);
+        Assert.False(viewModel.ServerActions.Single(action => action.Key == "preview").IsEnabled);
+        Assert.False(viewModel.ServerActions.Single(action => action.Key == "push").IsEnabled);
+    }
+
+    [Fact]
     public void CrossingVoidGame_OwnsGamePublishingSection()
     {
         var paths = CreateCrossingGamePackage();
