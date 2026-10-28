@@ -17,7 +17,7 @@ public sealed class ServerInstanceStateBrushConverter : IValueConverter
     private static readonly SolidColorBrush Offline = new(Color.FromArgb(255, 150, 150, 150));
 
     public object Convert(object value, Type targetType, object parameter, string language) =>
-        value as string switch
+        (value as string) switch
         {
             "healthy" or "recovered" => Healthy,
             "warning" => Warning,

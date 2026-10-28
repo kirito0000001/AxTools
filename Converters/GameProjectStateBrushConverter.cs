@@ -15,7 +15,7 @@ public sealed class GameProjectStateBrushConverter : IValueConverter
     private static readonly SolidColorBrush Unknown = new(Color.FromArgb(255, 150, 150, 150));
 
     public object Convert(object value, Type targetType, object parameter, string language) =>
-        value as string switch
+        (value as string) switch
         {
             "exists" => Exists,
             "missing" => Missing,

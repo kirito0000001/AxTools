@@ -832,6 +832,21 @@ public sealed partial class ToolPageViewModel : ObservableObject
         }
     }
 
+    /// <summary>给当前动作切平台：PC 卡按钮传 Windows，安卓卡传 Android。</summary>
+    public void SetPublishPlatform(string platform)
+    {
+        var normalized = string.Equals(platform, "Android", StringComparison.Ordinal)
+            ? "Android"
+            : "Windows";
+        if (string.Equals(_paths.GamePublishPlatform, normalized, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _paths.GamePublishPlatform = normalized;
+        NotifyConfigurationChanged();
+    }
+
     /// <summary>第三片 PC 游戏推送的按钮：按渠道开关过滤。</summary>
     public IReadOnlyList<ToolActionItemViewModel> GamePublishPcActions =>
         IsGameTool ? GamePublishActions.Where(IsPublishChannelEnabled).ToArray() : [];
