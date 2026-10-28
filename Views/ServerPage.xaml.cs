@@ -436,6 +436,42 @@ public sealed partial class ServerPage : UserControl
             null);
     }
 
+    /// <summary>
+    /// 供其它页面调用：按 key 执行服务端更新动作。
+    /// 弹窗、忙碌遮罩与进度都走服务器页这套现成实现，避免两处逻辑分叉。
+    /// 目前由游戏页「打包与发布 → 服务端状态」的按钮调用。
+    /// </summary>
+    internal async Task RunProgramActionAsync(
+        string actionKey,
+        ServerPageViewModel viewModel,
+        ServerProgramProfile profile)
+    {
+        switch (actionKey)
+        {
+            case "import":
+                await ImportBuildAsync(viewModel, profile);
+                break;
+            case "push":
+                await PushNewVersionAsync(viewModel, profile);
+                break;
+            case "apply":
+                await ApplyAsync(viewModel, profile);
+                break;
+            case "rollback":
+                await RollbackAsync(viewModel, profile);
+                break;
+            case "recover":
+                await RecoverAsync(viewModel, profile);
+                break;
+            case "preview":
+                await PreviewAsync(viewModel, profile);
+                break;
+            case "cleanup":
+                await CleanupLocalRepoAsync(viewModel, profile);
+                break;
+        }
+    }
+
     /// <summary>先用缓存渲染，避免看门狗轮询把 SSH 也一起拉起来。</summary>
     private void RenderUpdateFromCache(
         StackPanel host,

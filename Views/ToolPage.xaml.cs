@@ -29,6 +29,9 @@ public sealed partial class ToolPage : UserControl
     /// <summary>设置页里选择游戏项目目录（本体 / 安卓启动器）。</summary>
     public event EventHandler<ToolProjectPathSelectionRequestedEventArgs>? ProjectPathSelectionRequested;
 
+    /// <summary>发布区点了服务端操作按钮；交给主窗口转给服务器页执行（复用旧实现）。</summary>
+    public event EventHandler<ToolServerActionRequestedEventArgs>? ServerActionRequested;
+
     public ToolPage()
     {
         InitializeComponent();
@@ -69,6 +72,17 @@ public sealed partial class ToolPage : UserControl
             ProjectPathSelectionRequested?.Invoke(
                 this,
                 new ToolProjectPathSelectionRequestedEventArgs(viewModel, projectId));
+        }
+    }
+
+    private void ServerAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: ServerActionCommand command } &&
+            DataContext is ToolPageViewModel viewModel)
+        {
+            ServerActionRequested?.Invoke(
+                this,
+                new ToolServerActionRequestedEventArgs(viewModel, command.Key));
         }
     }
 
@@ -588,4 +602,14 @@ public sealed class ToolProjectPathSelectionRequestedEventArgs(
     public ToolPageViewModel ViewModel { get; } = viewModel;
 
     public string ProjectId { get; } = projectId;
+}
+
+/// <summary>发布区点了服务端操作按钮：actionKey 与 ServerActionCommand.Key 对应。</summary>
+public sealed class ToolServerActionRequestedEventArgs(
+    ToolPageViewModel viewModel,
+    string actionKey) : EventArgs
+{
+    public ToolPageViewModel ViewModel { get; } = viewModel;
+
+    public string ActionKey { get; } = actionKey;
 }

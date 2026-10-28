@@ -422,6 +422,14 @@ public sealed class ToolPageXamlLayoutTests
         Assert.Contains(
             panel.Descendants(presentation + "TextBlock"),
             element => (string?)element.Attribute("Text") == "尚未读取到实例信息。");
+        // 功能按钮：七个服务端操作，点击交给服务器页那套实现执行。
+        Assert.Contains(
+            panel.Descendants(presentation + "ItemsControl"),
+            element => (string?)element.Attribute("ItemsSource") == "{Binding ServerActions}");
+        Assert.Contains(
+            panel.Descendants(presentation + "Button"),
+            element => (string?)element.Attribute("Click") == "ServerAction_Click");
+
         // 手动刷新按钮已删：进入分区自动读，之后 15 秒一次。
         Assert.DoesNotContain(
             panel.Descendants(presentation + "Button"),

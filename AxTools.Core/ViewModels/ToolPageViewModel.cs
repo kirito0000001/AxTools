@@ -811,6 +811,24 @@ public sealed partial class ToolPageViewModel : ObservableObject
         }
     }
 
+    /// <summary>当前游戏对应的服务端程序；非游戏页为空。</summary>
+    public ServerProgramProfile? ServerProfile => _serverProfile;
+
+    /// <summary>服务器页 VM（执行服务端操作要靠它的 UpdateService）。</summary>
+    public ServerPageViewModel? ServerViewModel => _serverPage;
+
+    /// <summary>服务端更新按钮；可点状态跟着刷新结果变。</summary>
+    public IReadOnlyList<ServerActionCommand> ServerActions { get; } =
+    [
+        new("import", "导入新构建", "\uE8E5"),
+        new("push", "推送新版本", "\uE72A"),
+        new("apply", "切换最新版本", "\uE72C") { IsEnabled = false },
+        new("rollback", "回退上个版本", "\uE7A7") { IsEnabled = false },
+        new("recover", "恢复服务端", "\uE777") { IsEnabled = false },
+        new("preview", "查看待更新内容", "\uE8A5"),
+        new("cleanup", "清理本地仓库", "\uE74D") { IsEnabled = false }
+    ];
+
     /// <summary>
     /// 由 ApplicationViewModel 在服务器页 VM 建好之后调用；只有游戏页会匹配到服务端程序。
     /// </summary>
@@ -883,6 +901,22 @@ public sealed partial class ToolPageViewModel : ObservableObject
             new ServerUpdateLine("本机仓库", state?.LocalAheadText ?? "尚未读取")
         ];
         OnPropertyChanged(nameof(ServerUpdateLines));
+
+        // 按钮可点状态跟旧页面一致：切换看能否前进、回退看能否后退、
+        // 恢复要求远端仓库已初始化、清理要求本机仓库存在。
+        SetServerActionEnabled("apply", state?.CanSwitchLatest == true);
+        SetServerActionEnabled("rollback", state?.CanRollback == true);
+        SetServerActionEnabled("recover", state?.Remote is { Initialized: true });
+        SetServerActionEnabled("cleanup", state?.Local is not null);
+    }
+
+    private void SetServerActionEnabled(string key, bool enabled)
+    {
+        var action = ServerActions.FirstOrDefault(item => item.Key == key);
+        if (action is not null)
+        {
+            action.IsEnabled = enabled;
+        }
     }
 
     /// <summary>标题形如「项目本体-CrossingVoid」「安卓启动器-CrossingVoid-Downloader-Android」。</summary>

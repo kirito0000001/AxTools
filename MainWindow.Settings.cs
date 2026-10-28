@@ -50,6 +50,23 @@ public sealed partial class MainWindow
         }
     }
 
+    /// <summary>
+    /// 游戏页发布区的服务端操作：直接转给服务器页那套实现执行，
+    /// 完成后刷新一次状态，卡片和顶部通告栏都会跟着更新。
+    /// </summary>
+    private async void ToolPage_ServerActionRequested(
+        object? sender,
+        ToolServerActionRequestedEventArgs args)
+    {
+        if (args.ViewModel is not { ServerProfile: { } profile, ServerViewModel: { } server })
+        {
+            return;
+        }
+
+        await ServerAliyunPage.RunProgramActionAsync(args.ActionKey, server, profile);
+        await args.ViewModel.RefreshServerStateAsync(CancellationToken.None);
+    }
+
     private async void GlobalSettingsPage_ProjectRootSelectionRequested(
         object? sender,
         EventArgs args)

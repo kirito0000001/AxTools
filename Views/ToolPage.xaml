@@ -230,6 +230,29 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+
+                                <!-- 功能按钮：执行逻辑复用旧服务器页那套，不在这里重写。 -->
+                                <ItemsControl ItemsSource="{Binding ServerActions}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <ItemsWrapGrid Orientation="Horizontal" ItemWidth="200" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button
+                                                Margin="0,0,8,8"
+                                                IsEnabled="{Binding IsEnabled}"
+                                                Click="ServerAction_Click"
+                                                Style="{StaticResource CardActionButtonStyle}">
+                                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource AxSpace8}">
+                                                    <FontIcon Glyph="{Binding Glyph}" FontSize="16" />
+                                                    <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                             </StackPanel>
 
                             <TextBlock
