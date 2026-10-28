@@ -11,6 +11,8 @@ public enum ToolPageSection
     Publish,
     /// <summary>游戏页的「服务器」分区：服务端状态与操作。</summary>
     Server,
+    /// <summary>游戏页的「启动器打包」：只发布安卓启动器。</summary>
+    Launcher,
     Fragments,
     Storage,
     /// <summary>游戏页的「设置」页：正规设置项 + 临时的「功能散页」，不参与环境校验。</summary>

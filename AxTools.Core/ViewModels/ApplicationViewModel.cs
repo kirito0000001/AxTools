@@ -135,6 +135,15 @@ public sealed class ApplicationViewModel : ObservableObject
                 settings,          // 《导入新构建》按程序记住上次选的目录
                 settingsService);
 
+        // 零境的安卓启动器工具负责「启动器打包」分区；挂到游戏页上，共用它的发布管道。
+        var androidLauncherTool = Tools.FirstOrDefault(
+            tool => tool.Descriptor.Key == ManagedToolKey.CrossingVoidAndroid);
+        foreach (var tool in Tools)
+        {
+            tool.AttachAndroidLauncherTool(
+                tool.Descriptor.Key == ManagedToolKey.CrossingVoidGame ? androidLauncherTool : null);
+        }
+
         // 游戏页的「发布 → 服务器更新」要用服务器页那套服务与状态，等 Server 建好再挂上去。
         foreach (var tool in Tools)
         {

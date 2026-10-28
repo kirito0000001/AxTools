@@ -66,8 +66,12 @@
                 <SelectorBarItem x:Name="DevelopmentSelectorItem" Text="开发版" IsSelected="True" />
                 <SelectorBarItem
                     x:Name="PublishSelectorItem"
-                    Text="打包与发布"
+                    Text="{Binding PublishTabTitle}"
                     Visibility="{Binding HasPublishActions, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <SelectorBarItem
+                    x:Name="LauncherSelectorItem"
+                    Text="启动器打包"
+                    Visibility="{Binding HasLauncherPackaging, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 <SelectorBarItem
                     x:Name="ServerSelectorItem"
                     Text="服务器"
@@ -382,6 +386,66 @@
                         <TextBlock Text="{Binding ExecutionAvailabilityText}" Style="{StaticResource SubtleTextStyle}" />
                         <TextBlock Text="{Binding LastResultText}" Style="{StaticResource SubtleTextStyle}" />
                         </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 启动器打包：只管理安卓启动器；不开「安卓启动器」不出现。 -->
+                <Border x:Name="LauncherPanel" Visibility="Collapsed" Style="{StaticResource PanelBorderStyle}" Padding="{StaticResource AxPanelPadding}">
+                    <StackPanel Spacing="{StaticResource AxSpace14}">
+                        <TextBlock Text="启动器打包" Style="{StaticResource GroupTitleStyle}" />
+                        <TextBlock
+                            Text="安卓启动器的版本号与发布；不再区分正式版与测试版。"
+                            Style="{StaticResource SubtleTextStyle}" />
+
+                        <Grid ColumnSpacing="{StaticResource AxSpace8}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <NumberBox
+                                Header="主版本"
+                                Minimum="0"
+                                SpinButtonPlacementMode="Inline"
+                                Value="{Binding LauncherVersionMajor, Mode=TwoWay}" />
+                            <NumberBox
+                                Grid.Column="1"
+                                Header="功能更新"
+                                Minimum="0"
+                                SpinButtonPlacementMode="Inline"
+                                Value="{Binding LauncherVersionFeature, Mode=TwoWay}" />
+                            <NumberBox
+                                Grid.Column="2"
+                                Header="BUG修复"
+                                Minimum="0"
+                                SpinButtonPlacementMode="Inline"
+                                Value="{Binding LauncherVersionBugFix, Mode=TwoWay}" />
+                        </Grid>
+
+                        <Grid ColumnSpacing="{StaticResource AxSpace10}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                Text="{Binding LauncherPackagingStatusText}"
+                                Style="{StaticResource SubtleTextStyle}"
+                                TextWrapping="Wrap"
+                                VerticalAlignment="Center" />
+                            <Button
+                                Grid.Column="1"
+                                Click="RefreshLauncherPackaging_Click"
+                                Style="{StaticResource IconToolButtonStyle}"
+                                ToolTipService.ToolTip="重新检查线上启动器版本">
+                                <SymbolIcon Symbol="Refresh" />
+                            </Button>
+                        </Grid>
+
+                        <Button
+                            Content="发布新版本"
+                            HorizontalAlignment="Left"
+                            Click="PublishLauncher_Click"
+                            Style="{StaticResource CardActionButtonStyle}" />
                     </StackPanel>
                 </Border>
 

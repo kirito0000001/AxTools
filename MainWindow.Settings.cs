@@ -113,6 +113,24 @@ public sealed partial class MainWindow
         await args.ViewModel.RefreshServerStateAsync(CancellationToken.None);
     }
 
+    /// <summary>启动器打包：用安卓启动器工具的「完整发布」动作走原管道。</summary>
+    private void ToolPage_LauncherPublishRequested(
+        object? sender,
+        ToolLauncherPublishRequestedEventArgs args)
+    {
+        var publish = args.LauncherViewModel.AllActions
+            .FirstOrDefault(item => item.Action == ManagedToolAction.Publish);
+        if (publish is null)
+        {
+            _viewModel.LogService.Write(LogKind.Warning, "启动器打包：没有找到可用的发布动作。");
+            return;
+        }
+
+        ToolPage_ToolActionRequested(
+            sender,
+            new ToolActionRequestedEventArgs(args.LauncherViewModel, publish));
+    }
+
     private async void GlobalSettingsPage_ProjectRootSelectionRequested(
         object? sender,
         EventArgs args)

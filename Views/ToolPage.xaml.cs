@@ -38,6 +38,9 @@ public sealed partial class ToolPage : UserControl
     /// <summary>实例行上的日志 / 启动 / 停止 / 重启。</summary>
     public event EventHandler<ToolInstanceActionRequestedEventArgs>? InstanceActionRequested;
 
+    /// <summary>启动器打包：发布安卓启动器新版本。</summary>
+    public event EventHandler<ToolLauncherPublishRequestedEventArgs>? LauncherPublishRequested;
+
     public ToolPage()
     {
         InitializeComponent();
@@ -528,6 +531,7 @@ public sealed partial class ToolPage : UserControl
         // 顶部「配置状态」跟着页签走：开发版查项目，打包与发布查游戏包目录。
         var section = selectedItem == PublishSelectorItem ? ToolPageSection.Publish
             : selectedItem == ServerSelectorItem ? ToolPageSection.Server
+            : selectedItem == LauncherSelectorItem ? ToolPageSection.Launcher
             : selectedItem == FragmentSelectorItem ? ToolPageSection.Fragments
             : selectedItem == StorageSelectorItem ? ToolPageSection.Storage
             : selectedItem == SettingsSelectorItem ? ToolPageSection.Settings
@@ -542,6 +546,10 @@ public sealed partial class ToolPage : UserControl
             : Visibility.Collapsed;
         PublishPanel.Visibility = selectedItem == PublishSelectorItem &&
             DataContext is ToolPageViewModel { HasPublishActions: true }
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        LauncherPanel.Visibility = selectedItem == LauncherSelectorItem &&
+            DataContext is ToolPageViewModel { HasLauncherPackaging: true }
                 ? Visibility.Visible
                 : Visibility.Collapsed;
         ServerPanel.Visibility = selectedItem == ServerSelectorItem &&
@@ -591,6 +599,22 @@ public sealed partial class ToolPage : UserControl
         else
         {
             _serverStateTimer?.Stop();
+        }
+    }
+
+    private async void RefreshLauncherPackaging_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is ToolPageViewModel viewModel)
+        {
+            await viewModel.RefreshLauncherPackagingAsync(CancellationToken.None);
+        }
+    }
+
+    private void PublishLauncher_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is ToolPageViewModel { AndroidLauncherTool: { } launcher })
+        {
+            LauncherPublishRequested?.Invoke(this, new ToolLauncherPublishRequestedEventArgs(launcher));
         }
     }
 
@@ -674,4 +698,10 @@ public sealed class ToolInstanceActionRequestedEventArgs(
     public string InstanceName { get; } = instanceName;
 
     public string Command { get; } = command;
+}
+
+/// <summary>启动器打包：要执行发布的是安卓启动器工具本身。</summary>
+public sealed class ToolLauncherPublishRequestedEventArgs(ToolPageViewModel launcherViewModel) : EventArgs
+{
+    public ToolPageViewModel LauncherViewModel { get; } = launcherViewModel;
 }

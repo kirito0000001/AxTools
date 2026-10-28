@@ -476,6 +476,28 @@ public sealed class ToolPageXamlLayoutTests
     }
 
     [Fact]
+    public void GameTools_HaveLauncherPackagingTabWithSinglePublishButton()
+    {
+        var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+        var tab = document.Descendants(presentation + "SelectorBarItem")
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "LauncherSelectorItem");
+        Assert.Equal("启动器打包", (string?)tab.Attribute("Text"));
+        Assert.Equal(
+            "{Binding HasLauncherPackaging, Converter={StaticResource BooleanToVisibilityConverter}}",
+            (string?)tab.Attribute("Visibility"));
+
+        var panel = document.Descendants(presentation + "Border")
+            .Single(element => (string?)element.Attribute(xaml + "Name") == "LauncherPanel");
+        var publishButton = panel.Descendants(presentation + "Button")
+            .Single(element => (string?)element.Attribute("Click") == "PublishLauncher_Click");
+        Assert.Equal("发布新版本", (string?)publishButton.Attribute("Content"));
+        Assert.Equal(3, panel.Descendants(presentation + "NumberBox").Count());
+    }
+
+    [Fact]
     public void PublishPanel_SeparatesLauncherAndGamePublishingWorkflows()
     {
         var document = XDocument.Load(FindProjectFile(Path.Combine("Views", "ToolPage.xaml")));

@@ -662,6 +662,13 @@ public sealed partial class ToolPageViewModel : ObservableObject
                 : ($"缺少：{string.Join("；", missingProjects)}", false);
         }
 
+        if (CurrentSection is ToolPageSection.Launcher)
+        {
+            return HasLauncherPackaging
+                ? ("启动器打包就绪", true)
+                : ("未启用安卓启动器打包。", true);
+        }
+
         if (CurrentSection is ToolPageSection.Server)
         {
             // 服务器页：只有「推送了但没切」才值得提醒。
@@ -900,6 +907,7 @@ public sealed partial class ToolPageViewModel : ObservableObject
                 .ToArray()
             : [];
 
+    private ToolPageViewModel? _androidLauncherTool;
     private ServerPageViewModel? _serverPage;
     private ServerProgramProfile? _serverProfile;
     private bool _isRefreshingServerState;
@@ -927,6 +935,105 @@ public sealed partial class ToolPageViewModel : ObservableObject
     /// <summary>卡片顶部那句话：没读过、读好了、还是在读，一眼能看出来（旧版空白最难查）。</summary>
     public string ServerStateStatus { get; private set; } =
         "尚未读取服务端状态；进入本分区会自动读取，也可以点「立即刷新」。";
+
+    /// <summary>
+    /// 这个游戏对应的安卓启动器工具（只有零境有）。启动器打包分区用的就是它的发布管道。
+    /// </summary>
+    public void AttachAndroidLauncherTool(ToolPageViewModel? launcherTool)
+    {
+        _androidLauncherTool = launcherTool;
+        OnPropertyChanged(nameof(AndroidLauncherTool));
+        OnPropertyChanged(nameof(HasLauncherPackaging));
+    }
+
+    public ToolPageViewModel? AndroidLauncherTool
+    {
+        get => _androidLauncherTool;
+        private set
+        {
+            if (ReferenceEquals(_androidLauncherTool, value))
+            {
+                return;
+            }
+
+            _androidLauncherTool = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasLauncherPackaging));
+        }
+    }
+
+    /// <summary>启动器打包分区是否出现：游戏页、开了安卓启动器、且确实有启动器工具。</summary>
+    public bool HasLauncherPackaging =>
+        IsGameTool && HasAndroidLauncher && _androidLauncherTool is not null;
+
+    /// <summary>启动器三段版本号代理到安卓启动器工具。</summary>
+    public double LauncherVersionMajor
+    {
+        get => _androidLauncherTool?.PublishVersionMajor ?? 0;
+        set => SetLauncherVersion("major", value);
+    }
+
+    public double LauncherVersionFeature
+    {
+        get => _androidLauncherTool?.PublishVersionFeature ?? 0;
+        set => SetLauncherVersion("feature", value);
+    }
+
+    public double LauncherVersionBugFix
+    {
+        get => _androidLauncherTool?.PublishVersionBugFix ?? 0;
+        set => SetLauncherVersion("bugfix", value);
+    }
+
+    private void SetLauncherVersion(string part, double value)
+    {
+        if (_androidLauncherTool is null)
+        {
+            return;
+        }
+
+        switch (part)
+        {
+            case "major":
+                _androidLauncherTool.PublishVersionMajor = value;
+                break;
+            case "feature":
+                _androidLauncherTool.PublishVersionFeature = value;
+                break;
+            default:
+                _androidLauncherTool.PublishVersionBugFix = value;
+                break;
+        }
+
+        OnPropertyChanged(nameof(LauncherPackagingStatusText));
+    }
+
+    /// <summary>版本状态与线上版本合成一句：线上 x.y.z · 版本校验结果。</summary>
+    public string LauncherPackagingStatusText
+    {
+        get
+        {
+            if (_androidLauncherTool is null)
+            {
+                return "还没有可用的安卓启动器工具。";
+            }
+
+            var online = _androidLauncherTool.LauncherPublishedVersionText;
+            var state = _androidLauncherTool.LauncherVersionStateText;
+            return string.IsNullOrWhiteSpace(state) ? online : $"{online} · {state}";
+        }
+    }
+
+    public async Task RefreshLauncherPackagingAsync(CancellationToken cancellationToken)
+    {
+        if (_androidLauncherTool is null)
+        {
+            return;
+        }
+
+        await _androidLauncherTool.CheckLauncherPublishedVersionAsync(cancellationToken);
+        OnPropertyChanged(nameof(LauncherPackagingStatusText));
+    }
 
     /// <summary>本机服务端仓库根目录（设置页可改）；留空时用默认目录。</summary>
     public string ServerLocalRepoRoot
@@ -965,6 +1072,9 @@ public sealed partial class ToolPageViewModel : ObservableObject
     public string ServerManagementCardTitle => $"{DisplayName}服务器管理";
 
     public string GamePublishCardTitle => $"{DisplayName}游戏本体推送";
+
+    /// <summary>打包页签的标题：游戏页是「本体打包」，其它工具仍是「打包与发布」。</summary>
+    public string PublishTabTitle => IsGameTool ? "本体打包" : "打包与发布";
 
     public string GamePublishAndroidCardTitle => $"{DisplayName}安卓游戏推送";
 
