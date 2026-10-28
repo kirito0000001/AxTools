@@ -57,17 +57,7 @@ public sealed partial class MainWindow
         // 下面三页已无左栏入口，恒为 Collapsed；保留赋值是为了将来恢复入口时不用再想状态。
         CrossingVoidAndroidPage.Visibility = visiblePage == CrossingVoidAndroidPage ? Visibility.Visible : Visibility.Collapsed;
         FantasyAndroidPage.Visibility = visiblePage == FantasyAndroidPage ? Visibility.Visible : Visibility.Collapsed;
-        ServerAliyunPage.Visibility = visiblePage == ServerAliyunPage ? Visibility.Visible : Visibility.Collapsed;
         GlobalSettingsPage.Visibility = visiblePage == GlobalSettingsPage ? Visibility.Visible : Visibility.Collapsed;
-
-        if (visiblePage == ServerAliyunPage)
-        {
-            ServerAliyunPage.OnNavigatedTo();
-        }
-        else
-        {
-            ServerAliyunPage.OnNavigatedFrom();
-        }
 
         // 游戏页只有发布动作，首次进入时落到「打包与发布」；否则开局停在空的开发版面板。
         if (visiblePage is ToolPage gamePage &&

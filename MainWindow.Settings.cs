@@ -9,6 +9,16 @@ namespace AxTools;
 
 public sealed partial class MainWindow
 {
+    /// <summary>服务端动作执行器：懒创建，第一次用到时才拿 XamlRoot。</summary>
+    private ServerActionHost? _serverActions;
+
+    private ServerActionHost ServerActions =>
+        _serverActions ??= new ServerActionHost(
+            _viewModel.Server ?? throw new InvalidOperationException("服务器状态尚未初始化。"),
+            RootGrid.XamlRoot,
+            _viewModel.LogService,
+            _viewModel.GlobalProgress);
+
     private async void ToolPage_GamePackageRootSelectionRequested(
         object? sender,
         EventArgs args)
@@ -58,12 +68,12 @@ public sealed partial class MainWindow
         object? sender,
         ToolServerActionRequestedEventArgs args)
     {
-        if (args.ViewModel is not { ServerProfile: { } profile, ServerViewModel: { } server })
+        if (args.ViewModel is not { ServerProfile: { } profile, ServerViewModel: not null })
         {
             return;
         }
 
-        await ServerAliyunPage.RunProgramActionAsync(args.ActionKey, server, profile);
+        await ServerActions.RunProgramActionAsync(args.ActionKey, profile);
         args.ViewModel.MarkServerActionCompleted(args.ActionKey);
         await args.ViewModel.RefreshServerStateAsync(CancellationToken.None);
     }
@@ -73,12 +83,12 @@ public sealed partial class MainWindow
         object? sender,
         ToolServerManagementActionRequestedEventArgs args)
     {
-        if (args.ViewModel.ServerViewModel is not { } server)
+        if (args.ViewModel.ServerViewModel is null)
         {
             return;
         }
 
-        await ServerAliyunPage.RunServerLevelActionAsync(args.ActionKey, server);
+        await ServerActions.RunServerLevelActionAsync(args.ActionKey);
         await args.ViewModel.RefreshServerStateAsync(CancellationToken.None);
     }
 
@@ -87,12 +97,12 @@ public sealed partial class MainWindow
         object? sender,
         ToolInstanceActionRequestedEventArgs args)
     {
-        if (args.ViewModel.ServerViewModel is not { } server)
+        if (args.ViewModel.ServerViewModel is null)
         {
             return;
         }
 
-        await ServerAliyunPage.RunInstanceCommandAsync(args.InstanceName, args.Command);
+        await ServerActions.RunInstanceCommandAsync(args.InstanceName, args.Command);
         await args.ViewModel.RefreshServerStateAsync(CancellationToken.None);
     }
 

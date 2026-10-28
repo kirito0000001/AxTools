@@ -29,7 +29,6 @@ public sealed partial class MainWindow : Window
         CrossingVoidPcPage.DataContext = viewModel.Tools[7];
         CrossingVoidAndroidPage.DataContext = viewModel.Tools[8];
         FantasyAndroidPage.DataContext = viewModel.Tools[9];
-        ServerAliyunPage.DataContext = viewModel.Server;
         GlobalSettingsPage.DataContext = viewModel.Settings;
 
         // 2026-10-27：三个游戏发布页回到左侧导航，重新作为独立页面挂在 PageHost 里。

@@ -31,7 +31,7 @@ public static class GameScratchCatalog
             "看门狗、实例状态、服务端更新整页待迁走，页面本身后续会移除。",
             "未迁移"),
         new("未复用：服务端更新流程",
-            "导入构建 / 推送 / 切换 / 回退 / 恢复 / 清理本地仓库，六段操作仍写在 ServerPage.xaml.cs 里。",
+            "导入构建 / 推送 / 切换 / 回退 / 恢复 / 清理本地仓库，执行逻辑已收进 ServerActionHost。",
             "未抽取"),
         new("未复用：动作执行管道",
             "MainWindow.ToolActions 里的版本门禁、发布确认、进程冲突处理，与页面耦合。",

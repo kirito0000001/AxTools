@@ -510,7 +510,7 @@ public sealed partial class MainWindow
     private async Task<ContentDialogResult?> TryShowDialogAsync(ContentDialog dialog)
     {
         // 闸门与异常兜底都在 DialogGate 里：抢不到就返回 null，调用方按"没确认/没成功"处理。
-        // 页面自己弹的窗（ServerPage / ToolPage / SettingsPage）也走同一道闸门，
+        // 页面自己弹的窗（ToolPage / SettingsPage / ServerActionHost）也走同一道闸门，
         // 否则"主窗口的提示 + 页面的确认框"撞在一起照样崩（同一个 XamlRoot，一个线程只能有一个弹窗）。
         dialog.RequestedTheme = RootGrid.ActualTheme;
         return await DialogGate.TryShowAsync(dialog, _viewModel.LogService);

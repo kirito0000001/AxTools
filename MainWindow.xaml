@@ -104,12 +104,9 @@
                     <views:ToolPage x:Name="CrossingVoidPcPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="CrossingVoidAndroidPage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="FantasyAndroidPage" Visibility="Collapsed" />
-                    <!-- 三个游戏包发布页只在启动时实例化一次，随后由 MainWindow 交给服务器页
-                         （ServerAliyunPage.AttachGamePublishPanel）挂到对应游戏的页签卡片里。 -->
                     <views:ToolPage x:Name="FantasyGamePage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="CrossingVoidGamePage" Visibility="Collapsed" />
                     <views:ToolPage x:Name="NarutoGamePage" Visibility="Collapsed" />
-                    <views:ServerPage x:Name="ServerAliyunPage" Visibility="Collapsed" />
                     <views:SettingsPage x:Name="GlobalSettingsPage" Visibility="Collapsed" />
                 </Grid>
                 <StackPanel Grid.Row="1" Spacing="{StaticResource AxSpace8}">
